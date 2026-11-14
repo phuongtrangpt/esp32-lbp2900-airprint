@@ -8,6 +8,7 @@
 #include <setjmp.h>
 #include <stdint.h>
 #ifdef ESP_PLATFORM
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #endif
@@ -26,7 +27,13 @@ static _Thread_local jmp_buf *oom;
 void hp_jbig_oom(void) { if (oom) longjmp(*oom,1); abort(); }
 void *hp_jbig_malloc(size_t n) {
     if (n>SIZE_MAX-sizeof(alloc_node)) return NULL;
-    alloc_node *a=malloc(sizeof(*a)+n); if (!a) return NULL;
+#ifdef ESP_PLATFORM
+    // JBIG's many small blocks must not consume scarce internal Wi-Fi/USB RAM.
+    alloc_node *a=heap_caps_malloc(sizeof(*a)+n,MALLOC_CAP_SPIRAM|MALLOC_CAP_8BIT);
+#else
+    alloc_node *a=malloc(sizeof(*a)+n);
+#endif
+    if (!a) return NULL;
     a->a.prev=NULL; a->a.next=allocs; a->a.size=n;
     if (allocs) allocs->a.prev=a;
     allocs=a; return a+1;

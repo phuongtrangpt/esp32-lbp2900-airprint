@@ -19,7 +19,7 @@ Generic stream tests validate all PCL raster pixels and render two PS pages usin
 Ghostscript, for both A4/Letter and 300/600 dpi with gray/RGB source. Selection tests
 reject PCLXL-only, PCL6-only, PCL3GUI, PCLm, SPL, UFRII, ZJS and misleading prefixes.
 
-Firmware: 1,720,387 application bytes (previous 1,717,151: +3,236 bytes); static RAM
+Firmware: 1,720,419 application bytes (previous 1,717,151: +3,268 bytes); static RAM
 77,092 bytes, unchanged. App slot 4 MiB, board flash 16 MiB and PSRAM 8 MiB.
 100-page IPP integration is included through TEST_CAPT_PAGES=100.
 

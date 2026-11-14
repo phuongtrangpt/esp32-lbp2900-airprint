@@ -44,7 +44,7 @@ static int page_begin(void *ctx,int w,int h,int bpp) {
     j->sw=w; j->sh=h; j->bpp=bpp; j->y=j->rows=0; j->open=true;
     if (j->ps) {
         // Image matrix maps top-down raster onto a physical page. Polarity: 1=black.
-        emit(j,"<< /PageSize [%.6f %.6f] /Duplex false >> setpagedevice\ngsave\n"
+        emit(j,"<< /PageSize [%.6f %.6f] /Duplex false /NumCopies 1 >> setpagedevice\nsave gsave\n"
           "18 %.6f translate\n%.6f %.6f scale\n/DeviceGray setcolorspace\n"
           "<< /ImageType 1 /Width %d /Height %d /BitsPerComponent 1 /Decode [1 0]\n"
           "/ImageMatrix [%d 0 0 -%d 0 %d]\n/DataSource currentfile /ASCIIHexDecode filter >> image\n",
@@ -89,7 +89,7 @@ static int page_end(void *ctx) {
     if (!j->open || j->failed || j->y!=j->sh) return -1;
     memset(j->row,0,j->stride);
     while (j->rows<j->h && !j->failed) output(j);
-    if (j->ps) emit(j,">\ngrestore\nshowpage\n");
+    if (j->ps) emit(j,">\ngrestore\nshowpage restore\n");
     else emit(j,"\033*rB\f");
     j->open=false; return j->failed?-1:0;
 }

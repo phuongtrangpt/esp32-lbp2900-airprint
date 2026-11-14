@@ -68,7 +68,8 @@ hạng thị phần Việt Nam hay chứng nhận đã in ổn định trên t�
 
 - ESP xử lý luồng URF/PWG, không lưu toàn bộ PDF hoặc cả tài liệu trong RAM.
 - Canon giữ dải 70 dòng; HP P1006 giữ một trang 1 bit và bộ đệm JBIG, tái sử dụng
-  cho trang tiếp theo. HP nặng RAM hơn Canon nhưng không tăng tuyến tính theo số trang.
+  cho trang tiếp theo; các block JBIG được cấp phát rõ vào PSRAM để tránh chiếm
+  RAM trong của Wi-Fi/USB. HP nặng RAM hơn Canon nhưng không tăng tuyến tính theo số trang.
 - Test native có kiểm đếm từng malloc/calloc/realloc/free, ASan/UBSan: 100 trang
   Canon A4, 100 HP A4, 100 HP Letter, 100 PCL5, 100 PS; kiểm tra sau mỗi trang
   và sau khi kết thúc lệnh, cùng hai trang HP nhiễu khó nén và lỗi thiếu RAM có chủ đích.

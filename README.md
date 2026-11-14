@@ -109,7 +109,7 @@ Chỉ dùng trong LAN tin cậy. Thời gian/độ ổn định thực tế sẽ
 
 ## GitHub
 
-Kho dự án: https://github.com/phuongtrangpt/esp32-lbp2900-airprint (riêng tư).
+Kho dự án: https://github.com/phuongtrangpt/esp32-lbp2900-airprint (công khai).
 Workflow `.github/workflows/build.yml` chạy test và build, xuất artifact firmware
 cho mỗi commit hoặc chạy tay. Các ảnh chụp PIXMA của upstream không cần cho việc
 build được dẫn liên kết trong `docs/UPSTREAM_IMAGES.md`.

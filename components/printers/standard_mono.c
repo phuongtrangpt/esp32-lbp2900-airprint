@@ -114,7 +114,7 @@ static int test(const printer_driver_t *d,const printer_io_t *io,int dpi,const c
     }
     free(p); int r=page_end(j); if(end(j)<0) r=-1; return r;
 }
-#define DRIVER(ID,NAME) { .id=ID,.make_model=NAME,.color=false,.scanner=false,\
+#define DRIVER(ID,NAME) { .id=ID,.make_model=NAME,.usb_mfg="Generic",.usb_mdl=NAME,.color=false,.scanner=false,\
 .resolutions={300,600},.nresolutions=2,.papers=papers,.npapers=2,\
 .margin_left=635,.margin_right=635,.margin_top=635,.margin_bottom=635,\
 .job_begin=begin,.page_begin=page_begin,.page_line=line,.page_end=page_end,.job_end=end,.test_page=test }

@@ -1,0 +1,41 @@
+name: Build LBP2900 preview
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install build tools
+        run: python -m pip install platformio==6.2.0
+      - name: Build host tests
+        run: make -C host all
+      - name: CAPT raster and error tests
+        run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
+      - name: IPP integration
+        run: python tools/test_capt_ipp.py
+      - name: Web validation
+        working-directory: web
+        run: |
+          npm run check
+          node --test tests/*.test.ts
+          npm run build
+      - name: Firmware build
+        run: pio run -e esp32s3
+      - name: Package firmware
+        run: python tools/package_firmware.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lbp2900-esp32s3-n16r8-preview
+          path: firmware/
+          if-no-files-found: error

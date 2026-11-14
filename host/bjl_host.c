@@ -283,7 +283,7 @@ static int cmd_selftest(void)
     CHECK(printer_driver_find("canon-mg2500"), "canon-mg2500 driver");
     for (int k = 0; printer_drivers[k]; k++) {
         const printer_driver_t *d = printer_drivers[k];
-        if (!strcmp(d->id, "canon-lbp2900") || !strcmp(d->id, "hp-p1006")) continue; // tested by capt_host with binary replies
+        if (!strcmp(d->id, "canon-lbp2900") || !strcmp(d->id, "hp-p1006") || !strncmp(d->id,"generic-",8)) continue; // tested by capt_host with binary replies
         CHECK(d->test_page && d->model, "%s: test page", d->id);
         for (int i = 0; d->test_page && d->model && i < d->nresolutions; i++) {
             int dpi = d->resolutions[i];
@@ -339,6 +339,7 @@ static int cmd_selftest(void)
         // every driver is found by its own USB id and by its own model name
         for (int k = 0; printer_drivers[k]; k++) {
             const printer_driver_t *d = printer_drivers[k];
+            if (!d->usb_mdl) continue; // capability-selected generic driver
             char id[96];
             snprintf(id, sizeof(id), "MFG:%s;MDL:%s;", d->usb_mfg, d->usb_mdl);
             CHECK(printer_driver_match(0, 0, id) == d, "%s: match by \"%s\"", d->id, id);

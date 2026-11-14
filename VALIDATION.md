@@ -1,3 +1,33 @@
+## v0.4.0-standard-preview: measured results
+
+Native ASan/UBSan + wrapped malloc/calloc/realloc/free accounting (64-bit host;
+not ESP heap measurements). All figures include driver allocations, not network,
+FreeRTOS, USB stacks, TLS or browser memory.
+
+| Test | Retained job bytes | Peak allocated bytes | Growth after each page | After job |
+|---|---:|---:|---:|---:|
+| Canon LBP2900, 100 A4 pages | 190440 | 190440 | 0 | 0 |
+| HP P1006, 100 A4 pages | 4214048 | 5266936 | 0 | 0 |
+| HP P1006, 2 dense random A4 pages | 4214048 | 5328016 | 0 | 0 |
+| HP P1006, 100 Letter pages | 4064256 | 5079344 | 0 | 0 |
+| PCL5, 100 A4 pages | 1870 | 1870 | 0 | 0 |
+| PostScript, 100 A4 pages | 1870 | 1870 | 0 | 0 |
+
+Four injected HP compression allocation failures recover and leave zero tracked
+allocations after ending the failed job. This checks OOM cleanup, not USB recovery.
+Generic stream tests validate all PCL raster pixels and render two PS pages using
+Ghostscript, for both A4/Letter and 300/600 dpi with gray/RGB source. Selection tests
+reject PCLXL-only, PCL6-only, PCL3GUI, PCLm, SPL, UFRII, ZJS and misleading prefixes.
+
+Firmware: 1,720,387 application bytes (previous 1,717,151: +3,236 bytes); static RAM
+77,092 bytes, unchanged. App slot 4 MiB, board flash 16 MiB and PSRAM 8 MiB.
+100-page IPP integration is included through TEST_CAPT_PAGES=100.
+
+No printer/ESP hardware is attached. Native results do not prove actual PSRAM
+availability/fragmentation, USB completion, printer imageable area or paper output.
+QEMU unavailable in this environment; no QEMU result is claimed. Browser rendering
+still accumulates page Blobs; the bounded ESP path does not bound browser RAM.
+
 ## HP P1006 v0.3.0
 
 Native tests cover USB and IEEE1284 matching, A4/Letter, gray/RGB two-page streams,

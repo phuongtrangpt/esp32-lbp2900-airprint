@@ -51,6 +51,8 @@ def white_urf(pages, dpi=600):
     return data
 
 def main():
+    pages = int(os.environ.get("TEST_CAPT_PAGES", "2"))
+    assert 1 <= pages <= 1000
     # Reserve a free loopback port; the subprocess binds immediately afterwards.
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
@@ -72,13 +74,13 @@ def main():
             assert b'Canon LBP2900' in data and b'image/urf' in data
             status, _ = ipp(port, 4, dpi=300)
             assert status >= 0x400, '300 dpi must be refused'
-            status, _ = ipp(port, 2, white_urf(2))
+            status, _ = ipp(port, 2, white_urf(pages))
             assert status == 0, hex(status)
             conn = http.client.HTTPConnection('127.0.0.1', port)
             conn.request('GET', '/api/state')
             result = json.loads(conn.getresponse().read())
             assert result['printer']['jobs'][0]['state'] == 'completed', result
-            assert result['printer']['jobs'][0]['pages'] == 2, result
+            assert result['printer']['jobs'][0]['pages'] == pages, result
             assert not result['scan']['scanner'], result
             # A malformed/unsupported raster aborts only this job; a following
             # valid job must still complete, with the simulated printer reset.
@@ -86,7 +88,7 @@ def main():
             assert status >= 0x400, hex(status)
             status, _ = ipp(port, 2, white_urf(1))
             assert status == 0, hex(status)
-            print('IPP CAPT: PASS: capabilities, unsupported 300 dpi, two-page URF job, completed state, scanner disabled, malformed raster and next-job recovery')
+            print(f'IPP CAPT: PASS: capabilities, unsupported 300 dpi, {pages}-page URF job, completed state, scanner disabled, malformed raster and next-job recovery')
         finally:
             server.terminate()
             try: server.wait(timeout=5)

@@ -7,6 +7,15 @@
 #include <string.h>
 #include <setjmp.h>
 #include <stdint.h>
+#ifdef ESP_PLATFORM
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#endif
+void hp_jbig_checkpoint(void) {
+#ifdef ESP_PLATFORM
+    vTaskDelay(1);
+#endif
+}
 
 typedef union alloc_node {
     struct { union alloc_node *prev,*next; size_t size; } a;

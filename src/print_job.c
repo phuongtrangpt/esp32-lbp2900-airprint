@@ -51,7 +51,7 @@ bool print_job_set_printer(const usb_printer_info_t *info)
     if (d)
         ESP_LOGI(TAG, "printer %04x:%04x: driver %s (%s)", info->vid, info->pid, d->id, d->make_model);
     else
-        ESP_LOGW(TAG, "printer %04x:%04x \"%s\" is not a model the firmware knows: using the \"%s\" driver anyway",
+        ESP_LOGW(TAG, "printer %04x:%04x \"%s\" is not a model the firmware knows: printing disabled (default metadata %s)",
                  info->vid, info->pid, info->product, print_job_driver()->id);
     return print_job_driver() != before;
 }

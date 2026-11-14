@@ -1,3 +1,10 @@
+## 0.4.0-standard-preview
+
+- Added streaming mono PCL5/PostScript drivers selected by exact IEEE1284 CMD tokens after model-specific drivers. Unsupported host-based/UFRII/SPL/PCLXL-only devices stay refused.
+- Added 100-page allocation accounting for CAPT, HP A4/Letter, PCL5/PS, dense-noise HP pages and compression OOM recovery tests.
+- Added per-stripe yield in JBIG compression to avoid watchdog starvation.
+- Added per-pixel PCL stream validation and Ghostscript PostScript rendering tests, CI steps, and explicit compatibility/unsupported matrix.
+
 ## 0.3.0-dual-preview
 
 - Added HP LaserJet P1006 (03f0:3e17), 600 dpi mono XQX/JBIG, A4/Letter, automatic USB driver matching.

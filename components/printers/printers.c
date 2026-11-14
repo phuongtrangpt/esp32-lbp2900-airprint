@@ -9,6 +9,7 @@
 #include "printer_driver.h"
 
 extern const printer_driver_t canon_lbp2900_driver, hp_p1006_driver;
+extern const printer_driver_t generic_pcl5_driver, generic_postscript_driver;
 
 extern const printer_driver_t canon_mg2500_driver, canon_mg2400_driver, canon_p200_driver, canon_mg2900_driver,
     canon_mg3000_driver, canon_e470_driver, canon_e460_driver, canon_ip2800_driver, canon_e3100_driver,
@@ -22,6 +23,7 @@ const printer_driver_t *const printer_drivers[] = {
     &canon_mp230_driver, &canon_ip2700_driver, &canon_mp250_driver, &canon_mp270_driver, &canon_mp280_driver,
     &canon_mp490_driver, &canon_mp493_driver, &canon_mp495_driver, &canon_mx340_driver, &canon_mx350_driver,
     &canon_mx360_driver, &canon_mx410_driver, &canon_mx420_driver,
+    &generic_pcl5_driver, &generic_postscript_driver,
     NULL,
 };
 
@@ -75,6 +77,19 @@ const printer_driver_t *printer_driver_match(uint16_t vid, uint16_t pid, const c
         const printer_driver_t *d = printer_drivers[i];
         if (d->usb_mdl && same_model(d->usb_mdl, mdl) && (!mfg[0] || !d->usb_mfg || !strcasecmp(d->usb_mfg, mfg)))
             return d;
+    }
+    char commands[256];
+    device_id_field(device_id,"CMD","COMMAND SET",commands,sizeof(commands));
+    for (char *p=commands; p && *p;) {
+        char *end=strchr(p,',');
+        if (end) *end=0;
+        while (*p==' ') p++;
+        size_t n=strlen(p); while(n && p[n-1]==' ') p[--n]=0;
+        if (!strcasecmp(p,"PCL") || !strcasecmp(p,"PCL5") || !strcasecmp(p,"PCL5E") || !strcasecmp(p,"PCL5C"))
+            return &generic_pcl5_driver;
+        if (!strcasecmp(p,"POSTSCRIPT") || !strcasecmp(p,"POSTSCRIPT2") || !strcasecmp(p,"POSTSCRIPT3") || !strcasecmp(p,"PS"))
+            return &generic_postscript_driver;
+        p=end?end+1:NULL;
     }
     return NULL;
 }

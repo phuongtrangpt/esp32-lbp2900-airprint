@@ -47,3 +47,6 @@ installer/dist/
 installer/public/firmware/
 
 host/hp_host
+
+host/memory_host
+host/standard_host

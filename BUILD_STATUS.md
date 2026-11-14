@@ -1,3 +1,11 @@
+## v0.4.0-standard-preview
+
+Build: ESP32-S3 N16R8, 1,720,387 app bytes, 77,092 static RAM bytes.
+Added PCL5 and PostScript mono streaming fallback. +3,236 app bytes vs v0.3.
+Native 100-page allocation checks, HP dense pages/OOM, PCL decoding and Ghostscript
+PS rendering passed; see VALIDATION.md for exact coverage and measurements.
+Physical printing/USB/Wi-Fi heap verification and QEMU remain unverified.
+
 ## v0.3.0-dual-preview
 
 HP P1006 driver and user-supplied firmware bootstrap added. Physical verification

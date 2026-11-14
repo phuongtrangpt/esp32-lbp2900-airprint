@@ -11,7 +11,7 @@
     <header><a class="brand" href="./"><span class="brand-icon">P</span> LBP2900 <span class="brand-light">AirPrint</span></a><a class="github" href="https://github.com/phuongtrangpt/esp32-lbp2900-airprint" target="_blank" rel="noreferrer">Mã nguồn ↗</a></header>
     <main>
       <section class="hero">
-        <div><span class="eyebrow"><span class="dot"></span> PRINT SERVER · ESP32-S3</span><h1>Cắm USB.<br>Nạp ngay trên web.</h1><p class="lead">Biến Canon LBP2900 hoặc HP LaserJet P1006 thành máy in Wi-Fi với ESP32-S3. Không cần Python, Arduino IDE hay tải firmware thủ công.</p><div class="tags"><span>ESP32-S3 N16R8</span><span>Wi-Fi 2.4 GHz</span><span>600 dpi · Đen trắng</span></div></div>
+        <div><span class="eyebrow"><span class="dot"></span> PRINT SERVER · ESP32-S3</span><h1>Cắm USB.<br>Nạp ngay trên web.</h1><p class="lead">Biến Canon LBP2900 hoặc HP LaserJet P1006 và máy tương thích PCL5/PostScript thành máy in Wi-Fi với ESP32-S3. Không cần Python, Arduino IDE hay tải firmware thủ công.</p><div class="tags"><span>ESP32-S3 N16R8</span><span>Wi-Fi 2.4 GHz</span><span>600 dpi · Đen trắng</span></div></div>
         <section class="install-card" aria-labelledby="install-title">
           <div class="card-top"><span class="chip">USB → Wi-Fi</span><span id="version" class="version">Đang tải phiên bản…</span></div>
           <h2 id="install-title">Sẵn sàng nạp firmware</h2><p>Cắm cáp vào cổng <strong>UART / COM</strong> của board. Để cổng USB OTG riêng cho máy in.</p>
@@ -40,7 +40,7 @@
         <details><summary>Nạp lại có mất Wi-Fi không?</summary><p>Hộp thoại nạp cho phép chọn xóa dữ liệu. Nếu chọn xóa, thiết lập Wi-Fi cũ sẽ mất và bạn nhập lại sau khi nạp. Khi chỉ muốn đổi Wi-Fi hoặc xem log, bấm kết nối rồi chọn cấu hình Wi-Fi hoặc Logs &amp; Console, không cần nạp lại.</p></details>
       </section>
     </main>
-    <section class="preview-note"><p><strong>HP P1006:</strong> sau khi nạp ESP và kết nối Wi-Fi, mở <code>http://IP-ESP/hp-firmware</code> để lưu file <code>sihpP1006.dl</code> của máy in. Mỗi ESP phục vụ một máy in USB tại một thời điểm.</p></section><footer><span>LBP2900 AirPrint · Phuong Le</span><span>GPL-3.0 · Dựa trên ESP Web Tools / ngxson / captdriver</span></footer>
+    <section class="preview-note"><p><strong>HP P1006:</strong> sau khi nạp ESP và kết nối Wi-Fi, mở <code>http://IP-ESP/hp-firmware</code> để lưu file <code>sihpP1006.dl</code> của máy in. Mỗi ESP phục vụ một máy in USB tại một thời điểm.</p></section><section class="preview-note"><p><strong>Mở rộng PCL5 / PostScript:</strong> in đơn sắc thử nghiệm cho máy USB tự khai báo giao thức phù hợp. Không hỗ trợ mọi model. Canon LBP6030 (UFR II LT), Brother HL-L2321D và Epson L3210 cần driver riêng. Xem bảng tương thích trên GitHub.</p></section><footer><span>LBP2900 AirPrint · Phuong Le</span><span>GPL-3.0 · Dựa trên ESP Web Tools / ngxson / captdriver</span></footer>
   </div>
   <script type="module" src="/main.js"></script>
 </body>

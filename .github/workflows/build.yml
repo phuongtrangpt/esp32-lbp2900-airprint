@@ -28,10 +28,18 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
       - name: HP P1006 raster tests
         run: ASAN_OPTIONS=detect_leaks=0 host/hp_host
+      - name: Standard printer streams and memory stress
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y ghostscript python3-pil
+          python -m pip install Pillow
+          ASAN_OPTIONS=detect_leaks=0 python tools/test_standard_streams.py
+          ASAN_OPTIONS=detect_leaks=0 host/memory_host > /tmp/memory-stress.log 2>&1 || { tail -60 /tmp/memory-stress.log; exit 1; }
+          grep -E 'retained=|OOM' /tmp/memory-stress.log
       - name: Browser Wi-Fi protocol tests
         run: ASAN_OPTIONS=detect_leaks=0 host/improv_host
       - name: IPP integration
-        run: python tools/test_capt_ipp.py
+        run: TEST_CAPT_PAGES=100 python tools/test_capt_ipp.py
       - name: Web validation
         working-directory: web
         run: |

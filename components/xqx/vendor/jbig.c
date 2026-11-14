@@ -909,6 +909,7 @@ void jbg_enc_options(struct jbg_enc_state *s, int order, int options,
 static void encode_sde(struct jbg_enc_state *s,
 		       long stripe, int layer, int plane)
 {
+  hp_jbig_checkpoint(); /* ESP port: yield once per 128-line stripe. */
   unsigned char *hp, *lp1, *lp2, *p0, *p1, *q1, *q2;
   unsigned long hl, ll, hx, hy, lx, ly, hbpl, lbpl;
   unsigned long line_h0 = 0, line_h1 = 0;

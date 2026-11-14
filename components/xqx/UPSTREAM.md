@@ -8,7 +8,8 @@ HP raster adapter uses the simplex, monochrome XQX framing and JBIG options from
 foo2xqx, by Rick Richardson et al., GPL-2.0-or-later. This combined project is
 GPL-3.0-or-later. Vendor jbig.c, jbig.h, jbig_ar.c, jbig_ar.h preserve Markus
 Kuhn's notices (JBIG-KIT, GPL-2.0-or-later). Local modification: jbig.c includes
-port_alloc.h to track allocations and recover from OOM without resetting ESP.
+port_alloc.h to track allocations and recover from OOM without resetting ESP. encode_sde also calls a portable
+checkpoint to yield between stripes on ESP, avoiding long uninterrupted compression.
 
 No proprietary HP firmware is included. User supplies sihpP1006.dl through
 http://<ESP-IP>/hp-firmware. HP firmware is separate from the ESP application.

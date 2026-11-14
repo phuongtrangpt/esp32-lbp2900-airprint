@@ -9,6 +9,7 @@
 // vendor interface through usb_scanner_*(); it holds the device like a job.
 #include "usb_printer.h"
 #include "hp_firmware.h"
+#include "printer_driver.h"
 
 #include <stdatomic.h>
 #include <string.h>
@@ -559,7 +560,7 @@ static void open_device(uint8_t addr)
                  (st & 0x10) ? "selected " : "", (st & 0x08) ? "no error" : "ERROR");
 
     if (info.vid != CANON_VID)
-        ESP_LOGW(TAG, "not a Canon printer: Canon raster jobs will print garbage on it");
+        ESP_LOGI(TAG, "non-Canon printer: selecting driver from USB ID / IEEE1284 capabilities");
 
     xSemaphoreTake(s_p.lock, portMAX_DELAY);
     s_p.info = info;
@@ -573,7 +574,9 @@ static void open_device(uint8_t addr)
     s_p.connected = true;
     s_p.hp = info.vid == 0x03f0 && info.pid == 0x3e17;
     s_p.hp_loaded = s_p.hp && strstr(info.device_id,"FWVER:") != NULL;
-    s_p.capt = (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
+    const printer_driver_t *driver=printer_driver_match(info.vid,info.pid,info.device_id);
+    bool standard=driver && !strncmp(driver->id,"generic-",8);
+    s_p.capt = standard || (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
     s_p.raw_len = 0;
     s_p.raw_error = false;
     s_p.raw_wanted = false;

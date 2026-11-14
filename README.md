@@ -27,6 +27,57 @@ thường trực: ESP32 thực hiện chuyển raster sang CAPT và giao tiếp 
 - Chưa xác nhận trên phần cứng. Giới hạn hiện tại: chờ khởi động HP 6 giây,
   chưa phân tích trạng thái PJL/hết giấy, chưa xác nhận giấy đã ra khi IPP báo xong.
 
+## Mở rộng theo giao thức (v0.4.0-standard-preview)
+
+Hai driver dùng chung mới: **PCL5 đơn sắc** và **PostScript Level 2/3 đơn sắc**,
+300/600 dpi, A4/Letter, in một mặt, lề bảo thủ 6,35 mm. Mỗi dòng raster được gửi
+ngay; bộ đệm driver khoảng 2 KB, không tăng theo số trang. Máy màu có PCL5c/PS
+có thể dùng đường in đơn sắc này; chưa có in màu / duplex / scanner cho driver chung.
+
+Máy phải dùng USB Printer Class và khai báo CMD phù hợp trong IEEE1284 ID.
+Firmware ưu tiên driver Canon/HP chuyên dụng, sau đó mới chọn PCL5/PS từ CMD;
+không đoán giao thức dựa trên tên thương hiệu hoặc tự gửi dữ liệu thử vào máy lạ.
+Các token PCLXL/PCL6 riêng lẻ, PCL3GUI/PCLm, UFRII, SPL và ZJS không được nhận
+nhầm là PCL5. Thiếu CMD phù hợp thì từ chối in. Cần kiểm chứng trên từng model.
+
+| Dòng máy / nhóm | Tình trạng trong firmware |
+|---|---|
+| Canon LBP2900 | Driver CAPT riêng, chưa thử phần cứng |
+| HP P1006 | Driver XQX/JBIG riêng + HPDL do người dùng cung cấp |
+| Canon PIXMA MG/MP/iP/E/TS/MX có sẵn trong registry | Giữ nguyên driver BJL của dự án gốc; không có nghĩa mọi PIXMA đều được hỗ trợ |
+| HP LaserJet 1320, P2035, P2055 | Ứng viên PCL5/PS theo thông số hãng; chỉ tự chọn nếu USB CMD công bố phù hợp, chưa in thử |
+| Máy USB khác khai báo PCL5-compatible hoặc PostScript | Driver chung thử nghiệm, cần in trang kiểm tra |
+| Canon LBP6030/6030w | **Chưa hỗ trợ**: UFR II LT, khác CAPT |
+| HP P1102; HP1020 và các máy host-based chưa có adapter | **Chưa hỗ trợ**: cần giao thức/khởi tạo riêng |
+| Brother HL-L2321D | **Chưa hỗ trợ**: không giả định PCL6 của model khác trong cùng họ |
+| Epson L3210/L3250, Canon G-series chưa có adapter, Samsung SPL | **Chưa hỗ trợ**: không thêm tên để giả lập tương thích |
+
+Nguồn kỹ thuật:
+[HP PCL5 reference](https://www.hp.com/ctg/Manual/bpl13210.pdf),
+[Adobe PostScript reference](https://www.adobe.com/jp/print/postscript/pdfs/PLRM.pdf),
+[HP P2035](https://support.hp.com/us-en/product/product-specs/hp-laserjet-p2035-printer-series/3662026),
+[HP P2055](https://support.hp.com/vn-en/product/product-specs/hp-laser-p2055-series/3662052),
+[HP1320](https://support.hp.com/us-en/product/product-specs/hp-laser-1320-series/410622),
+[Canon6030](https://vn.canon/en/consumer/imageclass-lbp6030/main/product),
+[Brother2321D](https://support.brother.com/g/b/spec.aspx?c=vn&lang=en&prod=hll2321d_as),
+[Epson3210](https://www.epson.com.vn/p/C11CJ68501).
+Đây là danh sách tương thích kỹ thuật / ứng viên thử nghiệm, không phải bảng xếp
+hạng thị phần Việt Nam hay chứng nhận đã in ổn định trên tất cả model.
+
+## Bộ nhớ và tài liệu nhiều trang
+
+- ESP xử lý luồng URF/PWG, không lưu toàn bộ PDF hoặc cả tài liệu trong RAM.
+- Canon giữ dải 70 dòng; HP P1006 giữ một trang 1 bit và bộ đệm JBIG, tái sử dụng
+  cho trang tiếp theo. HP nặng RAM hơn Canon nhưng không tăng tuyến tính theo số trang.
+- Test native có kiểm đếm từng malloc/calloc/realloc/free, ASan/UBSan: 100 trang
+  Canon A4, 100 HP A4, 100 HP Letter, 100 PCL5, 100 PS; kiểm tra sau mỗi trang
+  và sau khi kết thúc lệnh, cùng hai trang HP nhiễu khó nén và lỗi thiếu RAM có chủ đích.
+- Không có tăng trưởng bộ nhớ được giữ lại trong những bài thử này. Chưa đo heap
+  thực tế ESP khi Wi-Fi/USB hoạt động, nên chưa thể khẳng định không bao giờ hết RAM.
+- **Trình duyệt khác ESP:** web vẫn giữ Blob của các trang đã render trước khi gửi.
+  Tài liệu nhiều ảnh/nhiều trang có thể dùng nhiều RAM trên điện thoại/PC. Nên chia
+  lô nếu trình duyệt thiếu RAM. Driver chỉ hỗ trợ khổ giấy cố định trong một lệnh in.
+
 ## Phần cứng
 
 - ESP32-S3 **N16R8** (16 MB flash, 8 MB octal PSRAM), có cổng UART/COM và USB OTG riêng.

@@ -40,3 +40,8 @@ __pycache__/
 # CAPT build artifacts
 host/capt_host
 firmware/
+
+host/improv_host
+installer/node_modules/
+installer/dist/
+installer/public/firmware/

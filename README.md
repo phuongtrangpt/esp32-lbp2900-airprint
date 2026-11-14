@@ -26,13 +26,39 @@ của hai bộ cấp điện khác nhau.
 - Canon LBP2900: USB `04a9:2676`, CAPT hai chiều, Hi-SCoA, đen trắng 600 dpi.
 - Khổ A4 và Letter, lề theo driver CAPT, chuyển ảnh RGB/xám thành raster 1 bit.
 - Giao diện web để chọn PDF/ảnh, xem tiến trình và lịch sử lệnh in.
-- Wi-Fi nhập qua COM ở lần khởi động đầu, lưu trong NVS; không nằm trong bản build chung.
+- Wi-Fi cấu hình ngay trên web bằng Improv Serial, lưu trong NVS; vẫn có chế độ nhập qua COM.
 - Nút BOOT: nhấn để in trang kiểm tra; giữ 2 giây để hủy lệnh đang chạy.
 - Timeout khi đọc/ghi CAPT; lỗi phản hồi dừng lệnh thay vì thoát toàn bộ firmware.
 
 LBP2900 không có scanner: thiết bị không quảng bá AirScan. Một số thành phần scanner
 của dự án gốc vẫn nằm trong mã nguồn và bộ test hồi quy. In iOS/Mac/Android qua hệ
 thống in sẵn có là mục tiêu cần thử trên thiết bị thật, chưa phải chứng nhận AirPrint/Mopria.
+
+## Nạp ngay trên trình duyệt (không cần cài ứng dụng)
+
+Mở **https://phuongtrangpt.github.io/esp32-lbp2900-airprint/** bằng Chrome hoặc Edge
+trên máy tính. Trang dùng Web Serial và ESP Web Tools 10.5.2, tự chọn firmware cho
+ESP32-S3. Cần đúng board **N16R8**, cáp USB truyền dữ liệu và cổng **UART/COM**.
+
+1. Cắm ESP vào máy tính qua UART/COM, để cổng USB OTG trống cho máy in.
+2. Bấm **Kết nối USB & nạp firmware**, chọn cổng của ESP rồi chọn **Install**.
+3. Làm theo hộp thoại tiến trình. Nếu chọn xóa dữ liệu, Wi-Fi cũ sẽ bị xóa.
+4. Sau khi nạp, chọn mạng Wi-Fi 2.4 GHz và nhập mật khẩu ngay trong hộp thoại.
+   Firmware v0.2 dùng Improv Serial; mật khẩu đi từ trình duyệt tới ESP qua USB,
+   không được gửi lên GitHub hoặc đưa vào firmware chung.
+5. Khi kết nối thành công, hộp thoại cung cấp địa chỉ trang quản lý thiết bị.
+   Nối LBP2900 vào USB OTG, cấp điện cho máy in và thử trang kiểm tra.
+
+Không cần Python, Arduino IDE hoặc PlatformIO để nạp theo cách này. Trình duyệt
+luôn yêu cầu người dùng chọn cổng USB; trang không thể tự cấp quyền USB ngầm.
+Windows thường tự nhận USB–UART, nhưng một số board vẫn cần driver của nhà sản xuất.
+Không dùng trình duyệt trong Facebook/Zalo hoặc Safari để nạp. Logs & Console và
+cấu hình lại Wi-Fi cũng có trong hộp thoại kết nối.
+
+Mỗi lần push lên main, workflow kiểm tra firmware rồi xuất bản trang cùng các file
+`.bin` trên một origin HTTPS. Dữ liệu NVS ở 0x9000–0xefff không nằm trong các phần
+nạp, nên có thể giữ Wi-Fi khi không chọn xóa dữ liệu. Ảnh gộp được tạo bằng esptool
+để vá đúng header flash, sau đó tách theo các vùng không ghi đè NVS.
 
 ## Nạp firmware đã build
 

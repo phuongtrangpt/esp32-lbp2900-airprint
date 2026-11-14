@@ -1,16 +1,12 @@
-# Build status — 0.1.0-capt-preview
+# Build status — 0.2.0-web-preview
 
-ESP32-S3 N16R8 firmware compilation: **PASS**, Espressif32 6.12.0 / ESP-IDF 5.5.0.
-Build target: `esp32s3`, 16 MB flash, octal PSRAM, 80 MHz flash clock.
-Application image: 1,671,727 bytes of the 4 MB application slot (39.9%).
-The distributed firmware.bin additionally includes a 179 KB symbol table.
-No physical printer or board was attached. Hardware validation remains pending.
+ESP32-S3 N16R8 firmware compilation: PASS (Espressif32 6.12.0 / ESP-IDF 5.5.0).
+Application image: 1,690,235 bytes of the 4 MB app slot (40.3%), plus symbols.
+Improv Serial provides browser Wi-Fi setup over the UART/COM connector.
 
-The environment required PLATFORMIO_CORE_DIR to point to the real cache path,
-because a symlink alias caused duplicate object filenames in PlatformIO's CMake
-importer. No framework source patches were needed.
+Web flash parts are derived from an esptool-patched image and omit the NVS
+range [0x9000, 0xf000), preserving credentials when erase is not selected.
+The app remains at 0x20000, and initial OTA selection is at 0xf000.
 
-Artifacts: bootloader.bin at 0x0, partitions.bin at 0x8000, ota_data_initial.bin
-at 0xf000, firmware.bin at 0x20000. Flash settings are read from the generated
-ESP-IDF flasher_args.json rather than inferred from board marketing names.
-SHA256SUMS in the package verifies all binary images and the manifest.
+No physical printer or board was attached. USB flashing, Wi-Fi radio connection
+and paper output remain pending real hardware validation.

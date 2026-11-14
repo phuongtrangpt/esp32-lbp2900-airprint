@@ -16,12 +16,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
       - name: Install build tools
-        run: python -m pip install platformio==6.2.0
+        run: python -m pip install platformio==6.2.0 esptool==4.9.0
       - name: Build host tests
         run: make -C host all
       - name: CAPT raster and error tests
         run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
+      - name: Browser Wi-Fi protocol tests
+        run: ASAN_OPTIONS=detect_leaks=0 host/improv_host
       - name: IPP integration
         run: python tools/test_capt_ipp.py
       - name: Web validation
@@ -34,8 +40,34 @@ jobs:
         run: pio run -e esp32s3
       - name: Package firmware
         run: python tools/package_firmware.py
+      - name: Build USB web installer
+        run: |
+          python tools/prepare_web_installer.py
+          npm --prefix installer ci
+          npm --prefix installer run build
       - uses: actions/upload-artifact@v4
         with:
           name: lbp2900-esp32s3-n16r8-preview
           path: firmware/
           if-no-files-found: error
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: installer/dist
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: github-pages
+      cancel-in-progress: true
+    steps:
+      - name: Publish web installer
+        id: deployment
+        uses: actions/deploy-pages@v4

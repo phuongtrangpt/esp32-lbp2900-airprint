@@ -5,6 +5,9 @@ import json
 from pathlib import Path
 import shutil
 import struct
+import re
+import subprocess
+import sys
 
 ROOT=Path(__file__).resolve().parent.parent
 BUILD=ROOT/'.pio/build/esp32s3'
@@ -35,7 +38,8 @@ def main():
         if kind==0 and sub==0x10: app_offset=offset
     if app_offset!=0x20000: raise SystemExit(f'Unexpected ota_0 offset: {app_offset}')
     settings=json.loads((BUILD/'flasher_args.json').read_text())['flash_settings']
-    manifest={'chip':'esp32s3','board':'ESP32-S3 N16R8','version':'0.1.0-capt-preview',
+    version=re.search(r'set\(PROJECT_VER \"([^\"]+)\"\)', (ROOT/'CMakeLists.txt').read_text()).group(1)
+    manifest={'chip':'esp32s3','board':'ESP32-S3 N16R8','version':version,
               'physical_printer_tested':False,'flash_size':settings['flash_size'],'flash_mode':settings['flash_mode'],'flash_freq':settings['flash_freq'],
               'files':{'0x0':'bootloader.bin','0x8000':'partitions.bin','0xf000':'ota_data_initial.bin',hex(app_offset):'firmware.bin'}}
     (OUT/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')

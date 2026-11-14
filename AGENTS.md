@@ -9,7 +9,7 @@ CAPT source is GPL-3.0-or-later; preserve all upstream notices. Run `make -C hos
 `ASAN_OPTIONS=detect_leaks=0 host/capt_host`, `python tools/test_capt_ipp.py`, web
 checks and `pio run -e esp32s3` for CAPT changes. Keep original regression tests;
 record explicitly when a dependency makes a test unavailable. Default firmware
-uses normal mode and serial first-boot Wi-Fi setup, with credentials in NVS.
+uses normal mode and Improv Serial browser Wi-Fi setup, with credentials in NVS.
 Never commit `.env`, `src/local_config.h`, or firmware containing Wi-Fi credentials.
 
 ---

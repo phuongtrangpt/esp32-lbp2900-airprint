@@ -1,0 +1,9 @@
+{
+  "name": "lbp2900-web-installer",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "scripts": {"build": "vite build --base=./", "dev": "vite --host 0.0.0.0"},
+  "dependencies": {"esp-web-tools": "10.5.2"},
+  "devDependencies": {"vite": "8.3.2"}
+}

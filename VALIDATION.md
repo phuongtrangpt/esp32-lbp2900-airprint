@@ -1,4 +1,4 @@
-# Validation record — 0.1.0-capt-preview
+# Validation record — 0.2.0-web-preview
 
 This is an experimental CAPT port, not a hardware-qualified printer release.
 
@@ -42,3 +42,15 @@ real Canon hardware. In particular, binary reply lengths, endpoint behavior and
 streaming under a full printer buffer require physical validation.
 
 Firmware compilation and package checks are recorded in BUILD_STATUS.md.
+
+## Browser installer / Improv Serial
+
+- Firmware compiles for ESP32-S3 N16R8 with the UART driver and Improv service.
+- Host parser tests exercise fragmented frames, checksums, resynchronization,
+  malformed RPC lengths, Wi-Fi credential bounds, open networks, embedded NULs
+  and every outer packet length from 0 to 255 under ASan/UBSan.
+- Web assets are produced from a checksum-verified package. Byte comparisons
+  verify the OTA/app parts, and assertions prevent any part overlapping NVS.
+- The installer is bundled locally, with third-party license notices.
+- Physical Web Serial flashing, actual Wi-Fi provisioning and LBP2900 output
+  cannot be confirmed without the user's board and printer.

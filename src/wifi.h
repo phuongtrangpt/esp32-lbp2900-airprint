@@ -1,4 +1,4 @@
-// WiFi station using the credentials from .env
+// WiFi station with NVS credentials and Improv Serial browser setup.
 #pragma once
 
 #include <stdbool.h>
@@ -6,7 +6,7 @@
 
 #include "esp_err.h"
 
-// Starts connecting in the background (reconnects forever).
+// Starts Wi-Fi and browser provisioning in the background.
 esp_err_t wifi_start(const char *hostname);
 bool wifi_connected(void);
 // The station's IPv4 address as text; false (and "") while not connected.

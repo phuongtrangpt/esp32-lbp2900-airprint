@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101d2a">
+  <meta name="description" content="Nạp firmware Canon LBP2900 AirPrint vào ESP32-S3 ngay trên trình duyệt, không cần cài Python hay Arduino IDE.">
+  <title>LBP2900 · Nạp firmware qua USB</title>
+</head>
+<body>
+  <div class="shell">
+    <header><a class="brand" href="./"><span class="brand-icon">P</span> LBP2900 <span class="brand-light">AirPrint</span></a><a class="github" href="https://github.com/phuongtrangpt/esp32-lbp2900-airprint" target="_blank" rel="noreferrer">Mã nguồn ↗</a></header>
+    <main>
+      <section class="hero">
+        <div><span class="eyebrow"><span class="dot"></span> PRINT SERVER · ESP32-S3</span><h1>Cắm USB.<br>Nạp ngay trên web.</h1><p class="lead">Biến Canon LBP2900 thành máy in Wi-Fi với ESP32-S3. Không cần Python, Arduino IDE hay tải firmware thủ công.</p><div class="tags"><span>ESP32-S3 N16R8</span><span>Wi-Fi 2.4 GHz</span><span>600 dpi · Đen trắng</span></div></div>
+        <section class="install-card" aria-labelledby="install-title">
+          <div class="card-top"><span class="chip">USB → Wi-Fi</span><span id="version" class="version">Đang tải phiên bản…</span></div>
+          <h2 id="install-title">Sẵn sàng nạp firmware</h2><p>Cắm cáp vào cổng <strong>UART / COM</strong> của board. Để cổng USB OTG riêng cho máy in.</p>
+          <div class="device"><span class="device-icon" aria-hidden="true">▦</span><div><strong>ESP32-S3 N16R8</strong><small>16 MB Flash · 8 MB PSRAM</small></div><span class="check">✓</span></div>
+          <div id="load-state" class="notice" role="status">Đang kiểm tra gói firmware…</div>
+          <esp-web-install-button id="installer" manifest="./firmware/web-manifest.json" style="display:none">
+            <button slot="activate" class="install-button">Kết nối USB &amp; nạp firmware <span>→</span></button>
+            <div slot="unsupported" class="notice warn">Trình duyệt này chưa hỗ trợ kết nối USB. Hãy mở trang bằng Chrome hoặc Edge trên máy tính.</div>
+            <div slot="not-allowed" class="notice warn">Cần mở trang bằng HTTPS để kết nối cổng USB.</div>
+          </esp-web-install-button>
+          <div class="security"><span aria-hidden="true">↳</span> Trình duyệt sẽ hỏi bạn chọn cổng USB. Firmware được tải trực tiếp từ trang này.</div>
+          <div class="wifi-note"><strong>Wi-Fi cũng cài ngay trên web.</strong> Sau khi nạp, chọn mạng Wi-Fi và nhập mật khẩu trong hộp thoại. Mật khẩu gửi tới ESP qua USB, không gửi lên GitHub.</div>
+        </section>
+      </section>
+      <section class="steps" aria-label="Các bước cài đặt">
+        <article><span>01</span><h3>Cắm ESP vào máy tính</h3><p>Dùng cáp USB truyền dữ liệu, cắm đúng cổng UART/COM. Đóng các ứng dụng đang giữ cổng COM.</p></article>
+        <article><span>02</span><h3>Chọn cổng và bấm nạp</h3><p>Bấm nút ở trên, chọn cổng của ESP rồi chọn Install. Web tự nhận chip và chọn firmware ESP32-S3.</p></article>
+        <article><span>03</span><h3>Nhập Wi-Fi và bắt đầu</h3><p>Cấu hình Wi-Fi 2.4 GHz sau khi nạp. Sau đó nối máy in vào USB OTG và mở địa chỉ thiết bị được cung cấp.</p></article>
+      </section>
+      <section class="details">
+        <div class="preview-note"><span class="badge">BẢN THỬ NGHIỆM</span><p>Firmware đã được build và kiểm tra bằng mô phỏng. <strong>Chưa được xác nhận in ổn định trên LBP2900 thật.</strong> Chỉ dùng đúng board ESP32-S3 N16R8.</p></div>
+        <h2>Nếu chưa kết nối được</h2>
+        <details><summary>Không thấy cổng USB / COM</summary><p>Thử cáp USB có truyền dữ liệu và cắm vào cổng UART/COM. Windows thường tự nhận bộ chuyển USB–UART; một số board vẫn cần driver CH340/CP210x của nhà sản xuất. Không cần cài ứng dụng nạp firmware.</p></details>
+        <details><summary>Không bắt đầu nạp được</summary><p>Đóng Serial Monitor, Arduino IDE và các tab khác đang dùng ESP. Nếu vẫn bị kẹt ở Connecting, giữ BOOT, bấm rồi thả EN/RESET, sau đó thả BOOT và kết nối lại. Thao tác này đưa board vào chế độ nạp.</p></details>
+        <details><summary>Đang dùng điện thoại hoặc trình duyệt khác?</summary><p>Cách được hỗ trợ ở đây là Chrome hoặc Edge trên máy tính qua HTTPS. Trình duyệt trong Facebook/Zalo, Safari và các thiết bị không có Web Serial không dùng được nút nạp. Nếu đang xem từ điện thoại, mở đường dẫn này trên máy tính.</p></details>
+        <details><summary>Nạp lại có mất Wi-Fi không?</summary><p>Hộp thoại nạp cho phép chọn xóa dữ liệu. Nếu chọn xóa, thiết lập Wi-Fi cũ sẽ mất và bạn nhập lại sau khi nạp. Khi chỉ muốn đổi Wi-Fi hoặc xem log, bấm kết nối rồi chọn cấu hình Wi-Fi hoặc Logs &amp; Console, không cần nạp lại.</p></details>
+      </section>
+    </main>
+    <footer><span>LBP2900 AirPrint · Phuong Le</span><span>GPL-3.0 · Dựa trên ESP Web Tools / ngxson / captdriver</span></footer>
+  </div>
+  <script type="module" src="/main.js"></script>
+</body>
+</html>

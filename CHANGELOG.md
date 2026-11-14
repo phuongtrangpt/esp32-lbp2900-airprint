@@ -1,3 +1,10 @@
+## 0.3.0-dual-preview
+
+- Added HP LaserJet P1006 (03f0:3e17), 600 dpi mono XQX/JBIG, A4/Letter, automatic USB driver matching.
+- Added browser upload /hp-firmware and separate persistent partition for user-supplied HPDL; CRC/size checks and pre-job bootstrap, with FWVER skip.
+- Added tracked JBIG allocations and OOM recovery, native HP tests and optional independent foo2xqx comparison.
+- Kept the common USB web installer and Canon driver. Neither printer physically validated.
+
 # Changelog
 
 ## 0.2.0-web-preview

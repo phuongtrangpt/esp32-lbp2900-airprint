@@ -45,3 +45,5 @@ host/improv_host
 installer/node_modules/
 installer/dist/
 installer/public/firmware/
+
+host/hp_host

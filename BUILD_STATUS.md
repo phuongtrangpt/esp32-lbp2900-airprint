@@ -1,3 +1,8 @@
+## v0.3.0-dual-preview
+
+HP P1006 driver and user-supplied firmware bootstrap added. Physical verification
+pending for both owned printers. See README for /hp-firmware setup and limitations.
+
 # Build status — 0.2.0-web-preview
 
 ESP32-S3 N16R8 firmware compilation: PASS (Espressif32 6.12.0 / ESP-IDF 5.5.0).

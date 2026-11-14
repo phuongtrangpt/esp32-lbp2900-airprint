@@ -1,3 +1,11 @@
+## HP P1006 v0.3.0
+
+Native tests cover USB and IEEE1284 matching, A4/Letter, gray/RGB two-page streams,
+line order rejection and sink errors. Optional `tools/test_hp_reference.py PATH_TO_FOO2XQX`
+compares emitted XQX bytes against the independent upstream encoder.
+No physical ESP or printer is connected. HPDL upload/persistence, printer boot timing,
+USB re-enumeration and paper output still require hardware verification. HPDL is not bundled.
+
 # Validation record — 0.2.0-web-preview
 
 This is an experimental CAPT port, not a hardware-qualified printer release.

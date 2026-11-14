@@ -6,16 +6,16 @@ BJL = ../components/canon_bjl/canon_bjl.c ../components/canon_bjl/testpage.c ../
 AIRPRINT = ../components/airprint/airprint.c ../components/airprint/ipp.c ../components/airprint/raster.c \
            ../components/airprint/events.c ../components/airprint/printer_driver.c
 CAPT = $(wildcard ../components/capt/vendor/*.c) ../components/capt/capt_transport.c
-PRINTERS = ../components/printers/printers.c ../components/printers/canon_pixma.c ../components/printers/canon_lbp2900.c $(CAPT)
+PRINTERS = ../components/printers/printers.c ../components/printers/canon_pixma.c ../components/printers/canon_lbp2900.c $(CAPT) ../components/printers/hp_p1006.c ../components/xqx/vendor/jbig.c ../components/xqx/vendor/jbig_ar.c
 WEBUI = ../components/webui/webui.c ../components/webui/web_assets.c
 SCAN_CORE = ../components/scanner/pixma_scan.c ../components/scanner/jpeg_enc.c ../components/scanner/fake_scanner.c
 SCANNER = $(SCAN_CORE) ../components/scanner/shared_buf.c ../components/scanner/scan_service.c
 OLED = ../components/oled/oled_ui.c
-INC = -I../components/capt/include -I../components/capt/vendor -I../components/canon_bjl/include -I../components/airprint/include -I../components/airprint \
+INC = -I../components/xqx/vendor -I../components/capt/include -I../components/capt/vendor -I../components/canon_bjl/include -I../components/airprint/include -I../components/airprint \
       -I../components/scanner/include -I../components/scanner -I../components/webui/include \
       -I../components/oled/include
 
-all: bjl_host airprint_host scan_host oled_host capt_host improv_host
+all: bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host
 
 bjl_host: bjl_host.c $(BJL) $(PRINTERS) ../components/airprint/printer_driver.c ../components/canon_bjl/include/*.h \
           ../components/airprint/include/printer_driver.h
@@ -47,3 +47,6 @@ capt_host: capt_reference/hiscoa-decompress.c capt_host.c $(PRINTERS) $(BJL) ../
 
 improv_host: improv_host.c ../components/improv_serial/improv_serial.c ../components/improv_serial/include/improv_serial.h
 	$(CC) $(CFLAGS) -I../components/improv_serial/include improv_host.c ../components/improv_serial/improv_serial.c -o $@
+
+hp_host: hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
+	$(CC) $(CFLAGS) $(INC) hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@

@@ -26,6 +26,8 @@ jobs:
         run: make -C host all
       - name: CAPT raster and error tests
         run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
+      - name: HP P1006 raster tests
+        run: ASAN_OPTIONS=detect_leaks=0 host/hp_host
       - name: Browser Wi-Fi protocol tests
         run: ASAN_OPTIONS=detect_leaks=0 host/improv_host
       - name: IPP integration

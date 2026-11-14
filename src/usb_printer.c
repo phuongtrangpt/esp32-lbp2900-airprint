@@ -8,6 +8,7 @@
 // usb_printer_write()/flush()/wait_response(). A scan uses the device's
 // vendor interface through usb_scanner_*(); it holds the device like a job.
 #include "usb_printer.h"
+#include "hp_firmware.h"
 
 #include <stdatomic.h>
 #include <string.h>
@@ -83,6 +84,7 @@ typedef struct {
     volatile bool cancel;
     volatile usb_transfer_status_t out_status;  // first failed OUT status in the job
 
+    bool hp, hp_loaded;
     bool capt;                         // binary CAPT, never feed replies to XML parser
     volatile bool raw_wanted;
     bool raw_error;
@@ -569,7 +571,9 @@ static void open_device(uint8_t addr)
     memset(&s_p.status, 0, sizeof(s_p.status));
     s_p.in_stopped = false;
     s_p.connected = true;
-    s_p.capt = info.vid == 0x04a9 && info.pid == 0x2676;
+    s_p.hp = info.vid == 0x03f0 && info.pid == 0x3e17;
+    s_p.hp_loaded = s_p.hp && strstr(info.device_id,"FWVER:") != NULL;
+    s_p.capt = (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
     s_p.raw_len = 0;
     s_p.raw_error = false;
     s_p.raw_wanted = false;
@@ -745,6 +749,11 @@ esp_err_t usb_printer_job_begin(void)
     s_p.raw_wanted = false;
     xSemaphoreGive(s_p.lock);
     s_p.job_active = true;
+    if (s_p.hp && !s_p.hp_loaded) {
+        esp_err_t err=hp_firmware_load();
+        if (err!=ESP_OK) { usb_printer_job_end(); return err; }
+        s_p.hp_loaded=true;
+    }
     return ESP_OK;
 }
 

@@ -1,6 +1,6 @@
-# ESP32-S3 AirPrint cho Canon LBP2900
+# ESP32-S3 AirPrint cho Canon LBP2900 và HP P1006
 
-Print server Wi-Fi nhỏ gọn cho Canon LBP2900, phát triển từ
+Print server Wi-Fi nhỏ gọn cho Canon LBP2900 và HP LaserJet P1006, phát triển từ
 [ngxson/esp32-usb-to-airprint](https://github.com/ngxson/esp32-usb-to-airprint).
 Driver CAPT/Hi-SCoA được chuyển từ [ValdikSS/captdriver, nhánh val](https://github.com/ValdikSS/captdriver/tree/val).
 
@@ -8,6 +8,24 @@ Driver CAPT/Hi-SCoA được chuyển từ [ValdikSS/captdriver, nhánh val](htt
 không đồng nghĩa với việc đã in ổn định. Cần thử USB, trang đầu tiên và nhiều trang
 trên LBP2900 trước khi coi là bản dùng hằng ngày. Không cần máy tính hoặc CUPS chạy
 thường trực: ESP32 thực hiện chuyển raster sang CAPT và giao tiếp với máy in.
+
+## HP LaserJet P1006 (v0.3.0-dual-preview)
+
+- Tự chọn driver khi cắm Canon `04a9:2676` hoặc HP `03f0:3e17`.
+- HP dùng XQX + JBIG, đen trắng 600 dpi, A4/Letter, in một mặt.
+- Mỗi ESP nhận **một máy in USB tại một thời điểm**, chưa hỗ trợ hub hay hai máy đồng thời.
+- P1006 cần firmware riêng mỗi lần bật nguồn. Sau khi cấu hình Wi-Fi, mở
+  `http://<IP-ESP>/hp-firmware`, chọn **sihpP1006.dl** từ bộ driver HP/foo2xqx của bạn,
+  bấm lưu, sau đó tắt/bật máy in và cắm lại USB. ESP giữ file trong flash và gửi
+  trước lệnh in đầu tiên của mỗi lần kết nối nếu IEEE1284 chưa có `FWVER:`.
+- File HP này không được đóng gói trong firmware ESP. Không chọn `.bin` ESP,
+  `.img` chưa chuyển HPDL, hay firmware của model khác. Tham khảo
+  [hướng dẫn foo2zjs](https://github.com/OpenPrinting/foo2zjs/blob/main-fixes/INSTALL.in).
+- Thiếu file thì lệnh in thất bại an toàn; log hướng dẫn mở `/hp-firmware`.
+- Trang nạp USB hiện tại vẫn dùng chung cho cả hai máy; nạp lại bản mới để có
+  phân vùng lưu firmware HP. Nạp app qua OTA từ bản cũ không tự đổi bảng phân vùng.
+- Chưa xác nhận trên phần cứng. Giới hạn hiện tại: chờ khởi động HP 6 giây,
+  chưa phân tích trạng thái PJL/hết giấy, chưa xác nhận giấy đã ra khi IPP báo xong.
 
 ## Phần cứng
 

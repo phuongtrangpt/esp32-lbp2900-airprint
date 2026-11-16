@@ -1,7 +1,13 @@
 import './style.css';
-import 'esp-web-tools/dist/web/install-button.js';
+import 'esp-web-tools/dist/install-button.js';
 const state=document.querySelector('#load-state');
 const installer=document.querySelector('#installer');
+const diagnostics=document.querySelector('#flash-diagnostics');
+window.addEventListener('installer-state',({detail})=>{
+  diagnostics.hidden=false;
+  diagnostics.textContent=detail.message;
+  diagnostics.classList.toggle('warn',detail.state==='error');
+});
 async function ready() {
   if (!window.isSecureContext || !('serial' in navigator)) {
     state.textContent='Mở bằng Chrome hoặc Edge trên máy tính để nạp qua USB.';

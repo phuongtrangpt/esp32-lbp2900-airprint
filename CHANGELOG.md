@@ -41,3 +41,10 @@
 - Add first-boot Wi-Fi credentials through COM, stored in NVS.
 - Add host CAPT simulator, IPP integration tests, GitHub build workflow and checksum packaging.
 - Mark physical printer/board validation as pending.
+
+### USB web installer r2
+- Retry serial initialization with fresh connections, a compatible UART reset and manual BOOT fallback.
+- Show the actual connection/download/write error instead of only a generic initialization failure.
+- Release the COM port before the dialog reconnects; preserve the original error if reset fails.
+- Verify firmware SHA-256 before erasing; retain UART provisioning and the NVS gap.
+- Add installer recovery regression tests to CI. Physical-board verification remains pending.

@@ -41,7 +41,7 @@ def main():
     assert (DEST/'firmware.bin').read_bytes()==(SOURCE/'firmware.bin').read_bytes()
     web={'name':'LBP2900 AirPrint','version':manifest['version'],'new_install_prompt_erase':True,
          'new_install_improv_wait_time':20,
-         'builds':[{'chipFamily':'ESP32-S3','serialType':'uart','parts':[{'path':n,'offset':s} for n,s,e in parts]}]}
+         'builds':[{'chipFamily':'ESP32-S3','serialType':'uart','parts':[{'path':n,'offset':s,'sha256':hashlib.sha256((DEST/n).read_bytes()).hexdigest()} for n,s,e in parts]}]}
     (DEST/'web-manifest.json').write_text(json.dumps(web,indent=2)+'\n')
     names=[n for n,s,e in parts]+['firmware-merged.bin','web-manifest.json']
     (DEST/'SHA256SUMS').write_text(''.join(hashlib.sha256((DEST/n).read_bytes()).hexdigest()+'  '+n+'\n' for n in names))

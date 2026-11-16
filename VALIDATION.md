@@ -107,3 +107,23 @@ Firmware compilation and package checks are recorded in BUILD_STATUS.md.
 - The installer is bundled locally, with third-party license notices.
 - Physical Web Serial flashing, actual Wi-Fi provisioning and LBP2900 output
   cannot be confirmed without the user's board and printer.
+
+## USB installer r2 (2026-11-16)
+
+User reports the same board/cable flashes successfully on another site, while this
+installer reports `Failed to initialize`. This is not yet reproduced on a physical
+board here; do not claim a confirmed hardware root cause or a hardware-validated fix.
+
+Changes: build ESP Web Tools from its module entry so the local flash adapter is
+used; retry initialization with a fresh loader and released transport, separate
+DTR/RTS UART reset, then no-reset/manual BOOT mode. Preserve detailed errors,
+release serial before publishing terminal events, and catch erase/download/reset
+failures. Keep UART-only selection because firmware Improv runs on UART0.
+Check all image SHA-256 values before erasing; retain the NVS gap and OTA reset.
+
+Validation: ten adapter/recovery and package tests pass (`npm --prefix installer test`),
+production Vite build passes, Improv Serial host tests pass. Downloaded current
+production 0.5.0 package and verified S3 image headers, ota_0 offset 0x20000,
+4 MiB app bound, 16 MiB flash bound and NVS gap. Firmware sources unchanged.
+Local Chromium smoke test could not launch due to environment socket restrictions;
+USB communication, reset timing and Wi-Fi setup still require the user's board.

@@ -14,6 +14,7 @@
         <div><span class="eyebrow"><span class="dot"></span> PRINT SERVER · ESP32-S3</span><h1>Cắm USB.<br>Nạp ngay trên web.</h1><p class="lead">Biến Canon LBP2900 hoặc HP LaserJet P1006 và máy tương thích PCL5/PostScript thành máy in Wi-Fi với ESP32-S3. Không cần Python, Arduino IDE hay tải firmware thủ công.</p><div class="tags"><span>ESP32-S3 N16R8</span><span>Wi-Fi 2.4 GHz</span><span>600 dpi · Đen trắng</span></div></div>
         <section class="install-card" aria-labelledby="install-title">
           <div class="card-top"><span class="chip">USB → Wi-Fi</span><span id="version" class="version">Đang tải phiên bản…</span></div>
+          <small>Trình nạp USB r2 · tự thử lại kết nối</small>
           <h2 id="install-title">Sẵn sàng nạp firmware</h2><p>Cắm cáp vào cổng <strong>UART / COM</strong> của board. Để cổng USB OTG riêng cho máy in.</p>
           <div class="device"><span class="device-icon" aria-hidden="true">▦</span><div><strong>ESP32-S3 N16R8</strong><small>16 MB Flash · 8 MB PSRAM</small></div><span class="check">✓</span></div>
           <div id="load-state" class="notice" role="status">Đang kiểm tra gói firmware…</div>
@@ -22,6 +23,7 @@
             <div slot="unsupported" class="notice warn">Trình duyệt này chưa hỗ trợ kết nối USB. Hãy mở trang bằng Chrome hoặc Edge trên máy tính.</div>
             <div slot="not-allowed" class="notice warn">Cần mở trang bằng HTTPS để kết nối cổng USB.</div>
           </esp-web-install-button>
+          <div id="flash-diagnostics" class="notice" role="status" aria-live="polite" hidden></div>
           <div class="security"><span aria-hidden="true">↳</span> Trình duyệt sẽ hỏi bạn chọn cổng USB. Firmware được tải trực tiếp từ trang này.</div>
           <div class="wifi-note"><strong>Wi-Fi cũng cài ngay trên web.</strong> Sau khi nạp, chọn mạng Wi-Fi và nhập mật khẩu trong hộp thoại. Mật khẩu gửi tới ESP qua USB, không gửi lên GitHub.</div>
         </section>

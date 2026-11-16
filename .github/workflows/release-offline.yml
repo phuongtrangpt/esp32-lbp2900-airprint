@@ -1,0 +1,52 @@
+name: Publish offline Windows v0.7.0 release
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/release-offline.yml]
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: release-offline-v0.7.0
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download the verified build artifact
+        run: |
+          gh run download 43894288036 --name esp32-hp-p1006-canon-lbp2900-profiles --dir staging
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, shutil
+          files=list(Path('staging').rglob('ESP32-PrintServer-Offline-v0.7.0.zip'))
+          assert len(files)==1, 'Expected exactly one verified offline package'
+          digest=hashlib.sha256(files[0].read_bytes()).hexdigest()
+          assert digest=='738724ad04985c85b15fec60e51c36c117bd1ac8b81e84538fc85a6d1239f619', 'Package checksum mismatch'
+          shutil.copyfile(files[0],files[0].name)
+          Path('SHA256SUMS.txt').write_text(digest+'  '+files[0].name+'\n')
+          PY
+      - name: Publish tag and downloadable Windows assets
+        run: |
+          cat > release-notes.md <<'NOTES'
+          ## Bộ nạp offline Windows v0.7.0
+
+          Tải **ESP32-PrintServer-Offline-v0.7.0.zip** trong Assets, giải nén toàn bộ và chạy **START.cmd**. Dùng Chrome/Edge, cắm cổng UART/COM; không cần Python hay Arduino IDE.
+
+          - Hai firmware riêng: **HP LaserJet P1006 ESP 32** và **Canon LBP2900 ESP 32**, cho ESP32-S3 N16R8.
+          - Cài IP động/tĩnh ngay trên trang ESP tại `/network`; cấu hình được giữ sau khi mất điện.
+          - Giữ BOOT 10 giây sau khi ESP khởi động để trở về DHCP, giữ nguyên Wi-Fi/file HP.
+          - HP tự chuẩn bị firmware máy in ở lần đầu có Internet, sau đó lưu cache để nạp offline. ZIP công khai không chứa blob HP có giấy phép riêng.
+          - Log tự động tại `/diagnostics` và `/diagnostics.txt`.
+
+          **Cập nhật ESP đang dùng:** chọn đúng model, không tích **Erase device** để giữ Wi-Fi và file HP.
+
+          Build/test tự động đã qua, gồm kiểm tra IP, checksum, tách profile và IPP 100 trang mô phỏng. HP v0.6 đã được người dùng xác nhận in test A4/Letter; cấu hình mạng v0.7 và Canon cần kiểm chứng thêm trên máy thật. Bản thử nghiệm.
+
+          Mã nguồn tương ứng đi kèm ZIP và tag này. Gói được lấy nguyên vẹn từ build đã kiểm tra, commit `293e87505b38ee4c48b6a97a234333bc21f79666`.
+          NOTES
+          gh release create v0.7.0 ESP32-PrintServer-Offline-v0.7.0.zip SHA256SUMS.txt --target 293e87505b38ee4c48b6a97a234333bc21f79666 --title 'v0.7.0 — HP P1006 / Canon LBP2900 ESP 32 — Windows Offline' --notes-file release-notes.md --prerelease

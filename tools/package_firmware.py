@@ -28,7 +28,7 @@ def main():
         for key in ('WIFI_SSID','WIFI_PASSWORD'):
             if f'#define {key} ""' not in text:
                 raise SystemExit('Refusing to package firmware built with embedded Wi-Fi. Clear .env and rebuild.')
-    OUT.mkdir(exist_ok=True)
+    OUT.mkdir(parents=True,exist_ok=True)
     for name in names: shutil.copyfile(BUILD/name,OUT/name)
     # Reset OTA selection on USB flashing so a previous ota_1 cannot boot instead.
     shutil.copyfile(BUILD/'ota_data_initial.bin', OUT/'ota_data_initial.bin')

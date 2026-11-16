@@ -18,6 +18,11 @@ def main():
     global BUILD,OUT
     parser=argparse.ArgumentParser();parser.add_argument('--env',default='esp32s3');parser.add_argument('--out',default='firmware')
     args=parser.parse_args();BUILD=ROOT/'.pio/build'/args.env;OUT=ROOT/args.out
+    if args.env in ('hp','canon'):
+        cache=(BUILD/'CMakeCache.txt').read_text()
+        profile=re.search(r'^PRINTSERVER_PROFILE:[^=]+=(.+)$',cache,re.M)
+        if not profile or profile.group(1).strip()!=args.env:
+            raise SystemExit('Refusing to package a firmware built for the wrong printer profile')
     names=['bootloader.bin','partitions.bin','firmware.bin']
     for name in names:
         if not (BUILD/name).is_file(): raise SystemExit(f'Missing build artifact: {name}; run pio run -e esp32s3')

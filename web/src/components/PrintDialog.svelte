@@ -259,7 +259,7 @@
             <button class:on={dpi === 600} onclick={() => (dpi = 600)}>Standard · 600 dpi</button>
 
           </div>
-          <span class="small muted">Canon LBP2900 · 600 dpi · monochrome CAPT.</span>
+          <span class="small muted">{p?.name ?? 'ESP 32 Print Server'} · 600 dpi · đen trắng.</span>
         </div>
       </fieldset>
     </div>

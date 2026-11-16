@@ -156,7 +156,7 @@ static void serial_task(void *arg)
 {
     uint8_t byte; char line[100]={0}; size_t used=0; bool overflow=false;
     TickType_t last=xTaskGetTickCount();
-    if(!s_has_credentials) puts("LBP2900: open the web installer to set WiFi, or enter SSID then password here.");
+    if(!s_has_credentials) puts("ESP 32: open the web installer to set WiFi, or enter SSID then password here.");
     for(;;) {
         if(uart_read_bytes(CONFIG_ESP_CONSOLE_UART_NUM,&byte,1,pdMS_TO_TICKS(20))==1) {
             TickType_t now=xTaskGetTickCount();

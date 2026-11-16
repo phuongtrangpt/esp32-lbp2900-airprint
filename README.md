@@ -9,7 +9,20 @@ không đồng nghĩa với việc đã in ổn định. Cần thử USB, trang 
 trên LBP2900 trước khi coi là bản dùng hằng ngày. Không cần máy tính hoặc CUPS chạy
 thường trực: ESP32 thực hiện chuyển raster sang CAPT và giao tiếp với máy in.
 
-## HP LaserJet P1006 (v0.3.0-dual-preview)
+## HP P1006: sửa chế độ giấy trắng (v0.6.0-hp-2bit-preview)
+
+Driver cũ dùng XQX 1 bit/pixel; cấu hình P1006 tham chiếu dùng 2 bit/pixel.
+Bản này nhận raster 600 dpi như trước, chuyển thành 00/11 ở chế độ native
+1200x600, theo dải 128 dòng để không cần giữ bitmap 2 bit toàn trang trong RAM.
+Đã so sánh byte-for-byte với foo2xqx và thử bộ nhớ nhiều trang trên máy phát triển;
+cần in lại trên HP thật để xác nhận xử lý được hiện tượng giấy trắng.
+Log /diagnostics.txt có dòng `ink_pixels=...; wire=1200x600/2bpp` cho từng trang.
+
+Nạp lại firmware ESP bản mới, **không chọn Erase device** để giữ Wi-Fi và file HP
+đã lưu. File sihpP1006.dl không cần đổi. Sau khi cập nhật, thử một trang A4 có chữ
+đen hoặc nhấn/nhả BOOT để in mẫu độc lập với PDF/trình duyệt.
+
+## HP LaserJet P1006
 
 - Tự chọn driver khi cắm Canon `04a9:2676` hoặc HP `03f0:3e17`.
 - HP dùng XQX + JBIG, đen trắng 600 dpi, A4/Letter, in một mặt.

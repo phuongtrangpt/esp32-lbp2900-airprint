@@ -1,3 +1,10 @@
+## 0.6.0-hp-2bit-preview
+
+- Correct P1006 native XQX packing to 1200x600 / VIDEO_BPP=2, matching its upstream PPD (client input remains 600 dpi).
+- Expand only a 128-row stripe plus two preceding context rows, keeping the original 1-bit page and avoiding an 8+ MB bitmap allocation.
+- Added raster ink-pixel count to hardware logs; added independent 2-bit foo2xqx byte comparison in CI.
+- A4 and Letter two-page outputs match independent upstream reference exactly; 100-page and dense/OOM memory tests passed natively. Physical paper output requires retest.
+
 ## 0.5.0-diagnostics-preview
 
 - Always-on bounded RAM log capture, including normal mode; preserve reset/watchdog RTC tail and core dump summary.

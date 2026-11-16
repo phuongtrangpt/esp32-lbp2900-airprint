@@ -16,3 +16,15 @@ http://<ESP-IP>/hp-firmware. HP firmware is separate from the ESP application.
 The loader follows hplj1000: USB 03f0:3e17, FWVER in IEEE1284 ID indicates loaded
 firmware; otherwise send HPDL to bulk OUT before the first print after attach.
 Firmware persistence uses a dedicated data partition, bounds and CRC checks.
+
+## HP P1006 2-bit correction
+
+P1006 PPD at upstream 80499ed5bf6caa2963ad337e37cfda78a80aab1e advertises 1200x600
+(and reduced 600x400) rather than the earlier plain 600x600 1-bit stream.
+The ESP still accepts 600-dpi source raster, duplicates each mono pixel into
+00/11 and sends VIDEO_BPP=2, logical VIDEO_X=width and doubled JBIG raster width.
+Local encode_sde input hook supplies expanded 128-line stripes plus two previous
+rows, preserving reference JBIG bytes without storing a whole two-bit page.
+Other callers receive NULL from the hook and keep ordinary JBIG-KIT behaviour.
+
+Source: https://github.com/OpenPrinting/foo2zjs/blob/80499ed5bf6caa2963ad337e37cfda78a80aab1e/PPD/HP-LaserJet_P1006.ppd

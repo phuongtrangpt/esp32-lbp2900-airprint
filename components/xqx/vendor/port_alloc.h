@@ -9,3 +9,6 @@ void hp_jbig_checkpoint(void);
 #define realloc hp_jbig_realloc
 #define free hp_jbig_free
 #define abort hp_jbig_oom
+
+// Optional caller-provided base-layer stripe (NULL keeps ordinary JBIG-KIT input).
+unsigned char *hp_jbig_stripe(unsigned long y,unsigned long rows,unsigned long width,int layer,int plane);

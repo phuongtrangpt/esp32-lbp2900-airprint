@@ -36,6 +36,14 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 python tools/test_standard_streams.py
           ASAN_OPTIONS=detect_leaks=0 host/memory_host > /tmp/memory-stress.log 2>&1 || { tail -60 /tmp/memory-stress.log; exit 1; }
           grep -E 'retained=|OOM' /tmp/memory-stress.log
+      - name: Independent HP P1006 2-bit reference
+        run: |
+          git init /tmp/foo2xqx-reference
+          git -C /tmp/foo2xqx-reference remote add origin https://github.com/OpenPrinting/foo2zjs.git
+          git -C /tmp/foo2xqx-reference fetch --depth 1 origin 80499ed5bf6caa2963ad337e37cfda78a80aab1e
+          git -C /tmp/foo2xqx-reference checkout --detach FETCH_HEAD
+          cc -O2 -o /tmp/foo2xqx-reference/foo2xqx-ref /tmp/foo2xqx-reference/foo2xqx.c /tmp/foo2xqx-reference/jbig.c /tmp/foo2xqx-reference/jbig_ar.c
+          ASAN_OPTIONS=detect_leaks=0 python tools/test_hp_reference.py /tmp/foo2xqx-reference/foo2xqx-ref
       - name: Browser Wi-Fi protocol tests
         run: ASAN_OPTIONS=detect_leaks=0 host/improv_host
       - name: IPP integration

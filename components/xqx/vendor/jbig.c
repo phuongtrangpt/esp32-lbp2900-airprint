@@ -960,7 +960,9 @@ static void encode_sde(struct jbg_enc_state *s,
   hbpl = jbg_ceil_half(hx, 3);
   lbpl = jbg_ceil_half(lx, 3);
   /* pointer to first image byte of highres stripe */
-  hp = s->lhp[s->highres[plane]][plane] + stripe * hl * hbpl;
+  hp = hp_jbig_stripe(y,hl,hx,layer,plane);
+  if (!hp)
+    hp = s->lhp[s->highres[plane]][plane] + stripe * hl * hbpl;
   lp2 = s->lhp[1 - s->highres[plane]][plane] + stripe * ll * lbpl;
   lp1 = lp2 + lbpl;
   

@@ -61,12 +61,34 @@ void *hp_jbig_realloc(void *p,size_t n) {
 
 typedef struct {
     printer_io_t io;
-    int paper, width, height, stride, src_w, src_h, bpp, y;
-    unsigned char *raw, *chunk;
+    int paper, width, height, stride, wire_stride, src_w, src_h, bpp, y;
+    unsigned ink_pixels;
+    unsigned char *raw, *chunk, *expanded;
     size_t used;
     unsigned char bih[20];
     bool first, header, failed, open;
 } hp_job;
+// P1006's native mode is 2 bits/pixel at 600 video pixels/inch. Keep
+// the 600-dpi one-bit image in PSRAM and expand just one JBIG stripe, including
+// its two predecessor rows, instead of allocating an 8+ MB two-bit page.
+#define HP_STRIPE_ROWS 128
+static _Thread_local hp_job *encoding_job;
+unsigned char *hp_jbig_stripe(unsigned long y,unsigned long rows,unsigned long width,int layer,int plane)
+{
+    hp_job *j=encoding_job;
+    if (!j) return NULL;
+    if (layer || plane || rows!=HP_STRIPE_ROWS || width!=(unsigned)j->wire_stride*8) hp_jbig_oom();
+    memset(j->expanded,0,(HP_STRIPE_ROWS+2)*j->wire_stride);
+    for (int r=0;r<HP_STRIPE_ROWS+2;r++) {
+        long sy=(long)y+r-2;
+        if (sy<0 || sy>=j->height) continue;
+        const unsigned char *in=j->raw+(size_t)sy*j->stride;
+        unsigned char *out=j->expanded+(size_t)r*j->wire_stride;
+        for (int x=0;x<j->width;x++) if(in[x>>3] & (0x80>>(x&7)))
+            out[x>>2] |= 0xc0>>((x&3)*2); // white=00, black=11
+    }
+    return j->expanded+2*j->wire_stride;
+}
 static int put(hp_job *j, const void *p, size_t n) {
     if (j->failed) return -1;
     if (j->io.write(j->io.ctx, p, n) < 0) j->failed = true;
@@ -110,20 +132,22 @@ static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, i
     j->width=papers[paper].width*600/2540-192;
     j->height=papers[paper].height*600/2540-192;
     j->stride=((j->width+127)&~127)/8;
+    j->wire_stride=((j->width*2+127)&~127)/8;
     j->raw=calloc(j->height,j->stride); j->chunk=malloc(65536);
-    if (!j->raw || !j->chunk) { free(j->raw); free(j->chunk); free(j); return NULL; }
+    j->expanded=malloc((HP_STRIPE_ROWS+2)*j->wire_stride);
+    if (!j->raw || !j->chunk || !j->expanded) { free(j->raw); free(j->chunk); free(j->expanded); free(j); return NULL; }
     static const char pre[]="\033%-12345X@PJL JOB\n@PJL SET JAMRECOVERY=OFF\n@PJL SET DENSITY=3\n@PJL SET ECONOMODE=OFF\n@PJL SET RET=MEDIUM\n@PJL INFO STATUS\n@PJL USTATUS DEVICE = ON\n@PJL USTATUS JOB = ON\n@PJL USTATUS PAGE = ON\n@PJL USTATUS TIMED = 30\n@PJL SET JOBATTR=\"JobAttr4=20261114000000\"";
     put(j,pre,sizeof(pre)); // includes required NUL before universal exit
     const char magic[]="\033%-12345X,XQX"; put(j,magic,sizeof(magic)-1);
     rec(j,1,7); item(j,0x80000000,84); item(j,0x10000005,1); item(j,0x10000001,0);
     item(j,0x10000002,0); item(j,0x10000000,0); item(j,0x10000003,1); item(j,0x80000001,0xdeadbeef);
-    if (j->failed) { free(j->raw); free(j->chunk); free(j); return NULL; }
+    if (j->failed) { free(j->raw); free(j->chunk); free(j->expanded); free(j); return NULL; }
     return j;
 }
 static int page_begin(void *ctx,int w,int h,int bpp) {
     hp_job *j=ctx;
     if (j->failed || j->open || w<=0 || h<=0 || w>5200 || h>7100 || (bpp!=1 && bpp!=3)) return -1;
-    j->src_w=w; j->src_h=h; j->bpp=bpp; j->y=0; j->open=true;
+    j->src_w=w; j->src_h=h; j->bpp=bpp; j->y=0; j->open=true; j->ink_pixels=0;
     memset(j->raw,0,(size_t)j->stride*j->height); return 0;
 }
 static int line(void *ctx,int y,const uint8_t *p) {
@@ -137,7 +161,7 @@ static int line(void *ctx,int y,const uint8_t *p) {
         for (int x=0;x<j->width && x+96<j->src_w;x++) {
             int off=(x+96)*j->bpp;
             unsigned gray=j->bpp==1 ? p[off] : (77*p[off]+150*p[off+1]+29*p[off+2])>>8;
-            if (gray < (unsigned)matrix[row&3][x&3]*16+8) out[x>>3]|=0x80>>(x&7);
+            if (gray < (unsigned)matrix[row&3][x&3]*16+8) { out[x>>3]|=0x80>>(x&7); j->ink_pixels++; }
         }
     }
     return 0;
@@ -145,21 +169,25 @@ static int line(void *ctx,int y,const uint8_t *p) {
 static int page_end(void *ctx) {
     hp_job *j=ctx;
     if (!j->open || j->y!=j->src_h || j->failed) return -1;
+#ifdef ESP_PLATFORM
+    ESP_LOGI("hp_p1006","raster %dx%d source=%dx%d bpp=%d ink_pixels=%u; wire=1200x600/2bpp",
+        j->width,j->height,j->src_w,j->src_h,j->bpp,j->ink_pixels);
+#endif
     rec(j,3,15); item(j,0x80000000,180); item(j,0x20000005,1); item(j,0x20000006,7);
     item(j,0x20000000,1); item(j,0x20000007,1); item(j,0x20000008,600); item(j,0x20000009,600);
-    item(j,0x2000000d,j->stride*8); item(j,0x2000000e,j->height); item(j,0x2000000a,1);
+    item(j,0x2000000d,j->wire_stride*8); item(j,0x2000000e,j->height); item(j,0x2000000a,2);
     item(j,0x2000000f,j->width); item(j,0x20000010,j->height); item(j,0x20000011,0);
     item(j,0x20000001,j->paper ? 1:9); item(j,0x80000001,0xdeadbeef);
     struct jbg_enc_state enc;
     unsigned char *planes[]={j->raw}; j->first=true; j->header=false; j->used=0;
-    jmp_buf guard; oom=&guard;
+    jmp_buf guard; oom=&guard; encoding_job=j;
     if (setjmp(guard)) {
         while (allocs) hp_jbig_free(allocs+1);
-        oom=NULL; j->failed=true; return -1;
+        oom=NULL; encoding_job=NULL; j->failed=true; return -1;
     }
-    jbg_enc_init(&enc,j->stride*8,j->height,1,planes,encoded,j);
+    jbg_enc_init(&enc,j->wire_stride*8,j->height,1,planes,encoded,j);
     jbg_enc_options(&enc,JBG_ILEAVE|JBG_SMID,JBG_DELAY_AT|JBG_LRLTWO|JBG_TPDON|JBG_TPBON|JBG_DPON,128,0,0);
-    jbg_enc_out(&enc); jbg_enc_free(&enc); oom=NULL; block(j); rec(j,4,0); j->open=false;
+    jbg_enc_out(&enc); jbg_enc_free(&enc); oom=NULL; encoding_job=NULL; block(j); rec(j,4,0); j->open=false;
     return j->failed ? -1:0;
 }
 static int end(void *ctx) {
@@ -168,7 +196,7 @@ static int end(void *ctx) {
     if (!j->failed) { rec(j,2,0); const char tail[]="\033%-12345X@PJL EOJ\n\033%-12345X"; put(j,tail,sizeof(tail)-1); }
     int rc=j->failed ? -1:0;
     if (!rc && j->io.flush && j->io.flush(j->io.ctx)<0) rc=-1;
-    free(j->raw); free(j->chunk); free(j); return rc;
+    free(j->raw); free(j->chunk); free(j->expanded); free(j); return rc;
 }
 static int test(const printer_driver_t *d,const printer_io_t *io,int dpi,const char *label) {
     hp_job *j=begin(d,io,dpi,0); if (!j) return -1;

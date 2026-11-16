@@ -1,3 +1,10 @@
+## 0.6.0-hp-2bit-preview
+
+Correct P1006 native video packing to 2 bits/pixel while accepting 600-dpi input.
+Native two-page A4/Letter output matches foo2xqx reference exactly; 100-page
+allocation accounting and dense/OOM tests pass. Physical blank-page fix pending
+retest; firmware build/deploy is checked in GitHub Actions.
+
 ## v0.5.0-diagnostics-preview
 
 Automatic read-only diagnostics enabled in MODE=normal. Firmware builds for

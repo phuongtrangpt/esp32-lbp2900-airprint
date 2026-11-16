@@ -1,3 +1,19 @@
+## 0.6.0 HP P1006 native 2-bit mode
+
+Root-cause candidate from physical report: printer consumes and ejects a blank
+page with earlier 1-bit mode. Upstream P1006 PPD specifies 1200x600 (2-bit video).
+New native A4/Letter two-page streams match upstream foo2xqx -r1200x600 exactly,
+including BIH/raster dimensions, VIDEO_BPP=2 and compressed pixels. Client still
+supplies 600-dpi gray/RGB. Source metadata is not dumped; hardware log now counts
+ink pixels to distinguish a blank source from a printer decoding problem.
+
+Native allocation accounting: HP A4 100 pages retained 4,370,064, peak 6,435,272;
+two dense noise pages peak 6,500,424; Letter 100 pages peak 6,215,968 bytes.
+Zero growth after pages and zero tracked allocations after each job; four induced
+compression OOM cases recover. This is not an ESP heap measurement. Physical
+retest still required. Native CAPT regression passes; firmware compilation runs
+in CI because this recovered workspace has no local ESP toolchain cache.
+
 ## v0.5.0-diagnostics-preview
 
 ESP build and native CAPT/IPP regressions verify the logging adapter does not

@@ -3,6 +3,11 @@
 #include "capt_transport.h"
 #include "capt-command.h"
 #include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
+#ifdef ESP_PLATFORM
+#include "esp_log.h"
+#endif
 #include <time.h>
 #ifdef ESP_PLATFORM
 #include "freertos/FreeRTOS.h"
@@ -20,6 +25,7 @@ void capt_bind(capt_transport_t *t) { current = t; }
 void capt_deadline(capt_transport_t *t, unsigned ms) { t->deadline_ms = now_ms() + ms; }
 _Noreturn void capt_fail(const char *message)
 {
+    capt_log("ERROR: CAPT cmd=0x%04x tx=%u rx=%u: %s\n",current->command,(unsigned)current->used,(unsigned)current->rx_bytes,message);
     current->error = message;
     longjmp(current->guard, 1);
 }
@@ -42,6 +48,7 @@ static void read_exact(uint8_t *buf, size_t n)
     while (n) {
         int got = current->io.read(current->io.ctx, buf, n, remaining());
         if (got <= 0 || (size_t)got > n) capt_fail("CAPT USB read failed");
+        current->rx_bytes += got;
         buf += got; n -= got;
     }
 }
@@ -62,6 +69,7 @@ static void add(uint16_t cmd, const void *buf, size_t n)
 }
 void capt_send(uint16_t cmd, const void *buf, size_t n)
 {
+    current->command=cmd; current->rx_bytes=0;
     current->used = 0; add(cmd, buf, n); send_buffer();
 }
 void capt_sendrecv(uint16_t cmd, const void *buf, size_t n, void *reply, size_t *reply_size)
@@ -82,6 +90,7 @@ void capt_sendrecv(uint16_t cmd, const void *buf, size_t n, void *reply, size_t 
 }
 void capt_multi_begin(uint16_t cmd)
 {
+    current->command=cmd; current->rx_bytes=0;
     current->used = 0; add(cmd, NULL, 0);
 }
 void capt_multi_add(uint16_t cmd, const void *buf, size_t n) { add(cmd, buf, n); }
@@ -92,3 +101,18 @@ void capt_multi_send(void)
     send_buffer();
 }
 const char *capt_identify(void) { return "MFG:Canon;MDL:LBP2900;CMD:CAPT;"; }
+
+void capt_log(const char *fmt, ...)
+{
+    va_list ap; va_start(ap,fmt);
+#ifdef ESP_PLATFORM
+    char line[256]; vsnprintf(line,sizeof(line),fmt,ap);
+    size_t n=strlen(line); while(n && (line[n-1]=='\n' || line[n-1]=='\r')) line[--n]=0;
+    if (!strncmp(line,"ERROR",5)) { ESP_LOGE("capt","%s",line); }
+    else if (!strncmp(line,"WARNING",7)) { ESP_LOGW("capt","%s",line); }
+    else { ESP_LOGI("capt","%s",line); }
+#else
+    vfprintf(stderr,fmt,ap);
+#endif
+    va_end(ap);
+}

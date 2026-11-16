@@ -789,7 +789,7 @@ static esp_err_t get_fill_buffer(void)
     TickType_t since = xTaskGetTickCount(), last_log = since;
     while (!s_p.fill) {
         ESP_RETURN_ON_ERROR(job_check(), TAG, "job aborted");
-        if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
+        if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { ESP_LOGE(TAG,"bulk OUT timeout after 15 s (endpoint 0x%02x)",s_p.ep_out); usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
         if (xQueueReceive(s_p.out_free, &s_p.fill, pdMS_TO_TICKS(200)) == pdTRUE) {
             s_p.fill->num_bytes = 0;
             break;
@@ -842,7 +842,7 @@ esp_err_t usb_printer_flush(void)
     TickType_t since = xTaskGetTickCount(), last_log = since;
     while (uxQueueMessagesWaiting(s_p.out_free) < OUT_XFER_COUNT) {
         ESP_RETURN_ON_ERROR(job_check(), TAG, "job aborted");
-        if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
+        if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { ESP_LOGE(TAG,"bulk OUT timeout after 15 s (endpoint 0x%02x)",s_p.ep_out); usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
         vTaskDelay(pdMS_TO_TICKS(10));
         if (xTaskGetTickCount() - last_log > pdMS_TO_TICKS(15000)) {
             last_log = xTaskGetTickCount();
@@ -873,6 +873,7 @@ int usb_printer_read(uint8_t *buf, size_t len, uint32_t timeout_ms)
         xSemaphoreGive(s_p.lock);
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    ESP_LOGE(TAG,"bulk IN timeout: endpoint 0x%02x, wanted %u bytes, timeout %lu ms",s_p.ep_in,(unsigned)len,(unsigned long)timeout_ms);
     usb_printer_cancel();
     return -1;
 }

@@ -1,3 +1,4 @@
+#include "debug.h"
 #include "hp_firmware.h"
 #include "airprint_esp.h"
 
@@ -99,7 +100,8 @@ static void get_status(void *ctx, airprint_status_t *st)
 
 static int job_open(void *ctx)
 {
-    if (!print_job_supported()) return -1;
+    debug_memory("IPP job begin");
+    if (!print_job_supported()) { ESP_LOGE(TAG,"no supported USB printer attached"); return -1; }
     esp_err_t err = usb_printer_job_begin();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "printer not available: %s", esp_err_to_name(err));
@@ -133,6 +135,8 @@ static void job_close(void *ctx, bool ok)
     usb_printer_job_end();      // sends the job's last bytes: a cancel may still need the timer
     esp_timer_stop(s_cancel_timer);
     s_job_running = false;
+    ESP_LOGI(TAG,"IPP job ended: %s",ok?"completed":"failed/canceled");
+    debug_memory("IPP job end");
     if (!ok && usb_printer_connected()) {
         ESP_LOGW(TAG, "job failed, resetting printer");
         usb_printer_soft_reset();
@@ -243,7 +247,7 @@ static bool web_http(airprint_http_t *h, const char *method, const char *path)
 static bool dev_http(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
     if (strcmp(path, "/dev/last-job.prn") != 0)
-        return hp_firmware_http(h, method, path) || web_http(h, method, path);
+        return debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
     size_t len;
     const uint8_t *data = sbuf_read_begin(SBUF_PRINT, &len);
     if (!data)
@@ -317,7 +321,7 @@ static void scan_sleep(void *ctx, int ms)
 
 static bool http_handler(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
-    return hp_firmware_http(h, method, path) || web_http(h, method, path);
+    return debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
 }
 
 // Most of the PSRAM, for scans (and the dev mode print capture)

@@ -77,6 +77,7 @@ static void print_task(void *arg)
     bool dry_run = (bool)(intptr_t)arg;
     print_stats_t st;
     status_led_set(LED_BUSY);
+    debug_memory("test-page begin");
     esp_err_t err = print_job_test_page(dry_run, print_job_default_dpi(), &st);
     if (dry_run)
         ESP_LOGI(TAG, "dry run done: %lu bytes, crc32 %08lx, %lu ms (%s)", (unsigned long)st.bytes,
@@ -84,6 +85,7 @@ static void print_task(void *arg)
     else
         ESP_LOGI(TAG, "print job finished: %s, %lu bytes in %lu ms", esp_err_to_name(err), (unsigned long)st.bytes,
                  (unsigned long)st.ms);
+    debug_memory("test-page end");
     s_busy = false;
     if (err != ESP_OK) {
         s_showing_error = true;
@@ -260,8 +262,7 @@ void main_unused(void)
 void app_main(void)
 {
     bool debug = strcmp(MODE, "debug") == 0;
-    if (debug)
-        debug_log_start(64 * 1024);
+    debug_log_start(64 * 1024); // always capture, including MODE=normal
     ESP_ERROR_CHECK(status_led_init());
     status_led_set(LED_WAITING);
     oled_start(HOSTNAME);

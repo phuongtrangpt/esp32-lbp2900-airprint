@@ -28,7 +28,7 @@ typedef struct {
 // All upstream operations run inside a guard: a malformed reply, disconnect,
 // cancel or printer error aborts this job, never exit()s the firmware process.
 #define GUARD(j) do { capt_bind(&(j)->link); if (setjmp((j)->link.guard)) { \
-    (j)->failed = true; fprintf(stderr, "CAPT: %s\n", (j)->link.error); return -1; \
+    (j)->failed = true; capt_log( "ERROR: CAPT: %s\n", (j)->link.error); return -1; \
     } capt_deadline(&(j)->link, 120000); } while (0)
 
 static void dispose(job_t *j)

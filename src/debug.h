@@ -1,5 +1,5 @@
 // Remote debugging and firmware updates for a board that is not plugged into
-// a computer (MODE=debug):
+// a computer (MODE=debug for remote control; read-only diagnostics in every mode):
 //   - log: everything ESP_LOGx prints is also kept in a RAM ring, served at
 //     http://<host>:8080/log and streamed live on TCP port 2323 (nc <host> 2323).
 //     The last few KB survive a crash or reboot (RTC memory) and are shown
@@ -32,3 +32,8 @@ esp_err_t debug_server_start(bool (*busy)(void));
 // reboots if that does not happen within timeout_s. Returns at once for an
 // image that is already valid. Run it from its own task.
 void debug_ota_confirm(bool (*healthy)(void), int settle_s, int timeout_s);
+
+// Read-only diagnostics in normal mode, served on the existing port 80/631.
+#include "airprint.h"
+bool debug_http(airprint_http_t *h, const char *method, const char *path);
+void debug_memory(const char *stage);

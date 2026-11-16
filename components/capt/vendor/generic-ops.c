@@ -58,7 +58,7 @@ void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_
 	/* Read initial BufLevel from GetBasicStatus. */
 	status = capt_get_status();
 	buflevel_slots = CAPT_BUFLEVEL_SLOTS(status->buf_level);
-	fprintf(stderr, "DEBUG: CAPT: IC_VIDEO_DATA start, size=%u, chunk_max=%u, buflevel=%d\n",
+	capt_log( "DEBUG: CAPT: IC_VIDEO_DATA start, size=%u, chunk_max=%u, buflevel=%d\n",
 		(unsigned)size, (unsigned)chunk_max, buflevel_slots);
 
 	while (size) {
@@ -79,7 +79,7 @@ void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_
 					usleep(50000);
 				}
 				if (status->page_decoding == state->ipage) {
-					fprintf(stderr, "DEBUG: CAPT: streaming mode: BufLevel=0, sending StartPrint(%u)\n",
+					capt_log( "DEBUG: CAPT: streaming mode: BufLevel=0, sending StartPrint(%u)\n",
 						state->ipage);
 					capt_sendrecv(CAPT_START_PRINT, spbuf, 2, NULL, 0);
 					state->startprint_sent = true;
@@ -152,12 +152,12 @@ void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_
 			usleep(50000);
 		}
 		if (status->page_decoding == state->ipage) {
-			fprintf(stderr, "DEBUG: CAPT: streaming mode (post-loop): BufLevel=0, sending StartPrint(%u)\n",
+			capt_log( "DEBUG: CAPT: streaming mode (post-loop): BufLevel=0, sending StartPrint(%u)\n",
 				state->ipage);
 			capt_sendrecv(CAPT_START_PRINT, spbuf, 2, NULL, 0);
 			state->startprint_sent = true;
 		} else {
-			fprintf(stderr, "WARNING: CAPT: BufLevel=0 after all chunks sent, but Start=%u != page=%u, cannot send StartPrint\n",
+			capt_log( "WARNING: CAPT: BufLevel=0 after all chunks sent, but Start=%u != page=%u, cannot send StartPrint\n",
 				status->page_decoding, state->ipage);
 		}
 	}
@@ -182,6 +182,6 @@ void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_
 		} while (buflevel_slots == 0);
 	}
 
-	fprintf(stderr, "DEBUG: CAPT: IC_VIDEO_DATA done, streaming=%d, buflevel=%d\n",
+	capt_log( "DEBUG: CAPT: IC_VIDEO_DATA done, streaming=%d, buflevel=%d\n",
 		(int)state->startprint_sent, buflevel_slots);
 }

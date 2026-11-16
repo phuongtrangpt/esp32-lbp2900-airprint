@@ -67,8 +67,9 @@ esp_err_t hp_firmware_load(void) {
     if (!p || esp_partition_read(p,0,hdr,sizeof(hdr))!=ESP_OK || hdr[0]!=MAGIC || hdr[1]<32 || hdr[1]>MAX_IMAGE) goto done;
     buf=malloc(hdr[1]); if (!buf) goto done;
     if (esp_partition_read(p,sizeof(hdr),buf,hdr[1])!=ESP_OK || esp_rom_crc32_le(0,buf,hdr[1])!=hdr[2]) goto done;
+    ESP_LOGI("hp_firmware","P1006 bootstrap: sending %lu HPDL bytes",(unsigned long)hdr[1]);
     rc=usb_printer_write(buf,hdr[1]); if (rc==ESP_OK) rc=usb_printer_flush();
-    if (rc==ESP_OK) vTaskDelay(pdMS_TO_TICKS(6000));
+    if (rc==ESP_OK) { ESP_LOGI("hp_firmware","HPDL transfer flushed; waiting 6 seconds for printer boot"); vTaskDelay(pdMS_TO_TICKS(6000)); }
 done:
     free(buf); xSemaphoreGive(m);
     if (rc!=ESP_OK) ESP_LOGE("hp_firmware","HP P1006 firmware unavailable/failed; upload sihpP1006.dl at /hp-firmware");

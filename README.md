@@ -79,6 +79,30 @@ hạng thị phần Việt Nam hay chứng nhận đã in ổn định trên t�
   Tài liệu nhiều ảnh/nhiều trang có thể dùng nhiều RAM trên điện thoại/PC. Nên chia
   lô nếu trình duyệt thiếu RAM. Driver chỉ hỗ trợ khổ giấy cố định trong một lệnh in.
 
+## Nhật ký tự động (v0.5.0-diagnostics-preview)
+
+Không phải bật debug hay cài phần mềm đọc COM. Firmware tự thu log từ lúc ứng dụng
+khởi động, kể cả `MODE=normal`. Sau khi nạp firmware và cấu hình Wi-Fi:
+
+1. Vào trang quản trị của ESP, bấm **Nhật ký / Tải log lỗi**.
+2. Hoặc mở `http://<IP-ESP>/diagnostics` trên điện thoại/máy tính.
+3. Khi in lỗi, bấm **Tải báo cáo lỗi (.txt)** và gửi file `printserver-log.txt`.
+   Đường tải trực tiếp: `http://<IP-ESP>/diagnostics.txt`.
+4. Nếu ESP từng crash và ghi được core dump, có thể tải thêm ở
+   `http://<IP-ESP>/diagnostics/coredump` (không có dump thì trả 404).
+
+Báo cáo gồm version/build firmware, VID:PID/model USB, driver, trạng thái bận,
+RAM/PSRAM còn trống/thấp nhất/khối lớn nhất, nguyên nhân reset và log gần nhất.
+CAPT, timeout USB, bước nạp firmware HP và RAM đầu/cuối lệnh in được gom chung.
+Không ghi dữ liệu raster hay mật khẩu Wi-Fi vào báo cáo. Log có thể có tên lệnh
+in/người dùng do IPP gửi; core dump là dữ liệu kỹ thuật bộ nhớ, chỉ chia sẻ khi cần.
+
+Bộ đệm vòng **64 KB trong PSRAM**, có fallback 8 KB khi không cấp phát được; không
+phình theo số trang. Phần cũ được ghi đè. Đuôi log 3 KB trong RTC có thể còn sau
+reset/watchdog, **không giữ log RAM khi mất nguồn**: hãy tải trước khi rút điện.
+Crash dump nằm riêng trong flash nếu ESP ghi được trước khi khởi động lại.
+Trang chẩn đoán chỉ đọc; không tự bật OTA/reboot/panic của chế độ debug.
+
 ## Phần cứng
 
 - ESP32-S3 **N16R8** (16 MB flash, 8 MB octal PSRAM), có cổng UART/COM và USB OTG riêng.

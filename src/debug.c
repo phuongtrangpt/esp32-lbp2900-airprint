@@ -197,6 +197,7 @@ static void log_coredump_summary(void)
 
 void debug_log_start(size_t ring_size)
 {
+    if (s_ring && s_ring_size) return;
     s_ring = heap_caps_malloc(ring_size, MALLOC_CAP_SPIRAM);
     if (!s_ring) {
         ring_size = 8 * 1024;
@@ -205,6 +206,9 @@ void debug_log_start(size_t ring_size)
     s_log_lock = xSemaphoreCreateMutex();
     s_log_new = xSemaphoreCreateBinary();
     if (!s_ring || !s_log_lock || !s_log_new) {
+        free(s_ring); s_ring=NULL;
+        if (s_log_lock) { vSemaphoreDelete(s_log_lock); s_log_lock=NULL; }
+        if (s_log_new) { vSemaphoreDelete(s_log_new); s_log_new=NULL; }
         ESP_LOGE(TAG, "no memory for the log ring");
         return;
     }
@@ -677,4 +681,115 @@ void debug_ota_confirm(bool (*healthy)(void), int settle_s, int timeout_s)
     ESP_LOGE(TAG, "new firmware not healthy after %d s: going back to the previous one", timeout_s);
     vTaskDelay(pdMS_TO_TICKS(500));     // let the log out
     esp_ota_mark_app_invalid_rollback_and_reboot();
+}
+
+// ---------------------------------------------------------------------------
+// Read-only support report in every mode. No OTA/reboot/panic actions here.
+#include "usb_printer.h"
+#include "print_job.h"
+
+void debug_memory(const char *stage)
+{
+    ESP_LOGI("memory", "%s: internal free=%u min=%u largest=%u; PSRAM free=%u min=%u largest=%u",
+        stage, (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+}
+
+static const char diagnostics_page[] =
+"<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
+"<title>Nhật ký máy in</title><style>body{font:16px system-ui;margin:0;background:#f1f5f9;color:#163044}main{max-width:1000px;margin:auto;padding:24px}a,button{display:inline-block;padding:12px 16px;margin:4px;border:0;border-radius:10px;background:#087e81;color:white;text-decoration:none;font:inherit;cursor:pointer}pre{background:#102332;color:#e6f5f3;padding:16px;border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 monospace}label{display:block;margin:16px 0}</style>"
+"<main><a href='/'>← Trang in</a><h1>Nhật ký và chẩn đoán</h1>"
+"<p>Log tự thu khi ESP khởi động. Nếu in lỗi, tải báo cáo rồi gửi lại để kiểm tra.</p>"
+"<a href='/diagnostics.txt' download='printserver-log.txt'>Tải báo cáo lỗi (.txt)</a>"
+"<button id=refresh>Làm mới</button><a href='/diagnostics/coredump' download='printserver-crash.elf'>Tải crash dump</a>"
+"<label><input type=checkbox id=auto checked> Tự cập nhật mỗi 3 giây</label>"
+"<p>Log giữ phần gần nhất trong bộ đệm vòng 64 KB. Đuôi log có thể còn sau reset/watchdog; mất điện sẽ mất log RAM. Hãy tải trước khi rút nguồn. Crash dump chỉ có nếu ESP đã ghi được một lần crash.</p>"
+"<p id=status>Đang đọc…</p><pre id=report></pre></main>"
+"<script>const report=document.getElementById('report'),statusEl=document.getElementById('status'),refresh=document.getElementById('refresh');let busy=false;async function update(){if(busy)return;busy=true;try{const r=await fetch('/diagnostics.txt',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);report.textContent=await r.text();statusEl.textContent='Cập nhật: '+new Date().toLocaleTimeString()}catch(e){statusEl.textContent='Không đọc được log: '+e.message}finally{busy=false}}refresh.onclick=update;setInterval(()=>{if(document.getElementById('auto').checked)update()},3000);update();</script></html>";
+
+static int report_info(char *buf,size_t cap)
+{
+    const esp_app_desc_t *app=esp_app_get_description();
+    usb_printer_info_t printer={0}; bool attached=usb_printer_get_info(&printer);
+    const printer_driver_t *d=print_job_driver();
+    size_t addr=0,bytes=0; bool crash=esp_core_dump_image_get(&addr,&bytes)==ESP_OK;
+    int n=snprintf(buf,cap,
+        "ESP32 print server diagnostic report\n"
+        "Firmware: %s; built %s %s; ESP-IDF: %s\n"
+        "Mode: %s; uptime: %lld s; reset: %s\n"
+        "USB attached: %s; VID:PID: %04x:%04x; printer: %.48s %.48s\n"
+        "Selected driver: %s; supported: %s; busy: %s\n"
+        "Internal RAM bytes: free=%u lowest=%u largest=%u\n"
+        "PSRAM bytes: free=%u lowest=%u largest=%u\n"
+        "Core dump: %s (%u bytes)\n"
+        "Log ring: %u bytes; recent lines only; survives reset tail, not power loss\n"
+        "Wi-Fi passwords and document contents are not included.\n\n=== Recent log ===\n",
+        app->version,app->date,app->time,app->idf_ver,MODE,(long long)(esp_timer_get_time()/1000000),reset_reason(),
+        attached?"yes":"no",printer.vid,printer.pid,printer.manufacturer,printer.product,
+        d?d->id:"none",print_job_supported()?"yes":"no",usb_printer_job_active()?"yes":"no",
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned)heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),crash?"available":"none",(unsigned)bytes,
+        (unsigned)s_ring_size);
+    return n<0?0:(size_t)n>=cap?(int)cap-1:n;
+}
+
+bool debug_http(airprint_http_t *h,const char *method,const char *path)
+{
+    bool page=!strcmp(path,"/diagnostics"), report=!strcmp(path,"/diagnostics.txt"),
+         core=!strcmp(path,"/diagnostics/coredump");
+    if(!page && !report && !core) return false;
+    if(strcmp(method,"GET")) {
+        const char text[]="Read-only diagnostics: GET only\n";
+        airprint_http_send_ex(h,"405 Method Not Allowed","text/plain","Allow: GET\r\n",text,sizeof(text)-1);
+        return true;
+    }
+    if(page) {
+        airprint_http_send_ex(h,"200 OK","text/html; charset=utf-8","Cache-Control: no-store\r\n",diagnostics_page,sizeof(diagnostics_page)-1);
+        return true;
+    }
+    if(core) {
+        size_t addr=0,size=0;
+        const esp_partition_t *p=esp_partition_find_first(ESP_PARTITION_TYPE_DATA,ESP_PARTITION_SUBTYPE_DATA_COREDUMP,NULL);
+        if(esp_core_dump_image_get(&addr,&size)!=ESP_OK || !p || addr<p->address || addr-p->address>p->size || size>p->size-(addr-p->address)) {
+            const char text[]="No crash dump has been recorded.\n";
+            airprint_http_send(h,"404 Not Found","text/plain",text,sizeof(text)-1); return true;
+        }
+        if(airprint_http_stream_begin(h,"application/octet-stream","Content-Disposition: attachment; filename=printserver-crash.elf\r\nCache-Control: no-store\r\n")<0) return true;
+        char part[1024];
+        for(size_t off=0;off<size;) {
+            size_t n=size-off>sizeof(part)?sizeof(part):size-off;
+            if(esp_partition_read(p,addr-p->address+off,part,n)!=ESP_OK || airprint_http_stream_write(h,part,n)<0) return true;
+            off+=n;
+        }
+        airprint_http_stream_end(h); return true;
+    }
+    if(airprint_http_stream_begin(h,"text/plain; charset=utf-8","Content-Disposition: attachment; filename=printserver-log.txt\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\n")<0) return true;
+    char buf[1536]; int n=report_info(buf,sizeof(buf));
+    if(airprint_http_stream_write(h,buf,n)<0) return true;
+    if(!s_ring || !s_log_lock) {
+        const char text[]="Log capture unavailable (allocation failed).\n";
+        airprint_http_stream_write(h,text,sizeof(text)-1);
+    } else {
+        xSemaphoreTake(s_log_lock,portMAX_DELAY);
+        uint64_t end=s_wpos,pos=end>s_ring_size?end-s_ring_size:0,lost=0;
+        xSemaphoreGive(s_log_lock);
+        while(pos<end) {
+            size_t k=ring_get(&pos,buf,end-pos>sizeof(buf)?sizeof(buf):(size_t)(end-pos),&lost);
+            if(!k) break;
+            if(airprint_http_stream_write(h,buf,k)<0) return true;
+        }
+        if(lost) {
+            n=snprintf(buf,sizeof(buf),"\n[Log changed while downloading; %llu older bytes overwritten.]\n",(unsigned long long)lost);
+            if(airprint_http_stream_write(h,buf,n)<0) return true;
+        }
+    }
+    airprint_http_stream_end(h); return true;
 }

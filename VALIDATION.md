@@ -1,3 +1,18 @@
+## v0.5.0-diagnostics-preview
+
+ESP build and native CAPT/IPP regressions verify the logging adapter does not
+change printer bytes. Node VM tests run the actual C-embedded page script for
+initial/automatic/manual refresh, pause, error/recovery and plain-text log data.
+Playwright desktop/mobile tests cover page layout, download and error recovery
+in CI. Local Chromium execution is blocked by the environment's Unix socket
+restriction; no local browser pass is claimed. ESP HTTP handler/ring/RTC/core dump
+behaviour still requires hardware; QEMU is unavailable here.
+
+Logs: bounded 64 KiB PSRAM ring (8 KiB fallback), existing 3 KiB RTC tail; no
+continuous flash writes. Snapshot export uses a 1536-byte working buffer; slow
+readers may lose overwritten old bytes and receive an explicit notice. No print
+payload or Wi-Fi password is dumped. Core dumps may contain process memory.
+
 ## v0.4.0-standard-preview: measured results
 
 Native ASan/UBSan + wrapped malloc/calloc/realloc/free accounting (64-bit host;

@@ -90,6 +90,8 @@
     {/each}
   </ul>
 
+  <a href="/diagnostics" style="display:block;padding:12px 18px;text-decoration:none">Nhật ký / Tải log lỗi ↗</a>
+
   <div class="foot">
     <span class="pill {tone}">
       <span class="dot"></span>

@@ -1,3 +1,11 @@
+## 0.5.0-diagnostics-preview
+
+- Always-on bounded RAM log capture, including normal mode; preserve reset/watchdog RTC tail and core dump summary.
+- Read-only /diagnostics page, downloadable /diagnostics.txt report and /diagnostics/coredump on existing HTTP port; sidebar link and auto refresh.
+- Include firmware/USB/driver/heap/reset metadata; log job memory boundaries, HP bootstrap, USB timeouts and CAPT command IDs/byte counts without payload dumps.
+- Route CAPT stderr diagnostics into ESP_LOG capture; retain native stderr behaviour.
+- Clean up partial logger allocation failure; normal diagnostics do not enable debug write endpoints.
+
 ## 0.4.0-standard-preview
 
 - Added streaming mono PCL5/PostScript drivers selected by exact IEEE1284 CMD tokens after model-specific drivers. Unsupported host-based/UFRII/SPL/PCLXL-only devices stay refused.

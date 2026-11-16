@@ -9,3 +9,6 @@ remove large status stack buffer; use portable UTC job timestamps; validate payl
 Upstream protocol state machine and Hi-SCoA compressor are retained.
 The complete combined firmware is distributed under GPL-3.0-or-later,
 with original MIT notices for esp32-usb-to-airprint preserved.
+
+Protocol diagnostics now use capt_log: ESP_LOG on ESP, stderr on native builds.
+Transport failures report command ID and transfer byte counts, never payload data.

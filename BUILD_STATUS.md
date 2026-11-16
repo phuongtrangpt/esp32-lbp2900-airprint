@@ -1,3 +1,9 @@
+## v0.5.0-diagnostics-preview
+
+Automatic read-only diagnostics enabled in MODE=normal. Firmware builds for
+ESP32-S3 N16R8; physical log/export/reset tests remain pending. Open /diagnostics
+or use the sidebar link and download printserver-log.txt after a failed print.
+
 ## v0.4.0-standard-preview
 
 Build: ESP32-S3 N16R8, 1,720,419 app bytes, 77,092 static RAM bytes.

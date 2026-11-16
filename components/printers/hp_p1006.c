@@ -9,6 +9,7 @@
 #include <stdint.h>
 #ifdef ESP_PLATFORM
 #include "esp_heap_caps.h"
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #endif
@@ -24,7 +25,13 @@ typedef union alloc_node {
 } alloc_node;
 static _Thread_local alloc_node *allocs;
 static _Thread_local jmp_buf *oom;
-void hp_jbig_oom(void) { if (oom) longjmp(*oom,1); abort(); }
+void hp_jbig_oom(void) {
+#ifdef ESP_PLATFORM
+    ESP_LOGE("hp_p1006","JBIG allocation failed: aborting this print job");
+#endif
+    if (oom) longjmp(*oom,1);
+    abort();
+}
 void *hp_jbig_malloc(size_t n) {
     if (n>SIZE_MAX-sizeof(alloc_node)) return NULL;
 #ifdef ESP_PLATFORM

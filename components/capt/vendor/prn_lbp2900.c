@@ -119,14 +119,14 @@ static void capt_get_printer_info(struct printer_state_s *state)
 	if (size >= 10) {
 		state->printer_blk = WORD(buf[6], buf[7]);
 		state->printer_buf = WORD(buf[8], buf[9]);
-		fprintf(stderr, "DEBUG: CAPT: GetPrinterInfo Blk=0x%04x (%u) Buf=0x%04x (%u)\n",
+		capt_log( "DEBUG: CAPT: GetPrinterInfo Blk=0x%04x (%u) Buf=0x%04x (%u)\n",
 			state->printer_blk, state->printer_blk,
 			state->printer_buf, state->printer_buf);
 	} else {
 		/* Default values for LBP3000 if reply is too short */
 		state->printer_blk = 65520;
 		state->printer_buf = 64;
-		fprintf(stderr, "DEBUG: CAPT: GetPrinterInfo reply too short (%u), using defaults\n",
+		capt_log( "DEBUG: CAPT: GetPrinterInfo reply too short (%u), using defaults\n",
 			(unsigned)size);
 	}
 }
@@ -212,7 +212,7 @@ static uint16_t capt_reserve_unit(struct printer_state_s *state)
 	capt_sendrecv(CAPT_RESERVE_UNIT, magicbuf_0, ARRAY_SIZE(magicbuf_0), buf, &size);
 
 	if (size >= 1 && (buf[0] & 0x80)) {
-		fprintf(stderr, "DEBUG: CAPT: ReserveUnit error flag 0x%02x — clearing and retrying\n",
+		capt_log( "DEBUG: CAPT: ReserveUnit error flag 0x%02x — clearing and retrying\n",
 			buf[0]);
 
 		/* Go offline first if not already offline */
@@ -236,7 +236,7 @@ static uint16_t capt_reserve_unit(struct printer_state_s *state)
 		size = sizeof(buf);
 		capt_sendrecv(CAPT_RESERVE_UNIT, magicbuf_0, ARRAY_SIZE(magicbuf_0), buf, &size);
 		if (size >= 1 && (buf[0] & 0x80)) {
-			fprintf(stderr, "ERROR: CAPT: ReserveUnit failed (0x%02x) after error recovery — aborting\n",
+			capt_log( "ERROR: CAPT: ReserveUnit failed (0x%02x) after error recovery — aborting\n",
 				buf[0]);
 			capt_fail("CAPT printer error");
 		}
@@ -430,7 +430,7 @@ static bool lbp2900_page_prologue(struct printer_state_s *state, const struct pa
 			fm = 0x01;
 			paper_type = 0x01;
 	}
-	fprintf(stderr, "DEBUG: CAPT: media_type=%u, fm=%u, paper_type=0x%02x\n",
+	capt_log( "DEBUG: CAPT: media_type=%u, fm=%u, paper_type=0x%02x\n",
 		dims->media_type, fm, paper_type);
 
 	if ( strncmp(dims->media_size, "A4", 2) == 0 ) sz = 0x02;
@@ -446,7 +446,7 @@ static bool lbp2900_page_prologue(struct printer_state_s *state, const struct pa
 	else if ( strncmp(dims->media_size, "3x5", 3) ==0 ) sz = 0x40;
 	else if ( strncmp(dims->media_size, "PRC16K", 6) ==0 ) sz = 0xD4;
 	else sz = 0x02;
-	fprintf(stderr, "DEBUG: CAPT: media_size=%s, sz=0x%02x\n", dims->media_size, sz);
+	capt_log( "DEBUG: CAPT: media_size=%s, sz=0x%02x\n", dims->media_size, sz);
 
 	/* Save paper size byte for use in out-of-paper SetLEDStatus payload. */
 	state->paper_sz = sz;
@@ -545,7 +545,7 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 {
 	const struct capt_status_s *status;
 
-	fprintf(stderr, "DEBUG: CAPT: out-of-paper recovery starting\n");
+	capt_log( "DEBUG: CAPT: out-of-paper recovery starting\n");
 
 	/* 1. GetInputStatus — triggered by Bas1 & NEED_INPUT_STATUS; byte3=0x80 confirms paper-out */
 	capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
@@ -598,7 +598,7 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 	/* 17. GetBasicStatus — byte1 = 0x10 (offline) */
 	lbp2900_get_status(state->ops);
 
-	fprintf(stderr, "DEBUG: CAPT: out-of-paper: waiting for user to insert paper\n");
+	capt_log( "DEBUG: CAPT: out-of-paper: waiting for user to insert paper\n");
 
 	/* [Wait for user — poll loop:]
 	 * 18. Poll GetBasicStatus repeatedly until NEED_INPUT_STATUS bit set
@@ -637,7 +637,7 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 	/* GetExtendedStatus — all counters 0 again */
 	capt_get_xstatus_only();
 
-	fprintf(stderr, "DEBUG: CAPT: out-of-paper recovery complete, counters reset to 0\n");
+	capt_log( "DEBUG: CAPT: out-of-paper recovery complete, counters reset to 0\n");
 	/* After recovery, page counters are reset to 0.
 	 * Caller must track pages_printed_before_error to know where to resume. */
 }
@@ -725,7 +725,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 			/* Do NOT call lbp2900_get_status() here — it would overwrite xstat fields */
 			if ((status->xstat_cnt & CAPT_CNT_PRINT_REJECTED)
 			    && status->xstat_pap == 0x00) {
-				fprintf(stderr, "DEBUG: CAPT: out-of-paper confirmed (Cnt=0x%02x, Pap=0x%02x)\n",
+				capt_log( "DEBUG: CAPT: out-of-paper confirmed (Cnt=0x%02x, Pap=0x%02x)\n",
 					status->xstat_cnt, status->xstat_pap);
 				/*
 				 * Track pages printed before the error for reprint logic.
@@ -741,7 +741,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 				 * offset is (ipage - 1): the next attempt at ipage maps to pipage=1.
 				 */
 				state->printer_page_offset = state->ipage - 1;
-				fprintf(stderr, "DEBUG: CAPT: printer_page_offset set to %u (ipage=%u)\n",
+				capt_log( "DEBUG: CAPT: printer_page_offset set to %u (ipage=%u)\n",
 					state->printer_page_offset, state->ipage);
 				/*
 				 * Return false so the caller can reprint the affected page.
@@ -759,7 +759,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 		if (status->xstat_eng & (CAPT_ENG_JAM | CAPT_ENG_DOOR_OPEN)) {
 			const char *reason = (status->xstat_eng & CAPT_ENG_JAM)
 				? "paper jam" : "door open";
-			fprintf(stderr, "ERROR: CAPT: fatal printer error: %s (Eng=0x%04x) — aborting\n",
+			capt_log( "ERROR: CAPT: fatal printer error: %s (Eng=0x%04x) — aborting\n",
 				reason, status->xstat_eng);
 			uint8_t jbuf[2] = { LO(job), HI(job) };
 			capt_sendrecv(CAPT_RELEASE_UNIT, jbuf, 2, NULL, 0);
@@ -768,7 +768,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 
 		/* Legacy no-paper flags from extended status */
 		if (FLAG(status, CAPT_FL_NOPAPER2) || FLAG(status, CAPT_FL_NOTREADY)) {
-			fprintf(stderr, "DEBUG: CAPT: no paper\n");
+			capt_log( "DEBUG: CAPT: no paper\n");
 			if (FLAG(status, CAPT_FL_PRINTING) || FLAG(status, CAPT_FL_PROCESSING1))
 				continue;
 			return false;
@@ -862,10 +862,10 @@ static void lbp2900_wait_user(struct printer_state_s *state)
 	while (1) {
 		const struct capt_status_s *status = lbp2900_get_status(state->ops);
 		if (FLAG(status, CAPT_FL_BUTTON_ON)) {
-			fprintf(stderr, "DEBUG: CAPT: button activated\n");
+			capt_log( "DEBUG: CAPT: button activated\n");
 		}
 		if (FLAG(status, CAPT_FL_BUTTON)) {
-			fprintf(stderr, "DEBUG: CAPT: button pressed\n");
+			capt_log( "DEBUG: CAPT: button pressed\n");
 			break;
 		}
 		usleep(100000);
@@ -885,10 +885,10 @@ static void lbp3010_wait_user(struct printer_state_s *state)
 	while (1) {
 		const struct capt_status_s *status = lbp2900_get_status(state->ops);
 		if (FLAG(status, CAPT_FL_BUTTON_ON)) {
-			fprintf(stderr, "DEBUG: CAPT: button activated\n");
+			capt_log( "DEBUG: CAPT: button activated\n");
 		}
 		if (FLAG(status, CAPT_FL_nERROR)) {
-			fprintf(stderr, "DEBUG: CAPT: (virtual) button pressed\n");
+			capt_log( "DEBUG: CAPT: (virtual) button pressed\n");
 			break;
 		}
 		sleep(1);

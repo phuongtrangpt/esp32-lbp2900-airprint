@@ -45,6 +45,7 @@ jobs:
         run: |
           npm run check
           node --test tests/*.test.ts
+          node tests/diagnostics.mjs
           npm run build
       - name: Firmware build
         run: pio run -e esp32s3

@@ -38,13 +38,13 @@ static inline char bit(enum capt_flags flag)
 #ifdef DEBUG
 static void print_status(void)
 {
-	fprintf(stderr, "DEBUG: CAPT: printer status P1=%c P2=%c B=%c B0=%c B1=%c nE=%c\n",
+	capt_log( "DEBUG: CAPT: printer status P1=%c P2=%c B=%c B0=%c B1=%c nE=%c\n",
 		bit(CAPT_FL_NOTREADY), bit(CAPT_FL_NOPAPER2),
 		bit(CAPT_FL_BUTTON_ON),
 		bit(CAPT_FL_BUTTON), bit(CAPT_FL_BUTTON1),
 		bit(CAPT_FL_nERROR)
 	);
-	fprintf(stderr, "DEBUG: CAPT: pages %u/%u/%u/%u\n",
+	capt_log( "DEBUG: CAPT: pages %u/%u/%u/%u\n",
 		status.page_decoding,
 		status.page_printing,
 		status.page_out,

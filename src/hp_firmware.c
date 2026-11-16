@@ -1,7 +1,16 @@
+#if defined(PRINTSERVER_PROFILE_CANON)
+#include "hp_firmware.h"
+bool hp_firmware_http(airprint_http_t *h,const char *method,const char *path){return false;}
+esp_err_t hp_firmware_load(void){return ESP_ERR_NOT_SUPPORTED;}
+#else
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Optional, user-supplied HP firmware: deliberately not redistributed.
 #include "hp_firmware.h"
 #include "usb_printer.h"
+#include "hp_bootstrap.h"
+#include "esp_http_client.h"
+#include "esp_crt_bundle.h"
+#include "mbedtls/sha256.h"
 #include "esp_partition.h"
 #include "esp_rom_crc.h"
 #include "esp_log.h"
@@ -60,11 +69,34 @@ bool hp_firmware_http(airprint_http_t *h,const char *method,const char *path) {
     }
     airprint_http_send(h,status,"text/plain; charset=utf-8",msg,strlen(msg)); return true;
 }
+static esp_err_t fetch_hpdl(const esp_partition_t *p) {
+    if(!p)return ESP_FAIL;
+    ESP_LOGI("hp_firmware","First setup: downloading HP P1006 firmware from upstream (Internet required once)");
+    esp_http_client_config_t cfg={.url="https://www.quirinux.org/printers/sihpP1006.tar.gz",.crt_bundle_attach=esp_crt_bundle_attach,.timeout_ms=20000,.buffer_size=1024};
+    esp_http_client_handle_t client=esp_http_client_init(&cfg);if(!client)return ESP_ERR_NO_MEM;
+    uint8_t *archive=malloc(300*1024+1),*dl=NULL;size_t n=0,len=0;esp_err_t rc=ESP_FAIL;
+    if(!archive)goto cleanup;
+    if(esp_http_client_open(client,0)!=ESP_OK)goto cleanup;
+    if(esp_http_client_fetch_headers(client)<0 || esp_http_client_get_status_code(client)!=200)goto cleanup;
+    while(n<300*1024+1){int got=esp_http_client_read(client,(char *)archive+n,300*1024+1-n);if(got<0)goto cleanup;if(!got)break;n+=got;}
+    if(n>300*1024 || !esp_http_client_is_complete_data_received(client))goto cleanup;
+    if(hp_bootstrap_build(archive,n,&dl,&len))goto cleanup;
+    static const uint8_t expected[32]={0xb9,0x29,0x3c,0x79,0x3e,0xa8,0x66,0x6b,0x6e,0xa9,0xfd,0x62,0x4c,0x2b,0xb1,0xf0,0x0e,0xf6,0x97,0xc3,0xe7,0x10,0xcf,0x11,0x89,0x39,0x64,0x42,0xdf,0x7a,0xd2,0xa2};
+    uint8_t digest[32];if(mbedtls_sha256(dl,len,digest,0)||memcmp(digest,expected,32)){ESP_LOGE("hp_firmware","HPDL SHA256 mismatch; refusing downloaded file");goto cleanup;}
+    uint32_t hdr[]={MAGIC,len,esp_rom_crc32_le(0,dl,len)};
+    if(esp_partition_erase_range(p,0,p->size)!=ESP_OK||esp_partition_write(p,sizeof(hdr),dl,len)!=ESP_OK||esp_partition_write(p,0,hdr,sizeof(hdr))!=ESP_OK)goto cleanup;
+    ESP_LOGI("hp_firmware","HP P1006 firmware verified and cached in flash");rc=ESP_OK;
+cleanup:
+    esp_http_client_cleanup(client);free(archive);free(dl);return rc;
+}
 esp_err_t hp_firmware_load(void) {
     SemaphoreHandle_t m=lock(); if (!m || xSemaphoreTake(m,pdMS_TO_TICKS(1000))!=pdTRUE) return ESP_ERR_TIMEOUT;
     const esp_partition_t *p=partition(); uint32_t hdr[3]; esp_err_t rc=ESP_FAIL;
     unsigned char *buf=NULL;
-    if (!p || esp_partition_read(p,0,hdr,sizeof(hdr))!=ESP_OK || hdr[0]!=MAGIC || hdr[1]<32 || hdr[1]>MAX_IMAGE) goto done;
+    if (!p) goto done;
+    if (esp_partition_read(p,0,hdr,sizeof(hdr))!=ESP_OK || hdr[0]!=MAGIC || hdr[1]<32 || hdr[1]>MAX_IMAGE) {
+        if(fetch_hpdl(p)!=ESP_OK || esp_partition_read(p,0,hdr,sizeof(hdr))!=ESP_OK)goto done;
+    }
     buf=malloc(hdr[1]); if (!buf) goto done;
     if (esp_partition_read(p,sizeof(hdr),buf,hdr[1])!=ESP_OK || esp_rom_crc32_le(0,buf,hdr[1])!=hdr[2]) goto done;
     ESP_LOGI("hp_firmware","P1006 bootstrap: sending %lu HPDL bytes",(unsigned long)hdr[1]);
@@ -75,3 +107,5 @@ done:
     if (rc!=ESP_OK) ESP_LOGE("hp_firmware","HP P1006 firmware unavailable/failed; upload sihpP1006.dl at /hp-firmware");
     return rc;
 }
+
+#endif

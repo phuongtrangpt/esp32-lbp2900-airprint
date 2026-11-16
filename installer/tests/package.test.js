@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile,stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-const root=new URL('../public/firmware/',import.meta.url);
+for (const profile of ['hp','canon']) {
+const root=new URL(`../public/firmware/${profile}/`,import.meta.url);
 const available=await stat(new URL('web-manifest.json',root)).then(()=>true,()=>false);
-test('generated package: SHA256, S3 image headers, offsets, bounds and NVS gap',{skip:!available},async()=>{
+test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`,{skip:!available},async()=>{
  const manifest=JSON.parse(await readFile(new URL('web-manifest.json',root),'utf8'));
  assert.equal(manifest.builds.length,1);const build=manifest.builds[0];
  assert.equal(build.chipFamily,'ESP32-S3');assert.equal(build.serialType,'uart');
@@ -18,3 +19,5 @@ test('generated package: SHA256, S3 image headers, offsets, bounds and NVS gap',
   if(part.offset===0 || part.offset===0x20000){assert.equal(data[0],0xe9);assert.equal(data.readUInt16LE(12),9);}
  }
 });
+
+}

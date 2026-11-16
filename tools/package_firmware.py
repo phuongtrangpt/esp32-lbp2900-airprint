@@ -8,12 +8,16 @@ import struct
 import re
 import subprocess
 import sys
+import argparse
 
 ROOT=Path(__file__).resolve().parent.parent
 BUILD=ROOT/'.pio/build/esp32s3'
 OUT=ROOT/'firmware'
 
 def main():
+    global BUILD,OUT
+    parser=argparse.ArgumentParser();parser.add_argument('--env',default='esp32s3');parser.add_argument('--out',default='firmware')
+    args=parser.parse_args();BUILD=ROOT/'.pio/build'/args.env;OUT=ROOT/args.out
     names=['bootloader.bin','partitions.bin','firmware.bin']
     for name in names:
         if not (BUILD/name).is_file(): raise SystemExit(f'Missing build artifact: {name}; run pio run -e esp32s3')
@@ -41,6 +45,7 @@ def main():
     version=re.search(r'set\(PROJECT_VER \"([^\"]+)\"\)', (ROOT/'CMakeLists.txt').read_text()).group(1)
     manifest={'chip':'esp32s3','board':'ESP32-S3 N16R8','version':version,
               'physical_printer_tested':False,'flash_size':settings['flash_size'],'flash_mode':settings['flash_mode'],'flash_freq':settings['flash_freq'],
+              'profile':args.env,'name':('HP LaserJet P1006 ESP 32' if args.env=='hp' else 'Canon LBP2900 ESP 32' if args.env=='canon' else 'Print Server ESP 32'),
               'files':{'0x0':'bootloader.bin','0x8000':'partitions.bin','0xf000':'ota_data_initial.bin',hex(app_offset):'firmware.bin'}}
     (OUT/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     for name in ['LICENSE','LICENSE.upstream-MIT','README.md','VALIDATION.md','BUILD_STATUS.md']:

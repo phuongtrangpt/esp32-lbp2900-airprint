@@ -1,4 +1,5 @@
 #include "wifi.h"
+#include "network_settings.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,7 +129,7 @@ static void command(void *ctx,uint8_t cmd,const uint8_t *p,size_t n)
         improv_serial_state(&s_improv,provision_state());
         if(s_connected) result_url(2);
     } else if(cmd==3) {
-        const char *strings[]={"LBP2900 AirPrint",esp_app_get_description()->version,"ESP32-S3 N16R8",PRINTER_NAME};
+        const char *strings[]={PRINTER_NAME,esp_app_get_description()->version,"ESP32-S3 N16R8",PRINTER_NAME};
         improv_serial_result(&s_improv,3,strings,4);
     } else if(cmd==4) scan_networks();
     else improv_serial_error(&s_improv,2);
@@ -198,6 +199,16 @@ esp_err_t wifi_start(const char *hostname)
     ESP_RETURN_ON_ERROR(esp_event_loop_create_default(),TAG,"event loop");
     s_netif=esp_netif_create_default_wifi_sta();
     esp_netif_set_hostname(s_netif,hostname);
+    network_config_t network;network_settings_load(&network);
+    if(network.enabled) {
+        esp_netif_ip_info_t ip={.ip.addr=network.ip,.netmask.addr=network.mask,.gw.addr=network.gateway};
+        esp_err_t stopped=esp_netif_dhcpc_stop(s_netif);
+        if(stopped!=ESP_OK && stopped!=ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) return stopped;
+        ESP_RETURN_ON_ERROR(esp_netif_set_ip_info(s_netif,&ip),TAG,"static IP");
+        esp_netif_dns_info_t dns={0};dns.ip.type=ESP_IPADDR_TYPE_V4;dns.ip.u_addr.ip4.addr=network.dns;
+        ESP_RETURN_ON_ERROR(esp_netif_set_dns_info(s_netif,ESP_NETIF_DNS_MAIN,&dns),TAG,"DNS");
+        ESP_LOGI(TAG,"static IPv4 configured");
+    }
     esp_log_level_set("wifi",ESP_LOG_WARN); esp_log_level_set("wifi_init",ESP_LOG_WARN);
     wifi_init_config_t init=WIFI_INIT_CONFIG_DEFAULT();
     ESP_RETURN_ON_ERROR(esp_wifi_init(&init),TAG,"WiFi init");
@@ -231,4 +242,10 @@ int wifi_rssi(void)
 {
     int rssi=0;
     return s_connected && esp_wifi_sta_get_rssi(&rssi)==ESP_OK?rssi:0;
+}
+
+bool wifi_get_network(char *mask,size_t m,char *gateway,size_t g) {
+    esp_netif_ip_info_t ip;
+    if(!s_netif||esp_netif_get_ip_info(s_netif,&ip)!=ESP_OK)return false;
+    snprintf(mask,m,IPSTR,IP2STR(&ip.netmask));snprintf(gateway,g,IPSTR,IP2STR(&ip.gw));return true;
 }

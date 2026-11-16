@@ -4,78 +4,50 @@ Print server Wi-Fi nhỏ gọn cho Canon LBP2900 và HP LaserJet P1006, phát tr
 [ngxson/esp32-usb-to-airprint](https://github.com/ngxson/esp32-usb-to-airprint).
 Driver CAPT/Hi-SCoA được chuyển từ [ValdikSS/captdriver, nhánh val](https://github.com/ValdikSS/captdriver/tree/val).
 
-**Bản thử nghiệm, chưa xác nhận trên máy in thật.** Build thành công và test mô phỏng
-không đồng nghĩa với việc đã in ổn định. Cần thử USB, trang đầu tiên và nhiều trang
-trên LBP2900 trước khi coi là bản dùng hằng ngày. Không cần máy tính hoặc CUPS chạy
-thường trực: ESP32 thực hiện chuyển raster sang CAPT và giao tiếp với máy in.
+## v0.7.0: hai firmware riêng, có IP tĩnh
 
-## HP P1006: sửa chế độ giấy trắng (v0.6.0-hp-2bit-preview)
+- **HP LaserJet P1006 ESP 32**: chỉ HP P1006 (`03f0:3e17`), XQX/JBIG 600 dpi.
+- **Canon LBP2900 ESP 32**: chỉ Canon LBP2900 (`04a9:2676`), CAPT/Hi-SCoA 600 dpi.
+- Mỗi ESP dùng một máy in; A4/Letter, đen trắng, một mặt. Bản HP không chứa driver Canon/PCL5/PS trong registry, và ngược lại. Mã driver thử nghiệm khác vẫn được giữ trong profile `all` cho phát triển.
+- HP v0.6 đã được người dùng xác nhận in trang kiểm tra A4 và Letter trên máy thật. Chức năng mạng/tách profile v0.7 cần thử trên thiết bị; Canon chưa xác nhận in thật.
 
-Driver cũ dùng XQX 1 bit/pixel; cấu hình P1006 tham chiếu dùng 2 bit/pixel.
-Bản này nhận raster 600 dpi như trước, chuyển thành 00/11 ở chế độ native
-1200x600, theo dải 128 dòng để không cần giữ bitmap 2 bit toàn trang trong RAM.
-Đã so sánh byte-for-byte với foo2xqx và thử bộ nhớ nhiều trang trên máy phát triển;
-cần in lại trên HP thật để xác nhận xử lý được hiện tượng giấy trắng.
-Log /diagnostics.txt có dòng `ink_pixels=...; wire=1200x600/2bpp` cho từng trang.
+### Cài IP tĩnh ngay trên ESP
 
-Nạp lại firmware ESP bản mới, **không chọn Erase device** để giữ Wi-Fi và file HP
-đã lưu. File sihpP1006.dl không cần đổi. Sau khi cập nhật, thử một trang A4 có chữ
-đen hoặc nhấn/nhả BOOT để in mẫu độc lập với PDF/trình duyệt.
+1. Nạp firmware, nhập Wi-Fi bằng USB; lần đầu mặc định **DHCP**.
+2. Mở trang ESP → **Cài đặt IP động / IP tĩnh**, hoặc `http://<IP-ESP>/network`.
+3. Chọn **IP tĩnh**, nhập IP, subnet mask, gateway và DNS rồi lưu. Trang điền sẵn IP/mask/gateway hiện tại để dễ sửa. ESP lưu trong NVS và khởi động lại khi không có lệnh in.
+4. Chọn địa chỉ chưa dùng và tránh vùng DHCP đang cấp cho thiết bị khác. Ví dụ IP hiện tại `192.168.10.36` chỉ nên giữ cố định nếu chắc chắn không bị cấp cho thiết bị khác; không tự đoán gateway của mạng.
+5. Nếu đặt sai: **đợi ESP khởi động xong, giữ BOOT 10 giây** để trở lại DHCP. Thao tác này giữ Wi-Fi và file HP; đừng giữ BOOT khi vừa cấp nguồn vì đó là chế độ nạp.
 
-## HP LaserJet P1006
+Word không yêu cầu IP tĩnh. Nếu Windows đã thêm hàng đợi bằng URL chứa IP, IP thay đổi sẽ làm hàng đợi đó mất kết nối; IP tĩnh trên ESP giúp tránh việc phải thêm lại. Với Windows đã thêm IPP trước đây, có thể cần đổi tên/xóa hàng đợi cũ để thấy tên mới. URL IPP: `http://<IP-ESP>:631/ipp/print`; dùng Microsoft IPP Class Driver, không gửi dữ liệu driver USB CAPT/XQX vào đường IPP raster.
 
-- Tự chọn driver khi cắm Canon `04a9:2676` hoặc HP `03f0:3e17`.
-- HP dùng XQX + JBIG, đen trắng 600 dpi, A4/Letter, in một mặt.
-- Mỗi ESP nhận **một máy in USB tại một thời điểm**, chưa hỗ trợ hub hay hai máy đồng thời.
-- P1006 cần firmware riêng mỗi lần bật nguồn. Sau khi cấu hình Wi-Fi, mở
-  `http://<IP-ESP>/hp-firmware`, chọn **sihpP1006.dl** từ bộ driver HP/foo2xqx của bạn,
-  bấm lưu, sau đó tắt/bật máy in và cắm lại USB. ESP giữ file trong flash và gửi
-  trước lệnh in đầu tiên của mỗi lần kết nối nếu IEEE1284 chưa có `FWVER:`.
-- File HP này không được đóng gói trong firmware ESP. Không chọn `.bin` ESP,
-  `.img` chưa chuyển HPDL, hay firmware của model khác. Tham khảo
-  [hướng dẫn foo2zjs](https://github.com/OpenPrinting/foo2zjs/blob/main-fixes/INSTALL.in).
-- Thiếu file thì lệnh in thất bại an toàn; log hướng dẫn mở `/hp-firmware`.
-- Trang nạp USB hiện tại vẫn dùng chung cho cả hai máy; nạp lại bản mới để có
-  phân vùng lưu firmware HP. Nạp app qua OTA từ bản cũ không tự đổi bảng phân vùng.
-- Chưa xác nhận trên phần cứng. Giới hạn hiện tại: chờ khởi động HP 6 giây,
-  chưa phân tích trạng thái PJL/hết giấy, chưa xác nhận giấy đã ra khi IPP báo xong.
+### HP P1006 tự chuẩn bị firmware máy in
 
-## Mở rộng theo giao thức (v0.4.0-standard-preview)
+P1006 cần firmware khởi động HP sau mỗi lần bật nguồn. Firmware ESP khác firmware HP.
+Nếu chưa có file trong flash, bản HP tự tải từ nguồn upstream HTTPS, chuyển HPDL,
+kiểm tra SHA256 và lưu vào phân vùng riêng trước khi gửi cho máy in. Cần Internet
+ở lần đầu; sau đó ESP tự gửi lại khi cần và không phụ thuộc máy tính in.
 
-Hai driver dùng chung mới: **PCL5 đơn sắc** và **PostScript Level 2/3 đơn sắc**,
-300/600 dpi, A4/Letter, in một mặt, lề bảo thủ 6,35 mm. Mỗi dòng raster được gửi
-ngay; bộ đệm driver khoảng 2 KB, không tăng theo số trang. Máy màu có PCL5c/PS
-có thể dùng đường in đơn sắc này; chưa có in màu / duplex / scanner cho driver chung.
+Bộ nạp offline cũng tự tải/kiểm tra/cache một lần rồi nạp phân vùng HP cùng ESP,
+không cần chọn file `.dl` thủ công. File đã lưu trên ESP từ bản cũ được giữ khi
+**không chọn Erase device**. Trang `/hp-firmware` vẫn cho phép nhập file riêng.
 
-Máy phải dùng USB Printer Class và khai báo CMD phù hợp trong IEEE1284 ID.
-Firmware ưu tiên driver Canon/HP chuyên dụng, sau đó mới chọn PCL5/PS từ CMD;
-không đoán giao thức dựa trên tên thương hiệu hoặc tự gửi dữ liệu thử vào máy lạ.
-Các token PCLXL/PCL6 riêng lẻ, PCL3GUI/PCLm, UFRII, SPL và ZJS không được nhận
-nhầm là PCL5. Thiếu CMD phù hợp thì từ chối in. Cần kiểm chứng trên từng model.
+Firmware HP có giấy phép riêng; repo và ZIP công khai không chứa blob đó và không
+cấp lại giấy phép GPL cho nó. Công cụ lấy từ mirror upstream
+`https://www.quirinux.org/printers/sihpP1006.tar.gz`, giữ SHA256 HPDL:
+`b9293c793ea8666b6ea9fd624c2bb1f00ef697c3e710cf1189396442df7ad2a2`.
+Nguồn không truy cập được, TLS hoặc checksum sai sẽ dừng an toàn và ghi log;
+không có firmware HP thì không thể bảo đảm khởi động P1006 sau khi tắt nguồn.
 
-| Dòng máy / nhóm | Tình trạng trong firmware |
-|---|---|
-| Canon LBP2900 | Driver CAPT riêng, chưa thử phần cứng |
-| HP P1006 | Driver XQX/JBIG riêng + HPDL do người dùng cung cấp |
-| Canon PIXMA MG/MP/iP/E/TS/MX có sẵn trong registry | Giữ nguyên driver BJL của dự án gốc; không có nghĩa mọi PIXMA đều được hỗ trợ |
-| HP LaserJet 1320, P2035, P2055 | Ứng viên PCL5/PS theo thông số hãng; chỉ tự chọn nếu USB CMD công bố phù hợp, chưa in thử |
-| Máy USB khác khai báo PCL5-compatible hoặc PostScript | Driver chung thử nghiệm, cần in trang kiểm tra |
-| Canon LBP6030/6030w | **Chưa hỗ trợ**: UFR II LT, khác CAPT |
-| HP P1102; HP1020 và các máy host-based chưa có adapter | **Chưa hỗ trợ**: cần giao thức/khởi tạo riêng |
-| Brother HL-L2321D | **Chưa hỗ trợ**: không giả định PCL6 của model khác trong cùng họ |
-| Epson L3210/L3250, Canon G-series chưa có adapter, Samsung SPL | **Chưa hỗ trợ**: không thêm tên để giả lập tương thích |
+### Nạp offline Windows, không cài ứng dụng
 
-Nguồn kỹ thuật:
-[HP PCL5 reference](https://www.hp.com/ctg/Manual/bpl13210.pdf),
-[Adobe PostScript reference](https://www.adobe.com/jp/print/postscript/pdfs/PLRM.pdf),
-[HP P2035](https://support.hp.com/us-en/product/product-specs/hp-laserjet-p2035-printer-series/3662026),
-[HP P2055](https://support.hp.com/vn-en/product/product-specs/hp-laser-p2055-series/3662052),
-[HP1320](https://support.hp.com/us-en/product/product-specs/hp-laser-1320-series/410622),
-[Canon6030](https://vn.canon/en/consumer/imageclass-lbp6030/main/product),
-[Brother2321D](https://support.brother.com/g/b/spec.aspx?c=vn&lang=en&prod=hll2321d_as),
-[Epson3210](https://www.epson.com.vn/p/C11CJ68501).
-Đây là danh sách tương thích kỹ thuật / ứng viên thử nghiệm, không phải bảng xếp
-hạng thị phần Việt Nam hay chứng nhận đã in ổn định trên tất cả model.
+[Tải ZIP v0.7.0](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.7.0.zip).
+Giải nén toàn bộ vào thư mục có quyền ghi, chạy **START.cmd**, mở bằng Chrome/Edge.
+Chọn đúng HP/Canon, cắm UART/COM, chọn cổng và nạp theo tiến trình. Không cần Python,
+Arduino IDE hay Internet cho trang nạp; **lần chuẩn bị HP đầu cần Internet một lần**.
+Giữ cửa sổ launcher mở đến khi nạp/cấu hình xong. `START_CANON.cmd` bỏ bước tải HP.
+Launcher chỉ lắng nghe loopback; mã nguồn và giấy phép đi kèm ZIP. Windows x64.
+USB-UART trên một số board vẫn cần driver CH340/CP210x; browser luôn yêu cầu chọn cổng.
 
 ## Bộ nhớ và tài liệu nhiều trang
 
@@ -134,7 +106,7 @@ của hai bộ cấp điện khác nhau.
 - Khổ A4 và Letter, lề theo driver CAPT, chuyển ảnh RGB/xám thành raster 1 bit.
 - Giao diện web để chọn PDF/ảnh, xem tiến trình và lịch sử lệnh in.
 - Wi-Fi cấu hình ngay trên web bằng Improv Serial, lưu trong NVS; vẫn có chế độ nhập qua COM.
-- Nút BOOT: nhấn để in trang kiểm tra; giữ 2 giây để hủy lệnh đang chạy.
+- Nút BOOT: nhấn để in trang kiểm tra; giữ 2 giây để hủy lệnh đang chạy, giữ 10 giây khi đã khởi động để về DHCP.
 - Timeout khi đọc/ghi CAPT; lỗi phản hồi dừng lệnh thay vì thoát toàn bộ firmware.
 
 LBP2900 không có scanner: thiết bị không quảng bá AirScan. Một số thành phần scanner
@@ -148,13 +120,13 @@ trên máy tính. Trang dùng Web Serial và ESP Web Tools 10.5.2, tự chọn f
 ESP32-S3. Cần đúng board **N16R8**, cáp USB truyền dữ liệu và cổng **UART/COM**.
 
 1. Cắm ESP vào máy tính qua UART/COM, để cổng USB OTG trống cho máy in.
-2. Bấm **Kết nối USB & nạp firmware**, chọn cổng của ESP rồi chọn **Install**.
+2. Chọn **HP P1006** hoặc **Canon LBP2900**, bấm **Kết nối USB & nạp firmware**, chọn cổng của ESP rồi chọn **Install**.
 3. Làm theo hộp thoại tiến trình. Nếu chọn xóa dữ liệu, Wi-Fi cũ sẽ bị xóa.
 4. Sau khi nạp, chọn mạng Wi-Fi 2.4 GHz và nhập mật khẩu ngay trong hộp thoại.
    Firmware v0.2 dùng Improv Serial; mật khẩu đi từ trình duyệt tới ESP qua USB,
    không được gửi lên GitHub hoặc đưa vào firmware chung.
 5. Khi kết nối thành công, hộp thoại cung cấp địa chỉ trang quản lý thiết bị.
-   Nối LBP2900 vào USB OTG, cấp điện cho máy in và thử trang kiểm tra.
+   Nối đúng máy in đã chọn vào USB OTG, cấp điện cho máy in và thử trang kiểm tra.
 
 Không cần Python, Arduino IDE hoặc PlatformIO để nạp theo cách này. Trình duyệt
 luôn yêu cầu người dùng chọn cổng USB; trang không thể tự cấp quyền USB ngầm.
@@ -178,7 +150,7 @@ nạp, nên có thể giữ Wi-Fi khi không chọn xóa dữ liệu. Ảnh gộ
 5. Nhập SSID, Enter, nhập mật khẩu, Enter. Firmware không in lại mật khẩu.
    Theo dõi dòng IP kết nối. Chỉ dùng Wi-Fi 2.4 GHz, mật khẩu 8–63 ký tự hoặc để trống
    cho mạng mở. SSID tối đa 32 byte UTF-8.
-6. Nối máy in vào USB OTG. Truy cập `http://canon-lbp2900.local/` hoặc IP in trên COM.
+6. Nối máy in vào USB OTG. Truy cập `http://hp-p1006-esp32.local/`, `http://canon-lbp2900-esp32.local/` hoặc IP in trên COM.
 7. In trang kiểm tra bằng BOOT, rồi thử một trang PDF và hai trang liên tiếp.
 
 Nếu đổi Wi-Fi, dùng `python tools/flash.py --port COM5 --reset-wifi` để xóa vùng NVS
@@ -191,8 +163,9 @@ Cài Python 3, Node.js 24 LTS và Git. Trong thư mục dự án:
 
 ```sh
 python -m pip install platformio==6.2.0
-pio run -e esp32s3
-python tools/package_firmware.py
+pio run -e hp
+python tools/package_firmware.py --env hp --out firmware/hp
+# Hoặc: pio run -e canon; đóng gói --env canon --out firmware/canon
 ```
 
 Firmware mặc định có Wi-Fi trống, nhập qua COM. Nếu muốn cấu hình lúc build, sao chép

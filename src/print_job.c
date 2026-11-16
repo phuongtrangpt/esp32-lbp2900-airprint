@@ -23,9 +23,16 @@ static const printer_driver_t *configured_driver(void)
 {
     static const printer_driver_t *d;
     if (!d) {
-        d = printer_driver_find(CONFIG_PRINTER_DRIVER);
+#if defined(PRINTSERVER_PROFILE_HP)
+        const char *id="hp-p1006";
+#elif defined(PRINTSERVER_PROFILE_CANON)
+        const char *id="canon-lbp2900";
+#else
+        const char *id=CONFIG_PRINTER_DRIVER;
+#endif
+        d = printer_driver_find(id);
         if (!d) {
-            ESP_LOGE(TAG, "no printer driver \"%s\", using \"%s\"", CONFIG_PRINTER_DRIVER, printer_drivers[0]->id);
+            ESP_LOGE(TAG, "no printer driver \"%s\", using \"%s\"", id, printer_drivers[0]->id);
             d = printer_drivers[0];
         }
     }

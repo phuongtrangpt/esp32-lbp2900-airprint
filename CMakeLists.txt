@@ -1,6 +1,15 @@
 cmake_minimum_required(VERSION 3.16.0)
 # explicit version: ESP-IDF otherwise runs `git describe`, which fails in a
 # repository without commits
-set(PROJECT_VER "0.6.0-hp-2bit-preview")
+set(PROJECT_VER "0.7.0-model-profiles")
+set(PRINTSERVER_PROFILE "all" CACHE STRING "Printer profile: hp, canon, all")
+if(PRINTSERVER_PROFILE STREQUAL "hp")
+  add_compile_definitions(PRINTSERVER_PROFILE_HP=1)
+elseif(PRINTSERVER_PROFILE STREQUAL "canon")
+  add_compile_definitions(PRINTSERVER_PROFILE_CANON=1)
+elseif(NOT PRINTSERVER_PROFILE STREQUAL "all")
+  message(FATAL_ERROR "Unknown PRINTSERVER_PROFILE")
+endif()
+message(STATUS "Printer profile: ${PRINTSERVER_PROFILE}")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(usb_host_probe)

@@ -1,3 +1,4 @@
+#include "network_settings.h"
 #include "debug.h"
 #include "hp_firmware.h"
 #include "airprint_esp.h"
@@ -247,7 +248,7 @@ static bool web_http(airprint_http_t *h, const char *method, const char *path)
 static bool dev_http(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
     if (strcmp(path, "/dev/last-job.prn") != 0)
-        return debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+        return network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
     size_t len;
     const uint8_t *data = sbuf_read_begin(SBUF_PRINT, &len);
     if (!data)
@@ -321,7 +322,7 @@ static void scan_sleep(void *ctx, int ms)
 
 static bool http_handler(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
-    return debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+    return network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
 }
 
 // Most of the PSRAM, for scans (and the dev mode print capture)
@@ -458,8 +459,13 @@ esp_err_t airprint_esp_start(const char *hostname, void (*on_job_state)(bool pri
     // stable per-board UUID from the MAC address
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
+#if defined(PRINTSERVER_PROFILE_CANON)
+    snprintf(s_uuid, sizeof(s_uuid), "a4d1e9b3-0b6f-4c3e-9d2a-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2],
+             mac[3], mac[4], mac[5]);
+#else
     snprintf(s_uuid, sizeof(s_uuid), "a4d1e9b2-0b6f-4c3e-9d2a-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2],
              mac[3], mac[4], mac[5]);
+#endif
 
     const esp_timer_create_args_t targs = {.callback = cancel_timeout, .name = "ipp_cancel"};
     esp_timer_create(&targs, &s_cancel_timer);

@@ -90,6 +90,7 @@
     {/each}
   </ul>
 
+  <a href="/network" style="display:block;padding:12px 18px;text-decoration:none">Cài đặt IP động / IP tĩnh ↗</a>
   <a href="/diagnostics" style="display:block;padding:12px 18px;text-decoration:none">Nhật ký / Tải log lỗi ↗</a>
 
   <div class="foot">

@@ -11,12 +11,16 @@ import json
 import shutil
 import subprocess
 import sys
+import argparse
 
 ROOT=Path(__file__).resolve().parent.parent
 SOURCE=ROOT/'firmware'
 DEST=ROOT/'installer/public/firmware'
 
 def main():
+    global SOURCE,DEST
+    parser=argparse.ArgumentParser();parser.add_argument('--source',default='firmware');parser.add_argument('--dest',default='installer/public/firmware')
+    args=parser.parse_args();SOURCE=ROOT/args.source;DEST=ROOT/args.dest
     manifest=json.loads((SOURCE/'manifest.json').read_text())
     for line in (SOURCE/'SHA256SUMS').read_text().splitlines():
         digest,name=line.split(None,1);name=name.strip()
@@ -39,7 +43,7 @@ def main():
         (DEST/name).write_bytes(data[start:end])
     assert (DEST/'ota_data_initial.bin').read_bytes()==(SOURCE/'ota_data_initial.bin').read_bytes()
     assert (DEST/'firmware.bin').read_bytes()==(SOURCE/'firmware.bin').read_bytes()
-    web={'name':'LBP2900 AirPrint','version':manifest['version'],'new_install_prompt_erase':True,
+    web={'name':manifest.get('name','Print Server ESP 32'),'version':manifest['version'],'new_install_prompt_erase':True,
          'new_install_improv_wait_time':20,
          'builds':[{'chipFamily':'ESP32-S3','serialType':'uart','parts':[{'path':n,'offset':s,'sha256':hashlib.sha256((DEST/n).read_bytes()).hexdigest()} for n,s,e in parts]}]}
     (DEST/'web-manifest.json').write_text(json.dumps(web,indent=2)+'\n')

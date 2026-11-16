@@ -67,6 +67,13 @@ def main():
     values = parse(EXAMPLE_FILE) if os.path.exists(EXAMPLE_FILE) else {}
     values.update(parse(LOCAL_FILE))
 
+    try:
+        profile=env.GetProjectOption("custom_printer_profile", "all")
+    except NameError:
+        profile="all"
+    if profile in ("hp","canon"):
+        values["PRINTER_NAME"]="HP LaserJet P1006 ESP 32" if profile=="hp" else "Canon LBP2900 ESP 32"
+        values["HOSTNAME"]="hp-p1006-esp32" if profile=="hp" else "canon-lbp2900-esp32"
     lines = ["// Generated from .env.example and .env by tools/gen_local_config.py. Do not edit.",
              "#pragma once", ""]
     for key in sorted(values):

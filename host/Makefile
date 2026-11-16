@@ -15,7 +15,7 @@ INC = -I../components/xqx/vendor -I../components/capt/include -I../components/ca
       -I../components/scanner/include -I../components/scanner -I../components/webui/include \
       -I../components/oled/include
 
-all: bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host memory_host standard_host
+all: bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host memory_host standard_host network_config_host hp_bootstrap_host
 
 bjl_host: bjl_host.c $(BJL) $(PRINTERS) ../components/airprint/printer_driver.c ../components/canon_bjl/include/*.h \
           ../components/airprint/include/printer_driver.h
@@ -56,3 +56,9 @@ memory_host: memory_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_dri
 
 standard_host: standard_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) standard_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
+
+network_config_host: network_config_host.c ../components/network_config/network_config.c
+	$(CC) $(CFLAGS) -I../components/network_config/include $^ -o $@
+
+hp_bootstrap_host: hp_bootstrap_host.c ../components/hp_bootstrap/hp_bootstrap.c ../components/hp_bootstrap/vendor/puff.c
+	$(CC) $(CFLAGS) -I../components/hp_bootstrap/include -I../components/hp_bootstrap/vendor $^ -o $@

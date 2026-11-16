@@ -13,3 +13,5 @@ bool wifi_connected(void);
 bool wifi_get_ip(char *buf, size_t n);
 // Signal of the access point in dBm, 0 when unknown.
 int wifi_rssi(void);
+
+bool wifi_get_network(char *mask,size_t m,char *gateway,size_t g);

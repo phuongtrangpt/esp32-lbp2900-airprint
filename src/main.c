@@ -1,3 +1,4 @@
+#include "network_settings.h"
 // ESP32-S3 print server for the Canon PIXMA MG2500 series.
 //
 // LED: solid yellow = ready, no printer / solid green = printer attached /
@@ -223,6 +224,11 @@ static void button_task(void *arg)
             }
         }
 
+        if(down && xTaskGetTickCount()-pressed_at>=pdMS_TO_TICKS(10000) && !usb_printer_job_active()) {
+            ESP_LOGW(TAG,"BOOT held 10 s: restoring DHCP (keeping Wi-Fi credentials)");
+            if(network_settings_reset()==ESP_OK) { vTaskDelay(pdMS_TO_TICKS(200)); esp_restart(); }
+            pressed_at=xTaskGetTickCount();
+        }
         if (debounce(is_down(CONFIG_USER_BUTTON_GPIO), &user_down, &user_same) && user_down && !oled_wake())
             on_user_button();
     }
@@ -268,7 +274,7 @@ void app_main(void)
     oled_start(HOSTNAME);
     ESP_ERROR_CHECK(usb_printer_start(on_printer));
     xTaskCreate(button_task, "button", 3072, NULL, 5, NULL);
-    ESP_LOGI(TAG, "ready: press BOOT (or GPIO%d) to scan, twice for a test page", CONFIG_PRINT_BUTTON2_GPIO);
+    ESP_LOGI(TAG, "ready: BOOT (or GPIO%d) = test page on mono models; hold 2 s = cancel; hold 10 s = DHCP", CONFIG_PRINT_BUTTON2_GPIO);
 
     xTaskCreate(ota_confirm_task, "ota_confirm", 3072, NULL, 2, NULL);
     // AirPrint; the printer keeps working locally if WiFi isn't configured

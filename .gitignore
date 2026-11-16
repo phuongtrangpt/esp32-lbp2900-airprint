@@ -50,3 +50,11 @@ host/hp_host
 
 host/memory_host
 host/standard_host
+
+host/network_config_host
+installer/offline-dist/
+release/
+
+host/hp_bootstrap_host
+*.dl
+firmware/hp/hp-firmware.bin

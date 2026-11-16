@@ -1,3 +1,18 @@
+## 0.7.0-model-profiles
+
+Dedicated HP P1006 and Canon LBP2900 builds with model-specific ESP 32 names.
+Static IPv4/DHCP settings at /network persist in NVS; BOOT held 10 seconds after
+startup restores DHCP without deleting Wi-Fi/HP data. Invalid IP/mask/gateway/DNS
+are rejected before saving; saving while a USB print job is active is refused.
+HP bootstrap automatically downloads, verifies a pinned SHA256 and caches the
+upstream firmware; public packages do not redistribute the proprietary blob.
+Windows offline launcher prepares the HP cache once online, then serves both
+profiles from localhost without an installed runtime. ZIP includes matching source.
+Native network validation, tar/HPDL conversion, profile isolation, and Go cache
+preparation tests added. Firmware builds and deployment are checked in CI.
+The user confirmed HP A4/Letter test printing with v0.6; new v0.7 network/USB flow
+and Canon paper output still need physical verification. QEMU unavailable locally.
+
 ## 0.6.0-hp-2bit-preview
 
 - Correct P1006 native XQX packing to 1200x600 / VIDEO_BPP=2, matching its upstream PPD (client input remains 600 dpi).

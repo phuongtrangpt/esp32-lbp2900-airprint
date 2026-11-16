@@ -8,7 +8,13 @@ window.addEventListener('installer-state',({detail})=>{
   diagnostics.textContent=detail.message;
   diagnostics.classList.toggle('warn',detail.state==='error');
 });
+const model=document.querySelector("#printer-model");
+model.value=new URLSearchParams(location.search).get("model")==="canon"?"canon":"hp";
+model.addEventListener("change",ready);
 async function ready() {
+  installer.style.display="none";
+  const selected=model.value;
+  const manifestURL=new URL(`./firmware/${selected}/web-manifest.json`,document.baseURI);
   if (!window.isSecureContext || !('serial' in navigator)) {
     state.textContent='Mở bằng Chrome hoặc Edge trên máy tính để nạp qua USB.';
     state.classList.add('warn');
@@ -16,16 +22,19 @@ async function ready() {
     return;
   }
   try {
-    const response=await fetch(new URL('./firmware/web-manifest.json',document.baseURI),{cache:'no-store'});
+    const response=await fetch(manifestURL,{cache:'no-store'});
     if(!response.ok) throw new Error('Manifest chưa sẵn sàng');
     const manifest=await response.json();
+    if(selected!==model.value)return;
     if(!manifest.builds?.some(b=>b.chipFamily==='ESP32-S3')) throw new Error('Gói firmware không đúng chip');
     // Resolve from the document: Vite moves this script into assets/ at build time.
-    installer.manifest=new URL('./firmware/web-manifest.json',document.baseURI).href;
+    installer.manifest=manifestURL.href;
     document.querySelector('#version').textContent=manifest.version;
+    document.querySelector('#selected-model').textContent=manifest.name;
     state.textContent='Gói firmware đã sẵn sàng · Chọn đúng board N16R8 trước khi nạp';
     state.classList.add('ok'); installer.style.display='block';
   } catch {
+    if(selected!==model.value)return;
     state.textContent='Gói firmware chưa tải được. Hãy tải lại trang hoặc kiểm tra kết nối Internet.';
     state.classList.add('warn');
     document.querySelector('#version').textContent='Chưa tải được firmware';

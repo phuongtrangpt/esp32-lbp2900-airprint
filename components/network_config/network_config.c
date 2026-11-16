@@ -1,5 +1,9 @@
 #include "network_config.h"
+#ifdef ESP_PLATFORM
+#include "lwip/sockets.h"
+#else
 #include <arpa/inet.h>
+#endif
 #include <string.h>
 static bool host(uint32_t n) { n=ntohl(n); return (n>>24)>0 && (n>>24)!=127 && (n>>24)<224; }
 bool network_config_parse(network_config_t *out,const char *ip,const char *mask,const char *gateway,const char *dns) {

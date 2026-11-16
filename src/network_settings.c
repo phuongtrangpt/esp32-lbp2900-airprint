@@ -8,7 +8,7 @@
 #include "cJSON.h"
 #include <stdio.h>
 #include <string.h>
-#include <arpa/inet.h>
+#include "lwip/sockets.h"
 #include <stdlib.h>
 static esp_timer_handle_t restart_timer;
 static void restart_idle(void *ctx) {

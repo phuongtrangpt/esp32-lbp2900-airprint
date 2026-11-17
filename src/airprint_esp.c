@@ -1,5 +1,6 @@
 #include "network_settings.h"
 #include "cloud_update.h"
+#include "wifi.h"
 #include "debug.h"
 #include "hp_firmware.h"
 #include "airprint_esp.h"

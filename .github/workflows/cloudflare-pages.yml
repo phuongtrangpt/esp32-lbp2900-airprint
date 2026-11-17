@@ -15,22 +15,32 @@ jobs:
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
+      BUILD_COMMIT: ${{ github.event.workflow_run.head_sha }}
       BUILD_RUN_ID: ${{ github.event.workflow_run.id }}
     steps:
+      - name: Check deployment revision
+        id: current
+        run: |
+          CURRENT_SHA=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+          if [ "$CURRENT_SHA" = "$BUILD_COMMIT" ]; then
+            echo 'publish=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'publish=false' >> "$GITHUB_OUTPUT"
+          fi
       - name: Cloudflare connection status
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
             echo 'Cloudflare account is not connected. GitHub Pages remains available; see docs/CLOUDFLARE.md.'
           fi
       - uses: actions/setup-node@v4
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        if: steps.current.outputs.publish == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         with:
           node-version: '24'
       - name: Download the checked web package
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        if: steps.current.outputs.publish == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         run: gh run download "$BUILD_RUN_ID" --name vietphuong-esp-web --dir site
       - name: Publish the checked package
-        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        if: steps.current.outputs.publish == 'true' && env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

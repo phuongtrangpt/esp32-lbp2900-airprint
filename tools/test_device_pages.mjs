@@ -3,7 +3,7 @@ import vm from 'node:vm';
 import assert from 'node:assert/strict';
 function page(file,fetch){
  const source=readFileSync(file,'utf8').replaceAll('VP_FACEBOOK','"https://www.facebook.com/leviethoaiphuong"');
- const c=source.match(/static const char page\[\]=([\s\S]*?);\nstatic /)[1];
+ const c=source.match(/static const char page\[\]\s*=\s*([\s\S]*?);\n\s*static /)[1];
  const html=[...c.matchAll(/"(?:\\.|[^"\\])*"/g)].map(x=>JSON.parse(x[0])).join('');
  const js=html.split('<script>')[1].split('</script>')[0];
  const nodes=new Map();function node(id){if(!nodes.has(id))nodes.set(id,{value:id==='mode'?'dhcp':'',textContent:'',children:[],append(x){this.children.push(x)},replaceChildren(...items){this.children=items}});return nodes.get(id)}

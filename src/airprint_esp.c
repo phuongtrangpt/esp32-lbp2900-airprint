@@ -76,7 +76,7 @@ static void get_status(void *ctx, airprint_status_t *st)
     st->connected = usb_printer_connected() && print_job_supported();
     if (!st->connected)
         return;
-    st->busy = usb_printer_job_active() && !s_job_running;     // local test page or scan
+    st->busy = (usb_printer_job_active() && !s_job_running) || cloud_update_busy() || wifi_setup_pending();     // local test page or scan
     bool scanning = usb_scanner_active();
     if (scanning)
         snprintf(st->message, sizeof(st->message), "Scanning");

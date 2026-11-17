@@ -3,7 +3,8 @@
 #define VP_BRAND "vietphuong esp"
 #define VP_FACEBOOK "https://www.facebook.com/leviethoaiphuong"
 #define VP_AP_PREFIX "vietphuong esp"
-// Temporary setup hotspot only; this shared default is not administrator authentication.
+// Temporary setup hotspot only; this shared default is not administrator
+// authentication.
 #define VP_AP_PASSWORD "vietphuongesp"
 #define VP_SETUP_IP "192.168.4.1"
 #define VP_CLOUD_BASE FIRMWARE_UPDATE_BASE_URL

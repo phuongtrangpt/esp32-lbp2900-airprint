@@ -35,6 +35,13 @@ def main():
                 raise SystemExit('Refusing to package firmware built with embedded Wi-Fi. Clear .env and rebuild.')
     OUT.mkdir(parents=True,exist_ok=True)
     for name in names: shutil.copyfile(BUILD/name,OUT/name)
+    if args.env in ('hp','canon'):
+        app=(OUT/'firmware.bin').read_bytes()
+        # IDF app descriptor follows the first image and segment headers.
+        expected=('vietphuong_'+args.env).encode()
+        project=app[80:112].split(b'\0',1)[0]
+        if len(app)<288 or struct.unpack_from('<I',app,32)[0]!=0xabcd5432 or project!=expected:
+            raise SystemExit('Wrong OTA application identity: refusing model package')
     # Reset OTA selection on USB flashing so a previous ota_1 cannot boot instead.
     shutil.copyfile(BUILD/'ota_data_initial.bin', OUT/'ota_data_initial.bin')
     names.append('ota_data_initial.bin')

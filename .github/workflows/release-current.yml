@@ -1,0 +1,43 @@
+name: Publish verified vietphuong esp releases
+on:
+  workflow_run:
+    workflows: [Build HP P1006 and Canon LBP2900 ESP 32]
+    types: [completed]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  release:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      BUILD_RUN_ID: ${{ github.event.workflow_run.id }}
+      BUILD_COMMIT: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - name: Download verified firmware and offline package
+        run: gh run download "$BUILD_RUN_ID" --name esp32-hp-p1006-canon-lbp2900-profiles --dir staging
+      - name: Prepare matching release assets
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json,hashlib,shutil,re
+          manifest=json.loads(next(Path('staging').rglob('firmware/hp/manifest.json')).read_text())
+          version=re.match(r'(\d+\.\d+\.\d+)',manifest['version']).group(1)
+          asset=next(Path('staging').rglob('ESP32-PrintServer-Offline-v'+version+'.zip'))
+          shutil.copyfile(asset,asset.name)
+          Path('SHA256SUMS.txt').write_text(hashlib.sha256(asset.read_bytes()).hexdigest()+'  '+asset.name+'\n')
+          Path('tag.txt').write_text('v'+version)
+          Path('asset.txt').write_text(asset.name)
+          Path('notes.md').write_text('vietphuong esp — HP P1006 / Canon LBP2900, ESP32-S3 N16R8.\n\nTải ZIP ở Assets, giải nén toàn bộ rồi chạy START.cmd. Cập nhật: không chọn Erase device để giữ Wi-Fi/IP và file HP.\n\nWi-Fi thiết lập: vietphuong esp-XXXX; mật khẩu mặc định: vietphuongesp. Mở http://192.168.4.1/setup nếu điện thoại không tự hiện trang. BOOT 5 giây mở thiết lập và xác nhận cập nhật qua Wi-Fi trong 2 phút. BOOT 10 giây khôi phục DHCP. /setup có chế độ Bàn giao, giữ file HP. /update có kiểm tra phiên bản và tiến trình OTA.\n\nFacebook hỗ trợ: https://www.facebook.com/leviethoaiphuong\n\nCác kiểm tra tự động đã qua; tính năng Wi-Fi/captive portal và OTA mới cần thử trên ESP thật. Canon chưa xác nhận in thật. Bản thử nghiệm, có mã nguồn tương ứng trong ZIP và tag.\n')
+          PY
+      - name: Publish a new version without overwriting existing releases
+        run: |
+          RELEASE_TAG=$(cat tag.txt)
+          RELEASE_ASSET=$(cat asset.txt)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo 'Release already exists. Bump firmware version for another release.'
+          else
+            gh release create "$RELEASE_TAG" "$RELEASE_ASSET" SHA256SUMS.txt --target "$BUILD_COMMIT" --title "$RELEASE_TAG — vietphuong esp — Windows Offline" --notes-file notes.md --prerelease
+          fi

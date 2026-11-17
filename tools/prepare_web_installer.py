@@ -47,7 +47,10 @@ def main():
          'new_install_improv_wait_time':20,
          'builds':[{'chipFamily':'ESP32-S3','serialType':'uart','parts':[{'path':n,'offset':s,'sha256':hashlib.sha256((DEST/n).read_bytes()).hexdigest()} for n,s,e in parts]}]}
     (DEST/'web-manifest.json').write_text(json.dumps(web,indent=2)+'\n')
-    names=[n for n,s,e in parts]+['firmware-merged.bin','web-manifest.json']
+    app=(DEST/'firmware.bin').read_bytes()
+    ota={'notes':(ROOT/'RELEASE_NOTES.txt').read_text().strip()[:180],'version':manifest['version'],'profile':manifest['profile'],'file':'firmware.bin','size':len(app),'sha256':hashlib.sha256(app).hexdigest()}
+    (DEST/'ota-manifest.json').write_text(json.dumps(ota,indent=2,ensure_ascii=False)+'\n')
+    names=[n for n,s,e in parts]+['firmware-merged.bin','web-manifest.json','ota-manifest.json']
     (DEST/'SHA256SUMS').write_text(''.join(hashlib.sha256((DEST/n).read_bytes()).hexdigest()+'  '+n+'\n' for n in names))
     for name in ['LICENSE','LICENSE.upstream-MIT','VALIDATION.md']:
         shutil.copyfile(ROOT/name,DEST/name)

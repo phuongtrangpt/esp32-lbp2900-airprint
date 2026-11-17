@@ -1,3 +1,5 @@
+#include "cloud_update.h"
+#include "wifi.h"
 // USB printer class host driver (single device, no hub support).
 //
 // Tasks:
@@ -725,10 +727,11 @@ static bool claim_device(void)
 
 esp_err_t usb_printer_job_begin(void)
 {
-    if (!usb_printer_connected())
+    if (!usb_printer_connected() || cloud_update_busy() || wifi_setup_pending())
         return ESP_ERR_INVALID_STATE;
     if (!claim_device())
         return ESP_ERR_INVALID_STATE;
+    if(cloud_update_busy()||wifi_setup_pending()){s_p.job_active=false;return ESP_ERR_INVALID_STATE;}
     if (s_p.capt && s_p.in_inflight) {
         abort_endpoint(s_p.ep_in);
         for (int i = 0; i < 200 && s_p.in_inflight; i++) vTaskDelay(pdMS_TO_TICKS(10));

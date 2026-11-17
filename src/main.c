@@ -1,4 +1,5 @@
 #include "network_settings.h"
+#include "cloud_update.h"
 // ESP32-S3 print server for the Canon PIXMA MG2500 series.
 //
 // LED: solid yellow = ready, no printer / solid green = printer attached /
@@ -186,7 +187,7 @@ static void button_task(void *arg)
     bool down = false;
     int same = 0;
     TickType_t pressed_at = 0, released_at = 0;
-    bool long_fired = false;
+    bool long_fired = false, maintenance_fired = false;
     bool pending = false;       // a press waiting to see whether a second one follows
     bool waking = false;        // this press turned the screen on: it does nothing else
     // the user button
@@ -197,7 +198,7 @@ static void button_task(void *arg)
         if (debounce(is_down(CONFIG_PRINT_BUTTON_GPIO) || is_down(CONFIG_PRINT_BUTTON2_GPIO), &down, &same)) {
             if (down) {
                 pressed_at = xTaskGetTickCount();
-                long_fired = false;
+                long_fired = false;maintenance_fired=false;
                 waking = oled_wake();
                 if (waking)
                     pending = false;
@@ -224,9 +225,12 @@ static void button_task(void *arg)
             }
         }
 
+        if(down && !maintenance_fired && xTaskGetTickCount()-pressed_at>=pdMS_TO_TICKS(5000)) {
+            maintenance_fired=true;cloud_update_arm();
+        }
         if(down && xTaskGetTickCount()-pressed_at>=pdMS_TO_TICKS(10000) && !usb_printer_job_active()) {
             ESP_LOGW(TAG,"BOOT held 10 s: restoring DHCP (keeping Wi-Fi credentials)");
-            if(network_settings_reset()==ESP_OK) { vTaskDelay(pdMS_TO_TICKS(200)); esp_restart(); }
+            if(!cloud_update_busy() && network_settings_reset()==ESP_OK && wifi_setup_next_boot()==ESP_OK) { vTaskDelay(pdMS_TO_TICKS(200)); esp_restart(); }
             pressed_at=xTaskGetTickCount();
         }
         if (debounce(is_down(CONFIG_USER_BUTTON_GPIO), &user_down, &user_same) && user_down && !oled_wake())
@@ -238,7 +242,7 @@ static volatile bool s_debug_server_up;
 
 static bool device_busy(void)
 {
-    return usb_printer_job_active();
+    return usb_printer_job_active() || cloud_update_busy();
 }
 
 // a freshly updated firmware is kept once the WiFi (and in debug mode the
@@ -279,6 +283,7 @@ void app_main(void)
     xTaskCreate(ota_confirm_task, "ota_confirm", 3072, NULL, 2, NULL);
     // AirPrint; the printer keeps working locally if WiFi isn't configured
     if (wifi_start(HOSTNAME) == ESP_OK) {
+        setup_dns_start();
         if (airprint_esp_start(HOSTNAME, on_airprint_job) != ESP_OK)
             ESP_LOGE(TAG, "AirPrint failed to start");
         if (debug)

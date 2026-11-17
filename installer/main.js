@@ -41,3 +41,6 @@ async function ready() {
   }
 }
 ready();
+
+const refresh=document.querySelector('#refresh-release');
+if(refresh)refresh.addEventListener('click',async()=>{refresh.disabled=true;document.querySelector('#refresh-status').textContent='Đang kiểm tra phiên bản…';await ready();document.querySelector('#refresh-status').textContent='Đã kiểm tra. Nạp lại qua USB hoặc dùng /update trên ESP để cập nhật qua Wi-Fi.';refresh.disabled=false;});

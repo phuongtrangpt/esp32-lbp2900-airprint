@@ -1,3 +1,17 @@
+vietphuong esp - Facebook: https://www.facebook.com/leviethoaiphuong
+
+Wi-Fi thiet lap: vietphuong esp-XXXX. Mat khau mac dinh: vietphuongesp.
+Sau khi nap, khach co the dung dien thoai ket noi Wi-Fi nay; mo
+http://192.168.4.1/setup neu dien thoai khong tu hien trang.
+Chon Wi-Fi nha, nhap mat khau, chon DHCP hoac IP tinh. Chi luu khi ket noi duoc.
+BOOT giu 5 giay: mo thiet lap Wi-Fi va xac nhan cap nhat trong 2 phut.
+BOOT giu 10 giay: ve DHCP va khoi dong lai vao che do thiet lap.
+Trang /update kiem tra/cap nhat qua Wi-Fi, co phan tram; khong rut dien.
+Trang /setup co nut Ban giao de xoa Wi-Fi/IP da thu, GIU file HP.
+Quy trinh ban giao: nap, cau hinh tam, thu in va chuan bi HPDL, sau do Ban giao.
+Wi-Fi thiet lap WPA2 dung mat khau mac dinh chung, chi mo khi can thiet lap.
+Portal/OTA moi can thu tren ESP that; build/test khong thay the kiem thu phan cung.
+
 ESP 32 PRINT SERVER - BO NAP OFFLINE WINDOWS x64
 
 1. Giai nen TOAN BO ZIP vao thu muc co quyen ghi.

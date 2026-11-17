@@ -1,0 +1,1 @@
+vietphuong esp: thiết lập Wi-Fi bằng điện thoại, IP động/tĩnh, chế độ bàn giao giữ file HP và cập nhật firmware qua Wi-Fi có tiến trình.

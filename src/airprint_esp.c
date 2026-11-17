@@ -1,4 +1,5 @@
 #include "network_settings.h"
+#include "cloud_update.h"
 #include "debug.h"
 #include "hp_firmware.h"
 #include "airprint_esp.h"
@@ -248,7 +249,7 @@ static bool web_http(airprint_http_t *h, const char *method, const char *path)
 static bool dev_http(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
     if (strcmp(path, "/dev/last-job.prn") != 0)
-        return network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+        return wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
     size_t len;
     const uint8_t *data = sbuf_read_begin(SBUF_PRINT, &len);
     if (!data)
@@ -322,7 +323,7 @@ static void scan_sleep(void *ctx, int ms)
 
 static bool http_handler(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
-    return network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+    return wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
 }
 
 // Most of the PSRAM, for scans (and the dev mode print capture)

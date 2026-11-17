@@ -58,3 +58,5 @@ release/
 host/hp_bootstrap_host
 *.dl
 firmware/hp/hp-firmware.bin
+
+host/portal_dns_host

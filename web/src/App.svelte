@@ -45,7 +45,7 @@
 
   $effect(() => {
     const name = device.printer?.name;
-    document.title = current ? `${TITLES[current]} · ${name || 'Printer'}` : name || 'Printer';
+    document.title = current ? `${TITLES[current]} · vietphuong esp` : 'vietphuong esp · Máy in Wi-Fi';
   });
 </script>
 

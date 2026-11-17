@@ -1,5 +1,7 @@
 #include "network_settings.h"
 #include "wifi.h"
+#include "cloud_update.h"
+#include "brand.h"
 #include "usb_printer.h"
 #include "nvs.h"
 #include "esp_system.h"
@@ -12,7 +14,7 @@
 #include <stdlib.h>
 static esp_timer_handle_t restart_timer;
 static void restart_idle(void *ctx) {
-    if(usb_printer_job_active()) { esp_timer_start_once(restart_timer,3000000); return; }
+    if(usb_printer_job_active()||cloud_update_busy()||wifi_setup_pending()) { esp_timer_start_once(restart_timer,3000000); return; }
     esp_restart();
 }
 void network_settings_load(network_config_t *c) {
@@ -22,15 +24,15 @@ void network_settings_load(network_config_t *c) {
         nvs_close(h);
     }
 }
-static esp_err_t save(const network_config_t *c) {
+esp_err_t network_settings_save(const network_config_t *c) {
     nvs_handle_t h; esp_err_t e=nvs_open("print_net",NVS_READWRITE,&h);
     if(e==ESP_OK) { e=nvs_set_blob(h,"v1",c,sizeof(*c)); if(e==ESP_OK)e=nvs_commit(h); nvs_close(h); } return e;
 }
-esp_err_t network_settings_reset(void) { network_config_t c={0}; return save(&c); }
+esp_err_t network_settings_reset(void) { network_config_t c={0}; return network_settings_save(&c); }
 static const char page[]=
 "<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Cài đặt IP ESP 32</title>"
 "<style>body{font:17px system-ui;max-width:620px;margin:30px auto;padding:20px;background:#f3f7fa}label{display:block;margin:14px 0}input,select,button{font:inherit;padding:10px;box-sizing:border-box;width:100%;border:1px solid #acbdc8;border-radius:8px}button{background:#087e81;color:white}a{color:#087e81}small{display:block}</style>"
-"<a href='/'>← Trang in</a><h1>Cài đặt địa chỉ IP</h1><p id=current></p><form id=form>"
+"<a href='/'>← Trang in</a> · <a href='" VP_FACEBOOK "' target=_blank rel=noopener>Facebook hỗ trợ</a><h1>vietphuong esp · Địa chỉ IP</h1><p id=current></p><form id=form>"
 "<label>Chế độ<select id=mode><option value=dhcp>IP động (DHCP)</option><option value=static>IP tĩnh</option></select></label>"
 "<div id=fields><label>Địa chỉ IP<input id=ip required inputmode=decimal></label><label>Subnet mask<input id=mask required placeholder=255.255.255.0></label>"
 "<label>Gateway<input id=gateway required></label><label>DNS<input id=dns required placeholder=1.1.1.1></label></div>"
@@ -59,14 +61,14 @@ bool network_settings_http(airprint_http_t *h,const char *method,const char *pat
         airprint_http_send_ex(h,"200 OK","application/json","Cache-Control: no-store\r\n",body,n);return true;
     }
     if(html||strcmp(method,"POST")){response(h,"405 Method Not Allowed","Chỉ hỗ trợ GET/POST.",NULL);return true;}
-    if(usb_printer_job_active()){response(h,"409 Conflict","Đang in. Hãy lưu cài đặt sau khi in xong.",NULL);return true;}
+    if(usb_printer_job_active()||cloud_update_busy()||wifi_setup_pending()){response(h,"409 Conflict","Đang in. Hãy lưu cài đặt sau khi in xong.",NULL);return true;}
     char body[513];int n=airprint_http_read_body(h,body,512);if(n<=0||n>=512){response(h,"400 Bad Request","Dữ liệu quá dài hoặc trống.",NULL);return true;}body[n]=0;
     cJSON *j=cJSON_ParseWithLength(body,n);const char *mode=value(j,"mode");network_config_t c={0};
     bool valid=mode&&(!strcmp(mode,"dhcp")||(!strcmp(mode,"static")&&network_config_parse(&c,value(j,"ip"),value(j,"mask"),value(j,"gateway"),value(j,"dns"))));
     cJSON_Delete(j);
     if(!valid){response(h,"400 Bad Request","IP/mask/gateway/DNS không hợp lệ. Gateway phải cùng subnet; không dùng địa chỉ mạng/broadcast.",NULL);return true;}
     if(!restart_timer){const esp_timer_create_args_t a={.callback=restart_idle,.name="net_restart"};if(esp_timer_create(&a,&restart_timer)!=ESP_OK){response(h,"500 Internal Server Error","Không tạo được lịch khởi động lại.",NULL);return true;}}
-    if(save(&c)!=ESP_OK){response(h,"500 Internal Server Error","Không lưu được cấu hình.",NULL);return true;}
+    if(network_settings_save(&c)!=ESP_OK){response(h,"500 Internal Server Error","Không lưu được cấu hình.",NULL);return true;}
     char address[24],url[64];inet_ntop(AF_INET,&c.ip,address,sizeof(address));snprintf(url,sizeof(url),"http://%s/",address);
     response(h,"200 OK",c.enabled?"Đã lưu IP tĩnh. ESP sẽ khởi động lại sau vài giây khi không có lệnh in.":"Đã lưu DHCP. Sau khi khởi động lại, xem IP trên router hoặc kết nối USB để biết địa chỉ mới.",c.enabled?url:NULL);
     esp_timer_stop(restart_timer);esp_timer_start_once(restart_timer,3000000);return true;

@@ -74,6 +74,11 @@ def main():
     if profile in ("hp","canon"):
         values["PRINTER_NAME"]="HP LaserJet P1006 ESP 32" if profile=="hp" else "Canon LBP2900 ESP 32"
         values["HOSTNAME"]="hp-p1006-esp32" if profile=="hp" else "canon-lbp2900-esp32"
+    if os.environ.get("FIRMWARE_UPDATE_BASE_URL"):
+        values["FIRMWARE_UPDATE_BASE_URL"]=os.environ["FIRMWARE_UPDATE_BASE_URL"]
+    update_base=values.get("FIRMWARE_UPDATE_BASE_URL", "")
+    if not update_base.startswith("https://") or not update_base.endswith("/"):
+        raise SystemExit("FIRMWARE_UPDATE_BASE_URL must use HTTPS and end in / ")
     lines = ["// Generated from .env.example and .env by tools/gen_local_config.py. Do not edit.",
              "#pragma once", ""]
     for key in sorted(values):

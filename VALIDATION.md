@@ -1,3 +1,29 @@
+## 0.8.0-vietphuong · vietphuong esp
+
+Brand and support: https://www.facebook.com/leviethoaiphuong.
+Setup AP `vietphuong esp-XXXX`, WPA2 default password `vietphuongesp`; first boot
+without saved Wi-Fi opens setup. Captive DNS responds only on AP address
+192.168.4.1; fallback browser URL http://192.168.4.1/setup. Phones do not need USB.
+Hold BOOT 5 seconds after boot for maintenance/setup; hold 10 seconds for DHCP
+recovery and setup after restart. Saved devices require a physical maintenance
+window before changing Wi-Fi through the portal. Credentials save after GOT_IP;
+invalid attempts keep previous saved settings and allow retry. AP closes 30 seconds
+after successful setup. The shared default AP password is not admin authentication.
+Handover at /setup clears saved Wi-Fi/IP only, preserves HP firmware, then reboots
+when idle. Always use credential-free public builds for customer devices.
+/update supports user-triggered HTTPS version checks and OTA with progress.
+Install requires BOOT confirmation within 120 seconds; no updates while printing
+or provisioning. New jobs are refused while update/provisioning is reserved.
+SHA-256, exact byte count, chip image validation and app project_name/profile/version
+checks precede boot-slot selection. Only the inactive app partition is written;
+NVS/HP data remain. Existing bootloader rollback checks Wi-Fi health after reboot.
+TLS trust and SHA-256 are used; no new device secure-boot/signing-key system is claimed.
+Cloud manifests/images are static and default to the existing free GitHub Pages
+origin. Configure FIRMWARE_UPDATE_BASE_URL when moving firmware hosting to Cloudflare.
+Source remains on GitHub and is linked under Licenses, with matching source in ZIP.
+Native/CI checks are used; captive popup, Wi-Fi/AP radio and OTA power-cut/recovery
+remain pending physical validation. No board attached; QEMU unavailable locally.
+
 ## 0.7.0-model-profiles
 
 Dedicated HP P1006 and Canon LBP2900 builds with model-specific ESP 32 names.

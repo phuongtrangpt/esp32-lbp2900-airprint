@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import vm from 'node:vm';
 const source=readFileSync(new URL('../main.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'');
-function setup(search='') {
+function setup(search='',serial=true) {
  const nodes=new Map();const pending=[];
  const document={baseURI:'https://example.test/sub/',querySelector(id){if(!nodes.has(id))nodes.set(id,{value:'',style:{},classList:{add(){},toggle(){}},addEventListener(e,f){this[e]=f}});return nodes.get(id)}};
- const context=vm.createContext({document,URL,URLSearchParams,location:{search},window:{isSecureContext:true,addEventListener(){}},navigator:{serial:{}},fetch:(url,options)=>new Promise(resolve=>pending.push({url:String(url),options,resolve}))});
+ const context=vm.createContext({document,URL,URLSearchParams,location:{search},window:{isSecureContext:true,addEventListener(){}},navigator:serial?{serial:{}}:{},fetch:(url,options)=>new Promise(resolve=>pending.push({url:String(url),options,resolve}))});
  vm.runInContext(source,context);
  return {nodes,pending,context};
 }
@@ -28,4 +28,11 @@ test('slow HP response cannot replace selected Canon manifest',async()=>{
 });
 test('failed selected manifest keeps install button hidden',async()=>{
  const s=setup();s.pending[0].resolve({ok:false});await tick();assert.equal(s.nodes.get('#installer').style.display,'none');
+});
+
+test('phone can check firmware version without Web Serial; USB remains hidden',async()=>{
+ const s=setup('',false);s.pending[0].resolve(manifest('HP'));await tick();
+ assert.equal(s.nodes.get('#version').textContent,'0.7.0');
+ assert.equal(s.nodes.get('#installer').style.display,'none');
+ assert.match(s.nodes.get('#load-state').textContent,/Điện thoại/);
 });

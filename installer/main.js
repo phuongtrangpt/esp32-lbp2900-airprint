@@ -15,12 +15,7 @@ async function ready() {
   installer.style.display="none";
   const selected=model.value;
   const manifestURL=new URL(`./firmware/${selected}/web-manifest.json`,document.baseURI);
-  if (!window.isSecureContext || !('serial' in navigator)) {
-    state.textContent='Mở bằng Chrome hoặc Edge trên máy tính để nạp qua USB.';
-    state.classList.add('warn');
-    document.querySelector('#version').textContent='Web Serial chưa khả dụng';
-    return;
-  }
+  const supported=window.isSecureContext && ('serial' in navigator);
   try {
     const response=await fetch(manifestURL,{cache:'no-store'});
     if(!response.ok) throw new Error('Manifest chưa sẵn sàng');
@@ -31,16 +26,19 @@ async function ready() {
     installer.manifest=manifestURL.href;
     document.querySelector('#version').textContent=manifest.version;
     document.querySelector('#selected-model').textContent=manifest.name;
-    state.textContent='Gói firmware đã sẵn sàng · Chọn đúng board N16R8 trước khi nạp';
-    state.classList.add('ok'); installer.style.display='block';
+    state.textContent=supported?'Gói firmware đã sẵn sàng · Chọn đúng board N16R8 trước khi nạp':'Điện thoại: cấu hình Wi-Fi và cập nhật tại trang ESP. Nạp USB lần đầu dùng Chrome/Edge trên máy tính.';
+    state.classList.toggle('ok',supported);state.classList.toggle('warn',!supported);
+    installer.style.display=supported?'block':'none';
+    return manifest;
   } catch {
     if(selected!==model.value)return;
     state.textContent='Gói firmware chưa tải được. Hãy tải lại trang hoặc kiểm tra kết nối Internet.';
     state.classList.add('warn');
     document.querySelector('#version').textContent='Chưa tải được firmware';
+    return false;
   }
 }
 ready();
 
 const refresh=document.querySelector('#refresh-release');
-if(refresh)refresh.addEventListener('click',async()=>{refresh.disabled=true;document.querySelector('#refresh-status').textContent='Đang kiểm tra phiên bản…';await ready();document.querySelector('#refresh-status').textContent='Đã kiểm tra. Nạp lại qua USB hoặc dùng /update trên ESP để cập nhật qua Wi-Fi.';refresh.disabled=false;});
+if(refresh)refresh.addEventListener('click',async()=>{refresh.disabled=true;document.querySelector('#refresh-status').textContent='Đang kiểm tra phiên bản…';const manifest=await ready();document.querySelector('#refresh-status').textContent=manifest?`Phiên bản trên web: ${manifest.version}. Dùng /update trên ESP để cập nhật qua Wi-Fi, hoặc nạp lại bằng USB.`:'Chưa kiểm tra được phiên bản. Hãy kiểm tra kết nối rồi thử lại.';refresh.disabled=false;});

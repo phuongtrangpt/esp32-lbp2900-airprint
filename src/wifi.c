@@ -561,6 +561,7 @@ esp_err_t wifi_submit_setup(const char *ssid, const char *password,
     taskEXIT_CRITICAL(&s_setup_lock);
     return ESP_ERR_INVALID_STATE;
   }
+  s_setup_error = 0; // Clear an earlier failed attempt before exposing queued status.
   setup_request_t r = {.network = *cfg, .serial = serial};
   snprintf(r.ssid, sizeof(r.ssid), "%s", ssid);
   snprintf(r.password, sizeof(r.password), "%s", password);

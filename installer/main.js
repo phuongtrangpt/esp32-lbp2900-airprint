@@ -1,3 +1,4 @@
+import './progress.js';
 import './style.css';
 import 'esp-web-tools/dist/install-button.js';
 const state=document.querySelector('#load-state');

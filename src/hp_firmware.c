@@ -68,21 +68,21 @@ bool hp_firmware_http(airprint_http_t *h,const char *method,const char *path) {
     }
     airprint_http_send(h,status,"text/plain; charset=utf-8",msg,strlen(msg)); return true;
 }
-extern const uint8_t hp_blob_start[] asm("_binary_hp_p1006_dl_start");
-extern const uint8_t hp_blob_end[] asm("_binary_hp_p1006_dl_end");
+extern const uint8_t hp_p1006_blob[];
+extern const size_t hp_p1006_blob_size;
 static esp_err_t load_embedded_hpdl(const esp_partition_t *p) {
     if (!p) return ESP_FAIL;
-    size_t len = hp_blob_end - hp_blob_start;
+    size_t len = hp_p1006_blob_size;
     static const uint8_t expected[32]={0xb9,0x29,0x3c,0x79,0x3e,0xa8,0x66,0x6b,0x6e,0xa9,0xfd,0x62,0x4c,0x2b,0xb1,0xf0,0x0e,0xf6,0x97,0xc3,0xe7,0x10,0xcf,0x11,0x89,0x39,0x64,0x42,0xdf,0x7a,0xd2,0xa2};
     uint8_t digest[32];
     if (len != 222891 || len + 12 > p->size ||
-        mbedtls_sha256(hp_blob_start,len,digest,0) || memcmp(digest,expected,32)) {
+        mbedtls_sha256(hp_p1006_blob,len,digest,0) || memcmp(digest,expected,32)) {
         ESP_LOGE("hp_firmware","Embedded HP firmware checksum failed");
         return ESP_FAIL;
     }
-    uint32_t hdr[]={MAGIC,len,esp_rom_crc32_le(0,hp_blob_start,len)};
+    uint32_t hdr[]={MAGIC,len,esp_rom_crc32_le(0,hp_p1006_blob,len)};
     ESP_RETURN_ON_ERROR(esp_partition_erase_range(p,0,p->size),"hp_firmware","erase cache");
-    ESP_RETURN_ON_ERROR(esp_partition_write(p,sizeof(hdr),hp_blob_start,len),"hp_firmware","write embedded payload");
+    ESP_RETURN_ON_ERROR(esp_partition_write(p,sizeof(hdr),hp_p1006_blob,len),"hp_firmware","write embedded payload");
     ESP_RETURN_ON_ERROR(esp_partition_write(p,0,hdr,sizeof(hdr)),"hp_firmware","commit cache");
     ESP_LOGI("hp_firmware","Embedded HP P1006 firmware verified and cached; Internet not required");
     return ESP_OK;

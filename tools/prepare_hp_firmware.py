@@ -33,7 +33,7 @@ def generate_c(out):
     data=Path(out).read_bytes()
     if not valid(data):raise ValueError('Invalid embedded HP data')
     lines=[','.join('0x%02x'%x for x in data[i:i+24]) for i in range(0,len(data),24)]
-    text='#include <stddef.h>\n#include <stdint.h>\n#if !defined(PRINTSERVER_PROFILE_CANON)\nconst uint8_t hp_p1006_blob[] = {\n'+',\n'.join(lines)+'\n};\nconst size_t hp_p1006_blob_size = sizeof(hp_p1006_blob);\n#endif\n'
+    text='#include <stddef.h>\n#include <stdint.h>\n#if !defined(PRINTSERVER_PROFILE_CANON) && !defined(PRINTSERVER_PROFILE_PIXMA) && !defined(PRINTSERVER_PROFILE_STANDARD)\nconst uint8_t hp_p1006_blob[] = {\n'+',\n'.join(lines)+'\n};\nconst size_t hp_p1006_blob_size = sizeof(hp_p1006_blob);\n#endif\n'
     dest=Path(out).with_name('hp_p1006_blob.c')
     if not dest.exists() or dest.read_text()!=text:dest.write_text(text)
 if __name__=='__main__':

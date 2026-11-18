@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile,stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-for (const profile of ['hp','canon']) {
+for (const profile of ['hp','canon','pixma','standard']) {
 const root=new URL(`../public/firmware/${profile}/`,import.meta.url);
 const available=await stat(new URL('web-manifest.json',root)).then(()=>true,()=>false);
 test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`,{skip:!available},async()=>{

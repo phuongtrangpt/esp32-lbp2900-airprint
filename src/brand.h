@@ -11,6 +11,10 @@
 #define VP_PROFILE "hp"
 #elif defined(PRINTSERVER_PROFILE_CANON)
 #define VP_PROFILE "canon"
+#elif defined(PRINTSERVER_PROFILE_PIXMA)
+#define VP_PROFILE "pixma"
+#elif defined(PRINTSERVER_PROFILE_STANDARD)
+#define VP_PROFILE "standard"
 #else
 #define VP_PROFILE "all"
 #endif

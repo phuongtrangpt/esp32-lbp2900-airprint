@@ -35,3 +35,5 @@ giu nguyen Wi-Fi va firmware HP. Khong giu BOOT trong luc cap nguon.
 Nhan BOOT ngan de in test; giu 2 giay de huy lenh in.
 May tinh nay chi can de nap, ESP tu xu ly in sau khi cau hinh.
 Ma nguon tuong ung va giay phep di kem; giu chung khi chia se.
+
+Them lua chon PIXMA USB va PCL5/PostScript USB. Xem danh sach model va tra cuu tren trang nap. Hai nhom moi dang thu nghiem; khong dung cho UFR II/GDI/PCL6-only.

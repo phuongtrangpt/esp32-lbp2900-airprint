@@ -1,4 +1,4 @@
-#if defined(PRINTSERVER_PROFILE_CANON)
+#if defined(PRINTSERVER_PROFILE_CANON) || defined(PRINTSERVER_PROFILE_PIXMA) || defined(PRINTSERVER_PROFILE_STANDARD)
 #include "hp_firmware.h"
 bool hp_firmware_http(airprint_http_t *h,const char *method,const char *path){return false;}
 esp_err_t hp_firmware_load(void){return ESP_ERR_NOT_SUPPORTED;}

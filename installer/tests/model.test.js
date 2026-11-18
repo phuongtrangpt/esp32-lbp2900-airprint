@@ -13,7 +13,7 @@ function setup(search='',serial=true) {
 const manifest=name=>({ok:true,json:async()=>({name,version:'0.7.0',builds:[{chipFamily:'ESP32-S3'}]})});
 const tick=()=>new Promise(resolve=>setImmediate(resolve));
 test('HP default resolves manifest from page base; Canon query selects Canon',async()=>{
- for(const [query,profile] of [['','hp'],['?model=canon','canon']]) {
+ for(const [query,profile] of [['','hp'],['?model=canon','canon'],['?model=pixma','pixma'],['?model=standard','standard']]) {
   const s=setup(query);assert.equal(s.pending[0].url,`https://example.test/sub/firmware/${profile}/web-manifest.json`);
   s.pending[0].resolve(manifest(profile));await tick();
   assert.equal(s.nodes.get('#installer').manifest,s.pending[0].url);

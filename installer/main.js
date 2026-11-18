@@ -1,3 +1,4 @@
+import './compatibility.js';
 import './progress.js';
 import './style.css';
 import 'esp-web-tools/dist/install-button.js';
@@ -10,7 +11,8 @@ window.addEventListener('installer-state',({detail})=>{
   diagnostics.classList.toggle('warn',detail.state==='error');
 });
 const model=document.querySelector("#printer-model");
-model.value=new URLSearchParams(location.search).get("model")==="canon"?"canon":"hp";
+const requested=new URLSearchParams(location.search).get("model");
+model.value=["hp","canon","pixma","standard"].includes(requested)?requested:"hp";
 model.addEventListener("change",ready);
 async function ready() {
   installer.style.display="none";

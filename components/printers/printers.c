@@ -22,6 +22,14 @@ const printer_driver_t *const printer_drivers[] = {
     &hp_p1006_driver,
 #elif defined(PRINTSERVER_PROFILE_CANON)
     &canon_lbp2900_driver,
+#elif defined(PRINTSERVER_PROFILE_PIXMA)
+    &canon_mg2500_driver, &canon_mg2400_driver, &canon_p200_driver, &canon_mg2900_driver, &canon_mg3000_driver,
+    &canon_e470_driver, &canon_e460_driver, &canon_ip2800_driver, &canon_e3100_driver, &canon_ts3100_driver,
+    &canon_mp230_driver, &canon_ip2700_driver, &canon_mp250_driver, &canon_mp270_driver, &canon_mp280_driver,
+    &canon_mp490_driver, &canon_mp493_driver, &canon_mp495_driver, &canon_mx340_driver, &canon_mx350_driver,
+    &canon_mx360_driver, &canon_mx410_driver, &canon_mx420_driver,
+#elif defined(PRINTSERVER_PROFILE_STANDARD)
+    &generic_pcl5_driver, &generic_postscript_driver,
 #else
     &canon_lbp2900_driver, &hp_p1006_driver, &canon_mg2500_driver, &canon_mg2400_driver, &canon_p200_driver, &canon_mg2900_driver, &canon_mg3000_driver,
     &canon_e470_driver, &canon_e460_driver, &canon_ip2800_driver, &canon_e3100_driver, &canon_ts3100_driver,
@@ -84,7 +92,7 @@ const printer_driver_t *printer_driver_match(uint16_t vid, uint16_t pid, const c
         if (d->usb_mdl && same_model(d->usb_mdl, mdl) && (!mfg[0] || !d->usb_mfg || !strcasecmp(d->usb_mfg, mfg)))
             return d;
     }
-#if !defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_CANON)
+#if !defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_CANON) && !defined(PRINTSERVER_PROFILE_PIXMA)
     char commands[256];
     device_id_field(device_id,"CMD","COMMAND SET",commands,sizeof(commands));
     for (char *p=commands; p && *p;) {

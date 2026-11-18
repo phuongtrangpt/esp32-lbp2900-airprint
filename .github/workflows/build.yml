@@ -37,6 +37,16 @@ jobs:
           pio run -e canon
           python tools/package_firmware.py --env canon --out firmware/canon
           python tools/prepare_web_installer.py --source firmware/canon --dest installer/public/firmware/canon
+      - name: Build Canon PIXMA USB firmware
+        run: |
+          pio run -e pixma
+          python tools/package_firmware.py --env pixma --out firmware/pixma
+          python tools/prepare_web_installer.py --source firmware/pixma --dest installer/public/firmware/pixma
+      - name: Build standard PCL5 and PostScript USB firmware
+        run: |
+          pio run -e standard
+          python tools/package_firmware.py --env standard --out firmware/standard
+          python tools/prepare_web_installer.py --source firmware/standard --dest installer/public/firmware/standard
       - name: Build host tests
         run: make -C host all
       - name: Static IP and automatic HP bootstrap tests

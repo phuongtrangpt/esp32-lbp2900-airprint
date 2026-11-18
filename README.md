@@ -1,3 +1,17 @@
+## v0.9.0 — Chọn firmware theo model USB
+
+| Bản | Model / điều kiện | Trạng thái |
+|---|---|---|
+| hp | HP LaserJet P1006 | Bản riêng, có file HP nhúng |
+| canon | Canon LBP2900 | CAPT thử nghiệm |
+| pixma | 23 dòng Canon PIXMA trong danh sách trên web | Driver có sẵn; bản ghép mới chưa thử giấy thật |
+| standard | HP 1320, P2015, P2055 là ứng viên; USB phải khai báo PCL5 hoặc PostScript | Thử nghiệm, in một mặt đen trắng |
+
+Trang web có tra cứu model và danh sách dòng đầy đủ. Không hỗ trợ UFR II/UFR II LT,
+GDI hoặc máy chỉ có PCL6/PCL XL. Model không nằm trong danh sách: chưa xác nhận.
+Máy có Wi-Fi hoạt động sẵn không cần thêm ESP. Mỗi bản có nhận diện OTA riêng;
+chuyển nhóm máy bằng USB, không cài chéo profile qua OTA.
+
 HP P1006 printer bootstrap is embedded in HP firmware (222891 bytes, hash verified). First print and OTA recovery require no Internet on the ESP. Canon builds exclude the HP binary. Generated payload: tools/prepare_hp_firmware.py.
 
 ## 0.8.2-vietphuong · vietphuong esp

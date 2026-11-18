@@ -74,6 +74,9 @@ def main():
     if profile in ("hp","canon"):
         values["PRINTER_NAME"]="HP LaserJet P1006 ESP 32" if profile=="hp" else "Canon LBP2900 ESP 32"
         values["HOSTNAME"]="hp-p1006-esp32" if profile=="hp" else "canon-lbp2900-esp32"
+    if profile in ("pixma","standard"):
+        values["PRINTER_NAME"]="Canon PIXMA USB ESP 32" if profile=="pixma" else "USB Printer PCL PS ESP 32"
+        values["HOSTNAME"]="canon-pixma-esp32" if profile=="pixma" else "usb-pcl-ps-esp32"
     if os.environ.get("FIRMWARE_UPDATE_BASE_URL"):
         values["FIRMWARE_UPDATE_BASE_URL"]=os.environ["FIRMWARE_UPDATE_BASE_URL"]
     update_base=values.get("FIRMWARE_UPDATE_BASE_URL", "")

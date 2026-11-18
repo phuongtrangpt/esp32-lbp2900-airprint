@@ -3,7 +3,7 @@ import shutil,tempfile,zipfile,subprocess,re
 ROOT=Path(__file__).resolve().parents[1]
 def main():
  source=ROOT/'installer/dist';exe=ROOT/'release/PrintServer-Offline.exe'
- if not exe.exists() or not (source/'firmware/hp/web-manifest.json').exists() or not (source/'firmware/canon/web-manifest.json').exists():raise SystemExit('Build both profiles, installer and Windows launcher first')
+ if not exe.exists() or any(not (source/f'firmware/{p}/web-manifest.json').exists() for p in ('hp','canon','pixma','standard')):raise SystemExit('Build all profiles, installer and Windows launcher first')
  dest=source/'downloads';dest.mkdir(exist_ok=True)
  version=re.search(r'set\(PROJECT_VER "(\d+\.\d+\.\d+)',(ROOT/'CMakeLists.txt').read_text()).group(1)
  archive=dest/('ESP32-PrintServer-Offline-v'+version+'.zip')

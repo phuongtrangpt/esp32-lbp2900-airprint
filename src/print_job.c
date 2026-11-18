@@ -27,6 +27,10 @@ static const printer_driver_t *configured_driver(void)
         const char *id="hp-p1006";
 #elif defined(PRINTSERVER_PROFILE_CANON)
         const char *id="canon-lbp2900";
+#elif defined(PRINTSERVER_PROFILE_PIXMA)
+        const char *id="canon-mg2500";
+#elif defined(PRINTSERVER_PROFILE_STANDARD)
+        const char *id="generic-pcl5";
 #else
         const char *id=CONFIG_PRINTER_DRIVER;
 #endif

@@ -1,5 +1,5 @@
 set(HP_EXTRA_SOURCES "")
-if(NOT PRINTSERVER_PROFILE STREQUAL "canon")
+if(PRINTSERVER_PROFILE STREQUAL "hp" OR PRINTSERVER_PROFILE STREQUAL "all")
     execute_process(COMMAND "${PYTHON}" "${CMAKE_CURRENT_LIST_DIR}/../tools/prepare_hp_firmware.py"
                     --out "${CMAKE_CURRENT_LIST_DIR}/hp_p1006.dl"
                     RESULT_VARIABLE HP_PREPARE_RESULT)

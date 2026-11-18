@@ -1,6 +1,6 @@
 vietphuong esp - Facebook: https://www.facebook.com/leviethoaiphuong
 
-Wi-Fi thiet lap: vietphuong esp-XXXX. Mat khau mac dinh: vietphuongesp.
+Wi-Fi thiet lap: vietphuong esp-XXXX. Khong can mat khau.
 Sau khi nap, khach co the dung dien thoai ket noi Wi-Fi nay; mo
 http://192.168.4.1/setup neu dien thoai khong tu hien trang.
 Chon Wi-Fi nha, nhap mat khau, chon DHCP hoac IP tinh. Chi luu khi ket noi duoc.

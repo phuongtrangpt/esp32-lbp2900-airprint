@@ -461,12 +461,11 @@ esp_err_t wifi_start(const char *hostname) {
   if (ap_len > sizeof(ap.ap.ssid))
     return ESP_ERR_INVALID_SIZE;
   memcpy(ap.ap.ssid, s_ap_name, ap_len);
-  snprintf((char *)ap.ap.password, sizeof(ap.ap.password), "%s",
-           VP_AP_PASSWORD);
   ap.ap.ssid_len = strlen(s_ap_name);
   ap.ap.channel = 1;
   ap.ap.max_connection = 2;
-  ap.ap.authmode = WIFI_AUTH_WPA2_PSK;
+  // Setup network is open; it closes automatically after Wi-Fi provisioning.
+  ap.ap.authmode = WIFI_AUTH_OPEN;
   ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_APSTA), TAG, "AP+STA");
   ESP_RETURN_ON_ERROR(esp_wifi_set_config(WIFI_IF_AP, &ap), TAG, "setup AP");
   if (s_initial_credentials && !force)

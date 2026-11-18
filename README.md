@@ -1,14 +1,14 @@
-## 0.8.0-vietphuong · vietphuong esp
+## 0.8.1-vietphuong · vietphuong esp
 
 Brand and support: https://www.facebook.com/leviethoaiphuong.
-Setup AP `vietphuong esp-XXXX`, WPA2 default password `vietphuongesp`; first boot
+Setup AP `vietphuong esp-XXXX`, open network, no password; first boot
 without saved Wi-Fi opens setup. Captive DNS responds only on AP address
 192.168.4.1; fallback browser URL http://192.168.4.1/setup. Phones do not need USB.
 Hold BOOT 5 seconds after boot for maintenance/setup; hold 10 seconds for DHCP
 recovery and setup after restart. Saved devices require a physical maintenance
 window before changing Wi-Fi through the portal. Credentials save after GOT_IP;
 invalid attempts keep previous saved settings and allow retry. AP closes 30 seconds
-after successful setup. The shared default AP password is not admin authentication.
+after successful setup. The setup AP is open while active; saved devices retain the physical maintenance requirement.
 Handover at /setup clears saved Wi-Fi/IP only, preserves HP firmware, then reboots
 when idle. Always use credential-free public builds for customer devices.
 /update supports user-triggered HTTPS version checks and OTA with progress.

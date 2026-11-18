@@ -1,1 +1,1 @@
-vietphuong esp: thiết lập Wi-Fi bằng điện thoại, IP động/tĩnh, chế độ bàn giao giữ file HP và cập nhật firmware qua Wi-Fi có tiến trình.
+v0.8.1: Wi-Fi thiết lập vietphuong esp-XXXX không cần mật khẩu. Giữ cơ chế BOOT khi đổi cấu hình đã lưu; AP tự tắt sau khi thiết lập thành công. Web nạp thêm chờ xác nhận cuối và kiểm tra dữ liệu flash trước khi báo thành công.

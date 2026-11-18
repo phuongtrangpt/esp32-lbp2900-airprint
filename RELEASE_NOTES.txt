@@ -1,1 +1,1 @@
-v0.8.1: Wi-Fi thiết lập vietphuong esp-XXXX không cần mật khẩu. Giữ cơ chế BOOT khi đổi cấu hình đã lưu; AP tự tắt sau khi thiết lập thành công. Web nạp thêm chờ xác nhận cuối và kiểm tra dữ liệu flash trước khi báo thành công.
+v0.8.2: Tích hợp sẵn firmware khởi động HP P1006 trong bản HP. Không cần ESP tải Internet hoặc người dùng tải file thủ công. Tự phục hồi cache từ dữ liệu nhúng; bản Canon không kèm dữ liệu HP.

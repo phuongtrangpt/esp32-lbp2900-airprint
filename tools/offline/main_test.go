@@ -54,3 +54,10 @@ func TestPrivateCachedPreparation(t *testing.T) {
 		t.Fatal("wrong HP offset")
 	}
 }
+
+func TestEmbeddedHPNeedsNoNetworkOrExtraFile(t *testing.T) {
+ root:=t.TempDir();dir:=filepath.Join(root,"firmware","hp");if e:=os.MkdirAll(dir,0700);e!=nil{t.Fatal(e)}
+ if e:=os.WriteFile(filepath.Join(dir,"web-manifest.json"),[]byte(`{"hpBootstrapEmbedded":true}`),0600);e!=nil{t.Fatal(e)}
+ if e:=prepareHP(root);e!=nil{t.Fatal(e)}
+ if _,e:=os.Stat(filepath.Join(dir,"sihpP1006.dl"));!os.IsNotExist(e){t.Fatal("unexpected separate payload")}
+}

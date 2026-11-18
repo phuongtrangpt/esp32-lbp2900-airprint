@@ -43,11 +43,15 @@ def main():
         (DEST/name).write_bytes(data[start:end])
     assert (DEST/'ota_data_initial.bin').read_bytes()==(SOURCE/'ota_data_initial.bin').read_bytes()
     assert (DEST/'firmware.bin').read_bytes()==(SOURCE/'firmware.bin').read_bytes()
-    web={'name':manifest.get('name','Print Server ESP 32'),'version':manifest['version'],'new_install_prompt_erase':True,
+    web={'hpBootstrapEmbedded':manifest['profile']!='canon','name':manifest.get('name','Print Server ESP 32'),'version':manifest['version'],'new_install_prompt_erase':True,
          'new_install_improv_wait_time':20,
          'builds':[{'chipFamily':'ESP32-S3','serialType':'uart','parts':[{'path':n,'offset':s,'sha256':hashlib.sha256((DEST/n).read_bytes()).hexdigest()} for n,s,e in parts]}]}
     (DEST/'web-manifest.json').write_text(json.dumps(web,indent=2)+'\n')
     app=(DEST/'firmware.bin').read_bytes()
+    if manifest['profile']!='canon':
+        from prepare_hp_firmware import valid
+        hp=(ROOT/'src/hp_p1006.dl').read_bytes()
+        if not valid(hp) or hp not in app:raise SystemExit('HP firmware is not embedded in application')
     ota={'notes':(ROOT/'RELEASE_NOTES.txt').read_text().strip()[:180],'version':manifest['version'],'profile':manifest['profile'],'file':'firmware.bin','size':len(app),'sha256':hashlib.sha256(app).hexdigest()}
     (DEST/'ota-manifest.json').write_text(json.dumps(ota,indent=2,ensure_ascii=False)+'\n')
     names=[n for n,s,e in parts]+['firmware-merged.bin','web-manifest.json','ota-manifest.json']

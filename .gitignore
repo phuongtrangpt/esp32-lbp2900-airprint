@@ -60,3 +60,7 @@ host/hp_bootstrap_host
 firmware/hp/hp-firmware.bin
 
 host/portal_dns_host
+
+# Generated, hash-verified third-party HP printer payload
+src/hp_p1006.dl
+src/hp_p1006.tmp

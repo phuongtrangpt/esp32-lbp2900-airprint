@@ -1,4 +1,6 @@
-## 0.8.1-vietphuong · vietphuong esp
+HP P1006 printer bootstrap is embedded in HP firmware (222891 bytes, hash verified). First print and OTA recovery require no Internet on the ESP. Canon builds exclude the HP binary. Generated payload: tools/prepare_hp_firmware.py.
+
+## 0.8.2-vietphuong · vietphuong esp
 
 Brand and support: https://www.facebook.com/leviethoaiphuong.
 Setup AP `vietphuong esp-XXXX`, open network, no password; first boot
@@ -30,7 +32,7 @@ Print server Wi-Fi nhỏ gọn cho Canon LBP2900 và HP LaserJet P1006, phát tr
 [ngxson/esp32-usb-to-airprint](https://github.com/ngxson/esp32-usb-to-airprint).
 Driver CAPT/Hi-SCoA được chuyển từ [ValdikSS/captdriver, nhánh val](https://github.com/ValdikSS/captdriver/tree/val).
 
-## v0.7.0: hai firmware riêng, có IP tĩnh
+## v0.8.2: hai firmware riêng, có IP tĩnh
 
 - **HP LaserJet P1006 ESP 32**: chỉ HP P1006 (`03f0:3e17`), XQX/JBIG 600 dpi.
 - **Canon LBP2900 ESP 32**: chỉ Canon LBP2900 (`04a9:2676`), CAPT/Hi-SCoA 600 dpi.
@@ -50,27 +52,21 @@ Word không yêu cầu IP tĩnh. Nếu Windows đã thêm hàng đợi bằng UR
 ### HP P1006 tự chuẩn bị firmware máy in
 
 P1006 cần firmware khởi động HP sau mỗi lần bật nguồn. Firmware ESP khác firmware HP.
-Nếu chưa có file trong flash, bản HP tự tải từ nguồn upstream HTTPS, chuyển HPDL,
-kiểm tra SHA256 và lưu vào phân vùng riêng trước khi gửi cho máy in. Cần Internet
-ở lần đầu; sau đó ESP tự gửi lại khi cần và không phụ thuộc máy tính in.
+Từ v0.8.2, dữ liệu HPDL 222891 byte được nhúng sẵn trong ứng dụng HP.
+Nếu cache chưa có hoặc sai CRC, ESP kiểm tra SHA-256 dữ liệu nhúng rồi tự khôi phục
+phân vùng HP. Không tải Internet ở lần in đầu, không cần tải file thủ công.
+OTA cũng mang theo dữ liệu này. Bản Canon không nhúng HPDL.
 
-Bộ nạp offline cũng tự tải/kiểm tra/cache một lần rồi nạp phân vùng HP cùng ESP,
-không cần chọn file `.dl` thủ công. File đã lưu trên ESP từ bản cũ được giữ khi
-**không chọn Erase device**. Trang `/hp-firmware` vẫn cho phép nhập file riêng.
-
-Firmware HP có giấy phép riêng; repo và ZIP công khai không chứa blob đó và không
-cấp lại giấy phép GPL cho nó. Công cụ lấy từ mirror upstream
-`https://www.quirinux.org/printers/sihpP1006.tar.gz`, giữ SHA256 HPDL:
-`b9293c793ea8666b6ea9fd624c2bb1f00ef697c3e710cf1189396442df7ad2a2`.
-Nguồn không truy cập được, TLS hoặc checksum sai sẽ dừng an toàn và ghi log;
-không có firmware HP thì không thể bảo đảm khởi động P1006 sau khi tắt nguồn.
+Máy build lấy nguyên dữ liệu từ upstream bằng tools/prepare_hp_firmware.py;
+checksum được cố định. Dữ liệu HP có điều khoản riêng, không cấp lại GPL.
+Trang /hp-firmware vẫn dùng được khi cần file riêng.
 
 ### Nạp offline Windows, không cài ứng dụng
 
-[Tải ZIP v0.7.0](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.7.0.zip).
+[Tải ZIP v0.8.2](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.8.2.zip).
 Giải nén toàn bộ vào thư mục có quyền ghi, chạy **START.cmd**, mở bằng Chrome/Edge.
 Chọn đúng HP/Canon, cắm UART/COM, chọn cổng và nạp theo tiến trình. Không cần Python,
-Arduino IDE hay Internet cho trang nạp; **lần chuẩn bị HP đầu cần Internet một lần**.
+Arduino IDE hay Internet cho trang nạp; **bản HP đã có sẵn dữ liệu máy in**.
 Giữ cửa sổ launcher mở đến khi nạp/cấu hình xong. `START_CANON.cmd` bỏ bước tải HP.
 Launcher chỉ lắng nghe loopback; mã nguồn và giấy phép đi kèm ZIP. Windows x64.
 USB-UART trên một số board vẫn cần driver CH340/CP210x; browser luôn yêu cầu chọn cổng.

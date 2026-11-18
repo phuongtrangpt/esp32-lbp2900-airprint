@@ -52,6 +52,10 @@ func prepareHP(root string) error {
 	if e = json.Unmarshal(manifestData, &m); e != nil {
 		return e
 	}
+	if embedded, _ := m["hpBootstrapEmbedded"].(bool); embedded {
+		fmt.Println("HP P1006: firmware already embedded; no Internet or extra file required.")
+		return nil
+	}
 	cached := filepath.Join(dir, "sihpP1006.dl")
 	dl, _ := os.ReadFile(cached)
 	h := sha256.Sum256(dl)

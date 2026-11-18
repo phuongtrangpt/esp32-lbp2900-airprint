@@ -9,7 +9,7 @@ BOOT giu 10 giay: ve DHCP va khoi dong lai vao che do thiet lap.
 Trang /update kiem tra/cap nhat qua Wi-Fi, co phan tram; khong rut dien.
 Trang /setup co nut Ban giao de xoa Wi-Fi/IP da thu, GIU file HP.
 Quy trinh ban giao: nap, cau hinh tam, thu in va chuan bi HPDL, sau do Ban giao.
-Wi-Fi thiet lap WPA2 dung mat khau mac dinh chung, chi mo khi can thiet lap.
+Wi-Fi thiet lap khong can mat khau, tu tat sau khi cai Wi-Fi thanh cong.
 Portal/OTA moi can thu tren ESP that; build/test khong thay the kiem thu phan cung.
 
 ESP 32 PRINT SERVER - BO NAP OFFLINE WINDOWS x64
@@ -23,9 +23,8 @@ ESP 32 PRINT SERVER - BO NAP OFFLINE WINDOWS x64
 Khong can cai Python, Arduino IDE hay runtime. Board ESP32-S3 N16R8.
 Mot so board van can driver USB-UART CH340/CP210x cua nha san xuat.
 
-HP P1006: LAN DAU can Internet de launcher tu tai firmware HP, kiem tra SHA256
-va luu cache. Nhung lan sau mo va nap offline. ZIP cong khai khong chua blob HP
-co giay phep rieng. ESP cung co the tu tai/cache khi in lan dau neu chua co file.
+HP P1006: firmware khoi dong may in da tich hop san trong ban HP.
+Khong can Internet de tai file HP hoac chon file .dl thu cong.
 File HP da luu tren ESP duoc giu neu KHONG chon Erase device.
 START_CANON.cmd bo qua buoc chuan bi HP.
 

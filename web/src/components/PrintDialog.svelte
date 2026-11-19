@@ -37,7 +37,7 @@
   let loadError = $state('');
   let copies = $state(1);
   let range = $state('');
-  let paper = $state<PaperId>(saved.paper || defaultPaper());
+  let paper = $state<PaperId>(saved.paper in PAPERS ? saved.paper : defaultPaper());
   let orientation = $state<Orientation>('auto');
   // a scan prints at its real size (a copy); anything else fits the page
   // svelte-ignore state_referenced_locally
@@ -53,6 +53,11 @@
   let detail = $state('');
   let abort: AbortController | null = null;
   let closed = false;
+  const paperOptions = $derived((Object.keys(PAPERS) as PaperId[]).filter((id) =>
+    device.printer?.papers ? device.printer.papers.includes(PAPERS[id].pwg) : id === 'a4' || id === 'letter'));
+  $effect(() => {
+    if (phase === 'setup' && !paperOptions.includes(paper)) paper = defaultPaper();
+  });
 
   // svelte-ignore state_referenced_locally
   fileSource(file).then(
@@ -226,8 +231,10 @@
         <div class="field">
           <span class="label">Paper</span>
           <div class="seg">
-            <button class:on={paper === 'a4'} onclick={() => (paper = 'a4')}>A4</button>
-            <button class:on={paper === 'letter'} onclick={() => (paper = 'letter')}>Letter</button>
+            {#each paperOptions as id}
+              <button class:on={paper === id} onclick={() => (paper = id)}>{PAPERS[id].name}</button>
+            {/each}
+            {#if paper === 'a6'}<small>A6: đặt giấy 105 × 148 mm, cạnh ngắn vào trước. LBP2900 dùng khổ tùy chỉnh, cần thử thực tế.</small>{/if}
           </div>
         </div>
         <div class="field">

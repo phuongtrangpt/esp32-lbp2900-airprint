@@ -6,7 +6,7 @@ reference=pathlib.Path(sys.argv[1]).resolve()
 with tempfile.TemporaryDirectory() as td:
     prefix=pathlib.Path(td)/'hp'
     subprocess.run([str(root/'host/hp_host'),str(prefix)],check=True)
-    for paper, (w,h,code) in enumerate([(21000*600//2540,29700*600//2540,9),(5100,6600,1)]):
+    for paper, (w,h,code) in enumerate([(21000*600//2540,29700*600//2540,9),(5100,6600,1),(14800*600//2540,21000*600//2540,11),(10500*600//2540,14800*600//2540,70)]):
         iw,ih=w-192,h-192
         bpl=(iw*2+7)//8
         pbm=bytearray()

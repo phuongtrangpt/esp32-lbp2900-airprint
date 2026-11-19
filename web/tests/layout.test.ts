@@ -8,6 +8,15 @@ test('paper pixels match the server (canon_bjl)', () => {
   assert.deepEqual(paperPixels('a4', 600), { w: 4961, h: 7016 });
   assert.deepEqual(paperPixels('letter', 600), { w: 5100, h: 6600 });
   assert.deepEqual(paperPixels('a4', 300), { w: 2480, h: 3508 });
+  assert.deepEqual(paperPixels('a5', 600), { w: 3496, h: 4961 });
+  assert.deepEqual(paperPixels('a6', 600), { w: 2480, h: 3496 });
+  for (const paper of ['a5', 'a6'] as const) {
+    const p = place(PAPERS.a4.w, PAPERS.a4.h, paper, 'fit', 'auto');
+    assert.ok(p.x >= MARGINS.left - 1e-9);
+    assert.ok(p.y >= MARGINS.top - 1e-9);
+    assert.ok(p.x + p.w <= PAPERS[paper].w - MARGINS.right + 1e-9);
+    assert.ok(p.y + p.h <= PAPERS[paper].h - MARGINS.bottom + 1e-9);
+  }
 });
 
 test('a full-page scan at actual size lands where the original was', () => {

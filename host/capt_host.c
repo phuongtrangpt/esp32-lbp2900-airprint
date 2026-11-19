@@ -15,9 +15,10 @@ extern const printer_driver_t canon_lbp2900_driver;
 static void lifecycle(int paper, int rgb)
 {
     fake_t f={.force_full=(unsigned)rgb}; printer_io_t link=io(&f); const printer_driver_t *d=&canon_lbp2900_driver;
+    f.crop_width=(d->papers[paper].width-d->margin_left-d->margin_right)*600/2540;
     void *j=d->job_begin(d,&link,600,paper); assert(j);
     for(int page=0;page<2;page++) {
-        int w=paper?5100:4960, h=paper?6600:7015, bpp=rgb?3:1;
+        int w=d->papers[paper].width*600/2540, h=d->papers[paper].height*600/2540, bpp=rgb?3:1;
         uint8_t *line=malloc(w*bpp); assert(line);
         assert(!d->page_begin(j,w,h,bpp));
         for(int y=0;y<h;y++) {
@@ -27,7 +28,10 @@ static void lifecycle(int paper, int rgb)
         free(line); assert(!d->page_end(j));
     }
     assert(!d->job_end(j));
-    assert(f.pages==2 && f.black_end==2 && f.start_print==2 && f.video>100 && f.bytes>1000);
+    assert(f.paper_width==(unsigned)(d->papers[paper].width*600/2540));
+    assert(f.paper_height==(unsigned)(d->papers[paper].height*600/2540));
+    assert(f.paper_code==(paper==1?13:paper==2?3:2));
+    assert(f.pages==2 && f.black_end==2 && f.start_print==2 && f.video==2*(((d->papers[paper].height-d->margin_top-d->margin_bottom)*600/2540+69)/70) && f.bytes>1000);
 }
 static void failures(void)
 {
@@ -56,6 +60,6 @@ static void failures(void)
 int main(void)
 {
     assert(printer_driver_match(0x04a9,0x2676,"")==&canon_lbp2900_driver);
-    lifecycle(0,0); lifecycle(1,1); failures();
-    puts("CAPT: PASS: A4/Letter, grayscale/RGB, two pages, full-buffer streaming, fragmented replies, disconnect, malformed reply, incomplete/canceled job");
+    lifecycle(0,0); lifecycle(1,1); lifecycle(2,0); lifecycle(2,1); lifecycle(3,0); lifecycle(3,1); failures();
+    puts("CAPT: PASS: A4/Letter/A5/A6, grayscale/RGB, two pages, full-buffer streaming, fragmented replies, disconnect, malformed reply, incomplete/canceled job");
 }

@@ -36,14 +36,14 @@ def ipp(port, op, document=b'', dpi=600):
     conn.close()
     return status, data
 
-def white_urf(pages, dpi=600):
+def white_urf(pages, dpi=600, width=4961, height=7016):
     data = b'UNIRAST\0' + struct.pack('>I', pages)
     for _ in range(pages):
         header = bytearray(32)
         header[:4] = bytes([8, 0, 1, 4])
-        struct.pack_into('>III', header, 12, 4961, 7016, dpi)
+        struct.pack_into('>III', header, 12, width, height, dpi)
         data += header
-        left = 7016
+        left = height
         while left:
             rows = min(left, 256)
             data += bytes([rows - 1, 128])

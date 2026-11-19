@@ -1,3 +1,7 @@
+## v0.9.1 — A5 / A6 cho HP P1006 và Canon LBP2900
+
+Thêm khổ A5 (148×210 mm), A6 (105×148 mm) vào driver, AirPrint/IPP và trang in. Khổ nhỏ mới cần thử trên máy thật; riêng A6 Canon dùng kích thước giấy tùy chỉnh và mã giấy dự phòng upstream, chưa xác nhận cơ cấu cấp giấy. [Hướng dẫn và mẫu thử](docs/A5-A6.md). Không gộp firmware 6030 thử nghiệm.
+
 ## v0.9.0 — Chọn firmware theo model USB
 
 | Bản | Model / điều kiện | Trạng thái |
@@ -50,7 +54,7 @@ Driver CAPT/Hi-SCoA được chuyển từ [ValdikSS/captdriver, nhánh val](htt
 
 - **HP LaserJet P1006 ESP 32**: chỉ HP P1006 (`03f0:3e17`), XQX/JBIG 600 dpi.
 - **Canon LBP2900 ESP 32**: chỉ Canon LBP2900 (`04a9:2676`), CAPT/Hi-SCoA 600 dpi.
-- Mỗi ESP dùng một máy in; A4/Letter, đen trắng, một mặt. Bản HP không chứa driver Canon/PCL5/PS trong registry, và ngược lại. Mã driver thử nghiệm khác vẫn được giữ trong profile `all` cho phát triển.
+- Mỗi ESP dùng một máy in; HP P1006/LBP2900 có A4/Letter/A5/A6, đen trắng, một mặt. Nhóm PCL/PS giữ A4/Letter. Bản HP không chứa driver Canon/PCL5/PS trong registry, và ngược lại. Mã driver thử nghiệm khác vẫn được giữ trong profile `all` cho phát triển.
 - HP v0.6 đã được người dùng xác nhận in trang kiểm tra A4 và Letter trên máy thật. Chức năng mạng/tách profile v0.7 cần thử trên thiết bị; Canon chưa xác nhận in thật.
 
 ### Cài IP tĩnh ngay trên ESP
@@ -139,7 +143,7 @@ của hai bộ cấp điện khác nhau.
 
 - Nhận IPP/AirPrint, raster URF/PWG; quảng bá Bonjour/mDNS.
 - Canon LBP2900: USB `04a9:2676`, CAPT hai chiều, Hi-SCoA, đen trắng 600 dpi.
-- Khổ A4 và Letter, lề theo driver CAPT, chuyển ảnh RGB/xám thành raster 1 bit.
+- Khổ A4, Letter, A5 và A6 (A6 tùy chỉnh cần thử), lề theo driver CAPT, chuyển ảnh RGB/xám thành raster 1 bit.
 - Giao diện web để chọn PDF/ảnh, xem tiến trình và lịch sử lệnh in.
 - Wi-Fi cấu hình ngay trên web bằng Improv Serial, lưu trong NVS; vẫn có chế độ nhập qua COM.
 - Nút BOOT: nhấn để in trang kiểm tra; giữ 2 giây để hủy lệnh đang chạy, giữ 10 giây khi đã khởi động để về DHCP.

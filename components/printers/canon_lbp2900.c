@@ -53,6 +53,8 @@ static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, i
     m->line_size = (pixels + 7) / 8;
     m->num_lines = (p->height - d->margin_top - d->margin_bottom) * 600 / 2540;
     m->band_size = BAND_LINES; m->media_adapt = 0x11; m->media_type = 0x80; m->ink_k = 7;
+    // A6 uses the upstream fallback paper id with explicit custom dimensions.
+    // Physical feed validation is required; do not infer A6 hardware success.
     snprintf(m->media_size, sizeof(m->media_size), "%s", p->name);
     j->left = m->margin_width; j->top = m->margin_height;
     j->raw_size = m->line_size * BAND_LINES;
@@ -169,13 +171,15 @@ static int test_page(const printer_driver_t *d, const printer_io_t *io, int dpi,
 }
 static const printer_paper_t papers[] = {
     {"A4", "iso_a4_210x297mm", 21000, 29700},
-    {"Letter", "na_letter_8.5x11in", 21590, 27940}
+    {"Letter", "na_letter_8.5x11in", 21590, 27940},
+    {"A5", "iso_a5_148x210mm", 14800, 21000},
+    {"A6", "iso_a6_105x148mm", 10500, 14800}
 };
 const printer_driver_t canon_lbp2900_driver = {
     .id="canon-lbp2900", .make_model="Canon LBP2900 (experimental CAPT)",
     .usb_mfg="Canon", .usb_mdl="LBP2900", .usb_vid=0x04a9, .usb_pid=0x2676,
     .color=false, .scanner=false, .resolutions={600}, .nresolutions=1,
-    .papers=papers, .npapers=2, .margin_left=500, .margin_right=450, .margin_top=400, .margin_bottom=400,
+    .papers=papers, .npapers=4, .margin_left=500, .margin_right=450, .margin_top=400, .margin_bottom=400,
     .job_begin=begin, .page_begin=page_begin, .page_line=page_line, .page_end=page_end, .job_end=end,
     .test_page=test_page
 };

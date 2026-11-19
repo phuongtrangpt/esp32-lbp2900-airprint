@@ -21,7 +21,7 @@ bjl_host: bjl_host.c $(BJL) $(PRINTERS) ../components/airprint/printer_driver.c 
           ../components/airprint/include/printer_driver.h
 	$(CC) $(CFLAGS) $(INC) bjl_host.c $(BJL) $(PRINTERS) ../components/airprint/printer_driver.c -lm -o $@
 
-airprint_host: airprint_host.c $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED) ../components/airprint/include/*.h \
+airprint_host: airprint_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED) ../components/airprint/include/*.h \
                ../components/airprint/*.h ../components/scanner/include/*.h ../components/webui/include/*.h \
                ../components/oled/include/*.h
 	$(CC) $(CFLAGS) $(INC) airprint_host.c $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED) -lm -lpthread -o $@
@@ -42,7 +42,7 @@ oled_host: oled_host.c $(OLED) ../components/oled/include/*.h ../components/airp
 clean:
 	rm -rf bjl_host airprint_host scan_host oled_host out *.prn *.png *.raw
 
-capt_host: capt_reference/hiscoa-decompress.c capt_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
+capt_host: capt_reference/hiscoa-decompress.c capt_host.c capt_sim.h $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) capt_host.c capt_reference/hiscoa-decompress.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
 
 improv_host: improv_host.c ../components/improv_serial/improv_serial.c ../components/improv_serial/include/improv_serial.h
@@ -51,7 +51,7 @@ improv_host: improv_host.c ../components/improv_serial/improv_serial.c ../compon
 hp_host: hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
 
-memory_host: memory_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
+memory_host: memory_host.c capt_sim.h $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) memory_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free -lm -o $@
 
 standard_host: standard_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c

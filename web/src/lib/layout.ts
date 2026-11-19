@@ -1,14 +1,16 @@
 // Paper sizes and where content goes on the sheet. Units: PostScript points
 // (1/72 in), origin top left, y down.
 
-export type PaperId = 'a4' | 'letter';
+export type PaperId = 'a4' | 'letter' | 'a5' | 'a6';
 export type Fit = 'fit' | 'fill' | 'actual';
 export type Orientation = 'auto' | 'portrait' | 'landscape';
 export type Rotation = 0 | 90 | 180 | 270; // clockwise
 
-export const PAPERS: Record<PaperId, { name: string; w: number; h: number; wIn: number; hIn: number }> = {
-  a4: { name: 'A4', w: (210 / 25.4) * 72, h: (297 / 25.4) * 72, wIn: 210 / 25.4, hIn: 297 / 25.4 },
-  letter: { name: 'Letter', w: 612, h: 792, wIn: 8.5, hIn: 11 },
+export const PAPERS: Record<PaperId, { name: string; pwg: string; w: number; h: number; wIn: number; hIn: number }> = {
+  a4: { name: 'A4', pwg: 'iso_a4_210x297mm', w: (210 / 25.4) * 72, h: (297 / 25.4) * 72, wIn: 210 / 25.4, hIn: 297 / 25.4 },
+  letter: { name: 'Letter', pwg: 'na_letter_8.5x11in', w: 612, h: 792, wIn: 8.5, hIn: 11 },
+  a5: { name: 'A5', pwg: 'iso_a5_148x210mm', w: 148 * 72 / 25.4, h: 210 * 72 / 25.4, wIn: 148 / 25.4, hIn: 210 / 25.4 },
+  a6: { name: 'A6', pwg: 'iso_a6_105x148mm', w: 105 * 72 / 25.4, h: 148 * 72 / 25.4, wIn: 105 / 25.4, hIn: 148 / 25.4 },
 };
 
 // LBP2900 non-printable margins: left 5 mm, right 4.5 mm, top/bottom 4 mm.

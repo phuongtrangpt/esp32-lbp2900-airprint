@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // XQX framing adapted from Rick Richardson's foo2xqx (GPL-2.0-or-later).
-// Experimental HP LaserJet P1006, 600 dpi monochrome, simplex A4 / Letter.
+// Experimental HP LaserJet P1006, 600 dpi monochrome, simplex A4 / Letter / A5 / A6.
 #include "printer_driver.h"
 #include "jbig.h"
 #include <stdlib.h>
@@ -122,10 +122,11 @@ static void encoded(unsigned char *p, size_t n, void *ctx) {
     }
 }
 static const printer_paper_t papers[] = {
-    {"A4","iso_a4_210x297mm",21000,29700}, {"Letter","na_letter_8.5x11in",21590,27940}
+    {"A4","iso_a4_210x297mm",21000,29700}, {"Letter","na_letter_8.5x11in",21590,27940},
+    {"A5","iso_a5_148x210mm",14800,21000}, {"A6","iso_a6_105x148mm",10500,14800}
 };
 static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, int paper) {
-    if (!io || !io->write || dpi!=600 || paper<0 || paper>=2) return NULL;
+    if (!io || !io->write || dpi!=600 || paper<0 || paper>=d->npapers) return NULL;
     hp_job *j=calloc(1,sizeof(*j)); if (!j) return NULL;
     j->io=*io; j->paper=paper;
     // foo2xqx's P1006 wrapper clips 96 dots (4.064 mm) at each edge.
@@ -177,7 +178,9 @@ static int page_end(void *ctx) {
     item(j,0x20000000,1); item(j,0x20000007,1); item(j,0x20000008,600); item(j,0x20000009,600);
     item(j,0x2000000d,j->wire_stride*8); item(j,0x2000000e,j->height); item(j,0x2000000a,2);
     item(j,0x2000000f,j->width); item(j,0x20000010,j->height); item(j,0x20000011,0);
-    item(j,0x20000001,j->paper ? 1:9); item(j,0x80000001,0xdeadbeef);
+    // Windows DMPAPER values; small-sheet feed still needs hardware testing.
+    static const unsigned paper_codes[]={9,1,11,70};
+    item(j,0x20000001,paper_codes[j->paper]); item(j,0x80000001,0xdeadbeef);
     struct jbg_enc_state enc;
     unsigned char *planes[]={j->raw}; j->first=true; j->header=false; j->used=0;
     jmp_buf guard; oom=&guard; encoding_job=j;
@@ -215,7 +218,7 @@ static int test(const printer_driver_t *d,const printer_io_t *io,int dpi,const c
 const printer_driver_t hp_p1006_driver={
     .id="hp-p1006",.make_model="HP LaserJet P1006",.usb_mfg="HP",.usb_mdl="LaserJet P1006",
     .usb_vid=0x03f0,.usb_pid=0x3e17,.color=false,.scanner=false,
-    .resolutions={600},.nresolutions=1,.papers=papers,.npapers=2,
+    .resolutions={600},.nresolutions=1,.papers=papers,.npapers=4,
     .margin_left=407,.margin_right=407,.margin_top=407,.margin_bottom=407,
     .job_begin=begin,.page_begin=page_begin,.page_line=line,.page_end=page_end,.job_end=end,.test_page=test
 };

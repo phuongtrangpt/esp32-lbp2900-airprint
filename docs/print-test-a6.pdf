@@ -1,0 +1,55 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 297.63780 419.52756] /Resources << /Font << /F1 7 0 R >> >> /Contents 4 0 R >>
+endobj
+4 0 obj
+<< /Length 276 >>
+stream
+0.5 w 28.346 28.346 240.946 362.836 re S
+BT /F1 12 Tf 36 367.528 Td (A6 - TEST PAGE 1/2) Tj ET
+BT /F1 9 Tf 36 349.528 Td (105 x 148 mm - 100 percent) Tj ET
+36 50 m 36 333.465 l S
+31 50 m 41 50 l S
+31 333.465 m 41 333.465 l S
+BT /F1 9 Tf 48 70 Td (Vertical line: 100 mm) Tj ET
+endstream
+endobj
+5 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 297.63780 419.52756] /Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>
+endobj
+6 0 obj
+<< /Length 276 >>
+stream
+0.5 w 28.346 28.346 240.946 362.836 re S
+BT /F1 12 Tf 36 367.528 Td (A6 - TEST PAGE 2/2) Tj ET
+BT /F1 9 Tf 36 349.528 Td (105 x 148 mm - 100 percent) Tj ET
+36 50 m 36 333.465 l S
+31 50 m 41 50 l S
+31 333.465 m 41 333.465 l S
+BT /F1 9 Tf 48 70 Td (Vertical line: 100 mm) Tj ET
+endstream
+endobj
+7 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000121 00000 n 
+0000000259 00000 n 
+0000000585 00000 n 
+0000000723 00000 n 
+0000001049 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+1119
+%%EOF

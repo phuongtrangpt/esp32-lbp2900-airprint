@@ -12,6 +12,8 @@ def main():
   shutil.copyfile(exe,folder/exe.name);
   shutil.copyfile(ROOT/'release/LICENSE-Go.txt',folder/'LICENSE-Go.txt');
   (folder/'source-code.tar.gz').write_bytes(subprocess.check_output(['git','archive','--format=tar.gz','HEAD'],cwd=ROOT));shutil.copyfile(ROOT/'tools/offline/README.txt',folder/'README.txt')
+  for name in ('A5-A6.md','print-test-a5.pdf','print-test-a6.pdf'):
+   shutil.copyfile(ROOT/'docs'/name,folder/name)
   (folder/'START.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\nPrintServer-Offline.exe\r\npause\r\n')
   (folder/'START_CANON.cmd').write_bytes(b'@echo off\r\ncd /d "%~dp0"\r\nPrintServer-Offline.exe --skip-hp\r\npause\r\n')
   with zipfile.ZipFile(archive,'w',zipfile.ZIP_DEFLATED) as z:

@@ -4,7 +4,7 @@ typedef struct {
     uint8_t reply[1024]; size_t len, pos;
     unsigned pages, printed, video, offline, bytes, fail_read, bad_cmd;
     unsigned begin_pages, black_end, start_print, last_page_width;
-    unsigned row, height, left, top, crop_width, force_full;
+    unsigned row, height, left, top, crop_width, force_full, paper_code, paper_width, paper_height;
 } fake_t;
 static unsigned le(const uint8_t *p) { return p[0] | (unsigned)p[1] << 8; }
 static void put(uint8_t *p, unsigned v) { p[0]=v; p[1]=v>>8; }
@@ -20,9 +20,12 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         assert(n==68); // 4 wrapper + 44 page + 12 Hi-SCoA + 4 begin + 4 end
         assert(le(p)==CAPT_IC_BEGIN_PAGE && le(p+2)==44);
         f->last_page_width=le(p+4+26); // line size in bytes
-        assert(f->last_page_width>=592 && f->last_page_width<=610);
+        assert(f->last_page_width>0 && f->last_page_width<=610);
+        f->paper_code=p[4+4];f->paper_width=le(p+4+30);f->paper_height=le(p+4+32);
         f->left=le(p+4+22); f->top=le(p+4+24); f->height=le(p+4+28);
-        f->crop_width = f->last_page_width == 592 ? 4736 : 4875;
+        if (!f->crop_width) f->crop_width = f->paper_width==3496 ? (14800-950)*600/2540 :
+            f->paper_width==2480 ? (10500-950)*600/2540 : f->last_page_width==592 ? 4736 : 4875;
+        assert(f->last_page_width==(f->crop_width+7)/8);
         f->row=0;
         f->pages++; f->begin_pages++; return 0;
     }

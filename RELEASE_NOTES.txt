@@ -1,1 +1,1 @@
-v0.9.0: Thêm bản Canon PIXMA USB và PCL5/PostScript USB riêng. Web có tra model, danh sách dòng và mức độ hỗ trợ. UFR II, GDI, PCL6-only chưa hỗ trợ. Giữ HP P1006 và LBP2900 tách riêng.
+v0.9.1: HP P1006 / Canon LBP2900 thêm A5 148×210 mm và A6 105×148 mm trong driver, IPP/AirPrint và trang in. A6 LBP2900 dùng hình học giấy tùy chỉnh theo cơ chế fallback upstream, cần kiểm chứng cấp giấy thật. Không gộp bản 6030 thử nghiệm. Giữ nguyên A4/Letter.

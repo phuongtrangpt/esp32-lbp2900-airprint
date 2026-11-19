@@ -1426,6 +1426,13 @@ int airprint_status_json(void *ctx, char *buf, size_t n)
     STR(s_cfg->name);
     PUT(",\"model\":");
     STR(s_cfg->make_model);
+    PUT(",\"papers\":[");
+    const printer_driver_t *driver = s_cfg->driver;
+    for (int i = 0; i < driver->npapers; i++) {
+        if (i) PUT(",");
+        STR(driver->papers[i].pwg);
+    }
+    PUT("]");
     pthread_mutex_lock(&s_lock);
     expire_pending();
     int state = printer_state(&st);

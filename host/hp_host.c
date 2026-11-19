@@ -11,7 +11,7 @@ int main(int argc,char **argv) {
     assert(printer_driver_match(0,0,"MFG:HP;MDL:LaserJet P1006;")==d);
     assert(!d->job_begin(d,&(printer_io_t){.write=fail},600,0));
     assert(!d->job_begin(d,&(printer_io_t){.write=fail},300,0));
-    for (int paper=0;paper<2;paper++) {
+    for (int paper=0;paper<d->npapers;paper++) {
         char path[200]; snprintf(path,sizeof(path),"%s-%d.xqx",argc>1?argv[1]:"/tmp/hp",paper);
         FILE *out=fopen(path,"wb"); assert(out);
         printer_io_t io={.write=write_file,.ctx=out}; void *j=d->job_begin(d,&io,600,paper); assert(j);
@@ -29,5 +29,5 @@ int main(int argc,char **argv) {
         }
         free(line); assert(d->job_end(j)==0); fclose(out);
     }
-    puts("HP P1006: USB/model matching, A4/Letter, gray/RGB 2-page streams, bad sequence and sink failure passed");
+    puts("HP P1006: USB/model matching, A4/Letter/A5/A6, gray/RGB 2-page streams, bad sequence and sink failure passed");
 }

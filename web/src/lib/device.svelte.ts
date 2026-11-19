@@ -19,6 +19,7 @@ export interface Job {
 }
 
 export interface PrinterState {
+  papers?: string[];
   name: string;
   model: string;
   connected: boolean;

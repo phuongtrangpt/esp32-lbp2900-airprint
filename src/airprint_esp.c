@@ -461,7 +461,9 @@ esp_err_t airprint_esp_start(const char *hostname, void (*on_job_state)(bool pri
     // stable per-board UUID from the MAC address
     uint8_t mac[6];
     esp_read_mac(mac, ESP_MAC_WIFI_STA);
-#if defined(PRINTSERVER_PROFILE_PIXMA)
+#if defined(PRINTSERVER_PROFILE_LBP6030)
+    snprintf(s_uuid, sizeof(s_uuid), "a4d1e9b6-0b6f-4c3e-9d2a-%02x%02x%02x%02x%02x%02x", mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+#elif defined(PRINTSERVER_PROFILE_PIXMA)
     snprintf(s_uuid, sizeof(s_uuid), "a4d1e9b4-0b6f-4c3e-9d2a-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2],mac[3],mac[4],mac[5]);
 #elif defined(PRINTSERVER_PROFILE_STANDARD)
     snprintf(s_uuid, sizeof(s_uuid), "a4d1e9b5-0b6f-4c3e-9d2a-%02x%02x%02x%02x%02x%02x", mac[0], mac[1], mac[2],mac[3],mac[4],mac[5]);

@@ -578,7 +578,7 @@ static void open_device(uint8_t addr)
     s_p.hp_loaded = s_p.hp && strstr(info.device_id,"FWVER:") != NULL;
     const printer_driver_t *driver=printer_driver_match(info.vid,info.pid,info.device_id);
     bool standard=driver && !strncmp(driver->id,"generic-",8);
-    s_p.capt = standard || (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
+    s_p.capt = (driver && !strcmp(driver->id,"canon-lbp6030")) || standard || (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
     s_p.raw_len = 0;
     s_p.raw_error = false;
     s_p.raw_wanted = false;

@@ -77,6 +77,9 @@ def main():
     if profile in ("pixma","standard"):
         values["PRINTER_NAME"]="Canon PIXMA USB ESP 32" if profile=="pixma" else "USB Printer PCL PS ESP 32"
         values["HOSTNAME"]="canon-pixma-esp32" if profile=="pixma" else "usb-pcl-ps-esp32"
+    if profile == "lbp6030":
+        values["PRINTER_NAME"]="Canon LBP6030 TEST ESP 32"
+        values["HOSTNAME"]="canon-lbp6030-esp32"
     if os.environ.get("FIRMWARE_UPDATE_BASE_URL"):
         values["FIRMWARE_UPDATE_BASE_URL"]=os.environ["FIRMWARE_UPDATE_BASE_URL"]
     update_base=values.get("FIRMWARE_UPDATE_BASE_URL", "")

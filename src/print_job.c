@@ -29,6 +29,8 @@ static const printer_driver_t *configured_driver(void)
         const char *id="canon-lbp2900";
 #elif defined(PRINTSERVER_PROFILE_PIXMA)
         const char *id="canon-mg2500";
+#elif defined(PRINTSERVER_PROFILE_LBP6030)
+        const char *id="canon-lbp6030";
 #elif defined(PRINTSERVER_PROFILE_STANDARD)
         const char *id="generic-pcl5";
 #else

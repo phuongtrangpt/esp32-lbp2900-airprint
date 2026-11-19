@@ -1,3 +1,5 @@
+> Canon LBP6030: bản USB **thử nghiệm riêng**, chưa kiểm thử máy thật. Xem [ghi chú và cách nạp](docs/LBP6030.md). Không dùng bản LBP2900 thay thế.
+
 ## v0.9.0 — Chọn firmware theo model USB
 
 | Bản | Model / điều kiện | Trạng thái |

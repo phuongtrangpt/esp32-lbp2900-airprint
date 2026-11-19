@@ -13,6 +13,8 @@
 #define VP_PROFILE "canon"
 #elif defined(PRINTSERVER_PROFILE_PIXMA)
 #define VP_PROFILE "pixma"
+#elif defined(PRINTSERVER_PROFILE_LBP6030)
+#define VP_PROFILE "lbp6030"
 #elif defined(PRINTSERVER_PROFILE_STANDARD)
 #define VP_PROFILE "standard"
 #else

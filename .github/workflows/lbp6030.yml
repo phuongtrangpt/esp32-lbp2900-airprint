@@ -1,0 +1,47 @@
+name: Experimental Canon LBP6030
+on:
+  push:
+    branches: [experimental/lbp6030]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - run: pip install platformio==6.2.0 esptool==4.9.0 numpy==2.3.5
+      - name: Reference codec and complete raster jobs
+        run: python tools/test_lbp6030.py
+      - name: Build dedicated USB firmware
+        run: pio run -e lbp6030
+      - name: Package credential-free images
+        run: |
+          python tools/package_firmware.py --env lbp6030 --out firmware/lbp6030
+          python tools/prepare_web_installer.py --source firmware/lbp6030 --dest installer/public/firmware/lbp6030
+          cp docs/LBP6030.md firmware/lbp6030/LBP6030.md
+          cp components/lbp6030/LICENSE firmware/lbp6030/LICENSE.lbp6030-MIT
+          cp installer/public/firmware/lbp6030/firmware-merged.bin firmware/lbp6030/firmware-merged.bin
+          cd firmware/lbp6030
+          sha256sum *.bin > SHA256SUMS
+          zip -r ../../Canon-LBP6030-ESP32-EXPERIMENTAL.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Canon-LBP6030-ESP32-EXPERIMENTAL
+          path: Canon-LBP6030-ESP32-EXPERIMENTAL.zip
+      - name: Publish explicitly experimental download
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag=lbp6030-test-${GITHUB_SHA:0:8}
+          gh release create "$tag" Canon-LBP6030-ESP32-EXPERIMENTAL.zip --target "$GITHUB_SHA" --prerelease --title "Canon LBP6030 USB - EXPERIMENTAL ${GITHUB_SHA:0:8}" --notes-file docs/LBP6030.md

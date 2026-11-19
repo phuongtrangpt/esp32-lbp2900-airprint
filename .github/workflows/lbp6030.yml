@@ -20,7 +20,7 @@ jobs:
         with:
           path: ~/.platformio
           key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
-      - run: pip install platformio numpy
+      - run: pip install platformio==6.2.0 esptool==4.9.0 numpy==2.3.5
       - name: Reference codec and complete raster jobs
         run: python tools/test_lbp6030.py
       - name: Build dedicated USB firmware

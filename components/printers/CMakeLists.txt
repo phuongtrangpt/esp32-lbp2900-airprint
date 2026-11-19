@@ -11,5 +11,5 @@ elseif(PRINTSERVER_PROFILE STREQUAL "standard")
   idf_component_register(SRCS "printers.c" "standard_mono.c" REQUIRES airprint heap)
 else()
   idf_component_register(SRCS "printers.c" "canon_pixma.c" "canon_lbp2900.c" "hp_p1006.c" "standard_mono.c"
-                         REQUIRES airprint canon_bjl capt xqx heap)
+                         REQUIRES airprint canon_bjl capt xqx lbp6030 heap)
 endif()

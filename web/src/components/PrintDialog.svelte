@@ -53,6 +53,7 @@
   let detail = $state('');
   let abort: AbortController | null = null;
   let closed = false;
+  $effect(() => { if (dpi === 300 && !p?.resolutions?.includes(300)) dpi = 600; });
   const paperOptions = $derived((Object.keys(PAPERS) as PaperId[]).filter((id) =>
     device.printer?.papers ? device.printer.papers.includes(PAPERS[id].pwg) : id === 'a4' || id === 'letter'));
   $effect(() => {
@@ -263,10 +264,13 @@
         <div class="field">
           <span class="label">Quality</span>
           <div class="seg">
+            {#if p?.resolutions?.includes(300)}
+              <button class:on={dpi === 300} onclick={() => (dpi = 300)}>Bản nháp · 300 dpi</button>
+            {/if}
             <button class:on={dpi === 600} onclick={() => (dpi = 600)}>Standard · 600 dpi</button>
 
           </div>
-          <span class="small muted">{p?.name ?? 'ESP 32 Print Server'} · 600 dpi · đen trắng.</span>
+          <span class="small muted">{p?.name ?? 'ESP 32 Print Server'} · {dpi} dpi · đen trắng. {dpi === 300 ? 'Lấy mẫu 300 dpi, xuất CAPT 600 dpi; phù hợp văn bản, giảm nét chi tiết nhỏ.' : ''}</span>
         </div>
       </fieldset>
     </div>

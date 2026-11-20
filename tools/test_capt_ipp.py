@@ -73,7 +73,11 @@ def main():
             assert status == 0
             assert b'Canon LBP2900' in data and b'image/urf' in data
             status, _ = ipp(port, 4, dpi=300)
-            assert status >= 0x400, '300 dpi must be refused'
+            assert status == 0, '300 dpi must be accepted'
+            status, _ = ipp(port, 4, dpi=150)
+            assert status >= 0x400, '150 dpi must be refused'
+            status, _ = ipp(port, 2, white_urf(2, dpi=300, width=2480, height=3508), dpi=300)
+            assert status == 0, hex(status)
             status, _ = ipp(port, 2, white_urf(pages))
             assert status == 0, hex(status)
             conn = http.client.HTTPConnection('127.0.0.1', port)
@@ -88,7 +92,7 @@ def main():
             assert status >= 0x400, hex(status)
             status, _ = ipp(port, 2, white_urf(1))
             assert status == 0, hex(status)
-            print(f'IPP CAPT: PASS: capabilities, unsupported 300 dpi, {pages}-page URF job, completed state, scanner disabled, malformed raster and next-job recovery')
+            print(f'IPP CAPT: PASS: capabilities, 300 dpi two-page draft and unsupported 150 dpi, {pages}-page URF job, completed state, scanner disabled, malformed raster and next-job recovery')
         finally:
             server.terminate()
             try: server.wait(timeout=5)

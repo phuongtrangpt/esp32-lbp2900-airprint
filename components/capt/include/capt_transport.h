@@ -11,7 +11,7 @@ typedef struct {
     uint8_t *buffer;
     size_t used, rx_bytes;
     uint16_t command;
-    uint64_t deadline_ms;
+    uint64_t deadline_ms, last_yield_ms;
     const char *error;
 } capt_transport_t;
 void capt_bind(capt_transport_t *t);

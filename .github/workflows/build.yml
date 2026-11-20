@@ -61,6 +61,8 @@ jobs:
           python tools/test_profiles.py
       - name: CAPT raster and error tests
         run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
+      - name: CAPT watchdog scheduling and deadline regression
+        run: python tools/test_capt_scheduler.py
       - name: HP P1006 raster tests
         run: ASAN_OPTIONS=detect_leaks=0 host/hp_host
       - name: Standard printer streams and memory stress

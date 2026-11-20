@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 extern const struct printer_ops_s *capt_lbp2900_ops(void);
 #define BAND_LINES 70
@@ -17,12 +18,14 @@ typedef struct {
     struct printer_state_s state;
     struct page_dims_s dims;
     const printer_driver_t *driver;
-    int paper, width, height, bpp, next_y, row, output_rows;
+    int scale, paper, width, height, bpp, next_y, row, output_rows;
     int left, top;
     unsigned rows_in_band;
     bool started, page_open, failed;
     uint8_t *raw, *compressed;
     size_t raw_size, compressed_size;
+    uint64_t compress_us, send_us;
+    unsigned bands;
 } job_t;
 
 // All upstream operations run inside a guard: a malformed reply, disconnect,
@@ -37,11 +40,11 @@ static void dispose(job_t *j)
 }
 static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, int paper)
 {
-    if (dpi != 600 || paper < 0 || paper >= d->npapers || !io || !io->write || !io->read || !io->flush)
+    if ((dpi != 300 && dpi != 600) || paper < 0 || paper >= d->npapers || !io || !io->write || !io->read || !io->flush)
         return NULL;
     job_t *j = calloc(1, sizeof(*j));
     if (!j) return NULL;
-    j->driver = d; j->paper = paper; j->link.io = *io;
+    j->scale = 600 / dpi; j->driver = d; j->paper = paper; j->link.io = *io;
     j->state.ops = capt_lbp2900_ops();
     const printer_paper_t *p = &d->papers[paper];
     struct page_dims_s *m = &j->dims;
@@ -65,14 +68,20 @@ static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, i
     if (!j->raw || !j->compressed || !j->link.buffer) { dispose(j); return NULL; }
     return j;
 }
+static uint64_t micros(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec*1000000+t.tv_nsec/1000; }
 static void flush_band(job_t *j)
 {
     if (!j->rows_in_band) return;
     bool last = (unsigned)j->output_rows == j->dims.num_lines;
+    uint64_t start = micros();
     size_t n = j->state.ops->compress_band(&j->state, j->compressed, j->compressed_size,
         j->raw, j->dims.line_size, j->rows_in_band, last);
     if (!n || n >= j->compressed_size) capt_fail("CAPT compression overflow");
+    j->compress_us += micros() - start;
+    start = micros();
     j->state.ops->send_band(&j->state, j->compressed, n);
+    j->send_us += micros() - start;
+    j->bands++;
     j->state.iband++;
     j->rows_in_band = 0;
     memset(j->raw, 0, j->raw_size);
@@ -102,8 +111,8 @@ static void append_row(job_t *j, const uint8_t *px, int y)
 {
     uint8_t *out = j->raw + j->rows_in_band * j->dims.line_size;
     int max = (j->driver->papers[j->paper].width - j->driver->margin_left - j->driver->margin_right) * 600 / 2540;
-    for (int x = 0; px && x < max && x + j->left < j->width; x++) {
-        const uint8_t *p = px + (x + j->left) * j->bpp;
+    for (int x = 0; px && x < max && (x + j->left) / j->scale < j->width; x++) {
+        const uint8_t *p = px + ((x + j->left) / j->scale) * j->bpp;
         unsigned gray = j->bpp == 1 ? p[0] : (77u*p[0] + 150u*p[1] + 29u*p[2]) >> 8;
         unsigned threshold = bayer[y & 3][x & 3] * 16 + 8;
         if (gray < threshold) out[x / 8] |= 0x80 >> (x & 7);
@@ -117,7 +126,10 @@ static int page_line(void *ctx, int y, const uint8_t *px)
     if (j->failed || !j->page_open || y != j->next_y || y >= j->height) return -1;
     GUARD(j);
     j->next_y++;
-    if (y >= j->top && y < j->top + (int)j->dims.num_lines) append_row(j, px, y);
+    for (int repeat = 0; repeat < j->scale; repeat++) {
+        int output_y = y * j->scale + repeat;
+        if (output_y >= j->top && output_y < j->top + (int)j->dims.num_lines) append_row(j, px, output_y);
+    }
     return 0;
 }
 static int page_end(void *ctx)
@@ -150,7 +162,7 @@ static int test_page(const printer_driver_t *d, const printer_io_t *io, int dpi,
     (void)label;
     job_t *j = begin(d, io, dpi, 0);
     if (!j) return -1;
-    int w = j->dims.paper_width, h = j->dims.paper_height;
+    int w = d->papers[0].width * dpi / 2540, h = d->papers[0].height * dpi / 2540;
     uint8_t *line = malloc(w);
     if (!line) { end(j); return -1; }
     int rc = page_begin(j, w, h, 1);
@@ -169,6 +181,12 @@ static int test_page(const printer_driver_t *d, const printer_io_t *io, int dpi,
     int final = end(j);
     return rc ? rc : final;
 }
+static void stats(void *ctx, char *buf, size_t n)
+{
+    job_t *j = ctx;
+    snprintf(buf, n, "CAPT input=%d dpi bands=%u compression=%.3f s band-transfer-and-status=%.3f s",
+             600/j->scale, j->bands, j->compress_us/1e6, j->send_us/1e6);
+}
 static const printer_paper_t papers[] = {
     {"A4", "iso_a4_210x297mm", 21000, 29700},
     {"Letter", "na_letter_8.5x11in", 21590, 27940},
@@ -178,8 +196,8 @@ static const printer_paper_t papers[] = {
 const printer_driver_t canon_lbp2900_driver = {
     .id="canon-lbp2900", .make_model="Canon LBP2900 (experimental CAPT)",
     .usb_mfg="Canon", .usb_mdl="LBP2900", .usb_vid=0x04a9, .usb_pid=0x2676,
-    .color=false, .scanner=false, .resolutions={600}, .nresolutions=1,
+    .color=false, .scanner=false, .resolutions={600,300}, .nresolutions=2,
     .papers=papers, .npapers=4, .margin_left=500, .margin_right=450, .margin_top=400, .margin_bottom=400,
     .job_begin=begin, .page_begin=page_begin, .page_line=page_line, .page_end=page_end, .job_end=end,
-    .test_page=test_page
+    .job_stats=stats, .test_page=test_page
 };

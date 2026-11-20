@@ -70,6 +70,7 @@ typedef struct {
     bool in_stopped;                    // IN endpoint failed, stop polling
     TickType_t in_last;                 // when the last IN read completed
     volatile bool ctrl_done;
+    SemaphoreHandle_t raw_sem, out_sem; // completion signals, no fixed USB polling delay
     SemaphoreHandle_t ctrl_sem;
     SemaphoreHandle_t ctrl_mutex;
 
@@ -115,6 +116,7 @@ static void out_cb(usb_transfer_t *xfer)
     }
     atomic_fetch_sub(&s_p.out_inflight, 1);
     xQueueSend(s_p.out_free, &xfer, 0);
+    xSemaphoreGive(s_p.out_sem);
 }
 
 static void in_submit(void)
@@ -202,6 +204,7 @@ static void in_cb(usb_transfer_t *xfer)
         } else s_p.raw_error = true;
         s_p.raw_wanted = false;
         xSemaphoreGive(s_p.lock);
+        xSemaphoreGive(s_p.raw_sem);
         return;
     }
     if (xfer->status == USB_TRANSFER_STATUS_COMPLETED && xfer->actual_num_bytes > 0) {
@@ -662,10 +665,12 @@ esp_err_t usb_printer_start(usb_printer_conn_cb_t cb)
     s_p.lock = xSemaphoreCreateMutex();
     s_p.ctrl_mutex = xSemaphoreCreateMutex();
     s_p.ctrl_sem = xSemaphoreCreateBinary();
+    s_p.raw_sem = xSemaphoreCreateBinary();
+    s_p.out_sem = xSemaphoreCreateBinary();
     s_p.out_free = xQueueCreate(OUT_XFER_COUNT, sizeof(usb_transfer_t *));
     s_p.scan_out_sem = xSemaphoreCreateBinary();
     s_p.scan_in_sem = xSemaphoreCreateBinary();
-    if (!s_p.lock || !s_p.ctrl_mutex || !s_p.ctrl_sem || !s_p.out_free || !s_p.scan_out_sem || !s_p.scan_in_sem)
+    if (!s_p.raw_sem || !s_p.out_sem || !s_p.lock || !s_p.ctrl_mutex || !s_p.ctrl_sem || !s_p.out_free || !s_p.scan_out_sem || !s_p.scan_in_sem)
         return ESP_ERR_NO_MEM;
 
     const usb_host_config_t host_cfg = {.skip_phy_setup = false, .intr_flags = ESP_INTR_FLAG_LEVEL1};
@@ -846,7 +851,7 @@ esp_err_t usb_printer_flush(void)
     while (uxQueueMessagesWaiting(s_p.out_free) < OUT_XFER_COUNT) {
         ESP_RETURN_ON_ERROR(job_check(), TAG, "job aborted");
         if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { ESP_LOGE(TAG,"bulk OUT timeout after 15 s (endpoint 0x%02x)",s_p.ep_out); usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        xSemaphoreTake(s_p.out_sem, pdMS_TO_TICKS(100));
         if (xTaskGetTickCount() - last_log > pdMS_TO_TICKS(15000)) {
             last_log = xTaskGetTickCount();
             log_stall(since);
@@ -872,9 +877,11 @@ int usb_printer_read(uint8_t *buf, size_t len, uint32_t timeout_ms)
             xSemaphoreGive(s_p.lock);
             return n;
         }
+        xSemaphoreTake(s_p.raw_sem, 0); // discard an old completion before arming a read
         s_p.raw_wanted = true;
         xSemaphoreGive(s_p.lock);
-        vTaskDelay(pdMS_TO_TICKS(10));
+        usb_host_client_unblock(s_p.client); // submit IN now, not after the 50 ms idle tick
+        xSemaphoreTake(s_p.raw_sem, pdMS_TO_TICKS(100));
     }
     ESP_LOGE(TAG,"bulk IN timeout: endpoint 0x%02x, wanted %u bytes, timeout %lu ms",s_p.ep_in,(unsigned)len,(unsigned long)timeout_ms);
     usb_printer_cancel();
@@ -1048,3 +1055,4 @@ void usb_scanner_end(void)
     s_p.in_last = xTaskGetTickCount();     // resume the printer's status polling later
     s_p.job_active = false;
 }
+

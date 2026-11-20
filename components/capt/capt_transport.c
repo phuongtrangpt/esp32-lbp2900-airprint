@@ -34,7 +34,11 @@ static void check(void)
     if (now_ms() >= current->deadline_ms) capt_fail("CAPT operation timed out");
 #ifdef ESP_PLATFORM
     // Poll loops must let USB, Wi-Fi, cancel timer and watchdog tasks run.
-    vTaskDelay(1);
+    uint64_t now = now_ms();
+    if (now - current->last_yield_ms >= 20) {
+        vTaskDelay(1);
+        current->last_yield_ms = now_ms();
+    }
 #endif
 }
 static unsigned remaining(void)
@@ -110,6 +114,7 @@ void capt_log(const char *fmt, ...)
     size_t n=strlen(line); while(n && (line[n-1]=='\n' || line[n-1]=='\r')) line[--n]=0;
     if (!strncmp(line,"ERROR",5)) { ESP_LOGE("capt","%s",line); }
     else if (!strncmp(line,"WARNING",7)) { ESP_LOGW("capt","%s",line); }
+    else if (strstr(line, "IC_VIDEO_DATA")) { ESP_LOGD("capt","%s",line); }
     else { ESP_LOGI("capt","%s",line); }
 #else
     vfprintf(stderr,fmt,ap);

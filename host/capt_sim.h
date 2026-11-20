@@ -4,6 +4,7 @@ typedef struct {
     uint8_t reply[1024]; size_t len, pos;
     unsigned pages, printed, video, offline, bytes, fail_read, bad_cmd;
     unsigned begin_pages, black_end, start_print, last_page_width;
+    unsigned input_scale;
     unsigned row, height, left, top, crop_width, force_full, paper_code, paper_width, paper_height;
 } fake_t;
 static unsigned le(const uint8_t *p) { return p[0] | (unsigned)p[1] << 8; }
@@ -43,7 +44,8 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         assert(code==(f->row+rows==f->height?1:0));
         for(unsigned y=0;y<rows;y++) for(unsigned x=0;x<f->last_page_width*8;x++) {
             unsigned source_y=f->top+f->row+y;
-            unsigned expected=x<f->crop_width && source_y%5 && !((x+f->left+source_y)&1);
+            unsigned scale=f->input_scale ? f->input_scale : 1;
+            unsigned expected=x<f->crop_width && (source_y/scale)%5 && !(((x+f->left)/scale+source_y/scale)&1);
             assert(!!(output[y*f->last_page_width+x/8] & (0x80>>(x&7)))==expected);
         }
         f->row+=rows;

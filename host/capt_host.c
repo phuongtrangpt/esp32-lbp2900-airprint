@@ -12,13 +12,13 @@
 
 extern const printer_driver_t canon_lbp2900_driver;
 #include "capt_sim.h"
-static void lifecycle(int paper, int rgb)
+static void lifecycle(int paper, int rgb, int dpi)
 {
-    fake_t f={.force_full=(unsigned)rgb}; printer_io_t link=io(&f); const printer_driver_t *d=&canon_lbp2900_driver;
+    fake_t f={.force_full=(unsigned)rgb,.input_scale=600/dpi}; printer_io_t link=io(&f); const printer_driver_t *d=&canon_lbp2900_driver;
     f.crop_width=(d->papers[paper].width-d->margin_left-d->margin_right)*600/2540;
-    void *j=d->job_begin(d,&link,600,paper); assert(j);
+    void *j=d->job_begin(d,&link,dpi,paper); assert(j);
     for(int page=0;page<2;page++) {
-        int w=d->papers[paper].width*600/2540, h=d->papers[paper].height*600/2540, bpp=rgb?3:1;
+        int w=d->papers[paper].width*dpi/2540, h=d->papers[paper].height*dpi/2540, bpp=rgb?3:1;
         uint8_t *line=malloc(w*bpp); assert(line);
         assert(!d->page_begin(j,w,h,bpp));
         for(int y=0;y<h;y++) {
@@ -37,7 +37,7 @@ static void failures(void)
 {
     const printer_driver_t *d=&canon_lbp2900_driver;
     fake_t f={.fail_read=1}; printer_io_t link=io(&f);
-    assert(!d->job_begin(d,&link,300,0));
+    assert(!d->job_begin(d,&link,150,0));
     assert(!d->job_begin(d,&link,600,9));
     void *j=d->job_begin(d,&link,600,0); assert(j);
     assert(d->page_begin(j,4960,7015,1)<0); assert(d->job_end(j)<0);
@@ -60,6 +60,7 @@ static void failures(void)
 int main(void)
 {
     assert(printer_driver_match(0x04a9,0x2676,"")==&canon_lbp2900_driver);
-    lifecycle(0,0); lifecycle(1,1); lifecycle(2,0); lifecycle(2,1); lifecycle(3,0); lifecycle(3,1); failures();
+    for (int dpi=300; dpi<=600; dpi+=300) for(int paper=0;paper<4;paper++) for(int rgb=0;rgb<2;rgb++) lifecycle(paper,rgb,dpi);
+    failures();
     puts("CAPT: PASS: A4/Letter/A5/A6, grayscale/RGB, two pages, full-buffer streaming, fragmented replies, disconnect, malformed reply, incomplete/canceled job");
 }

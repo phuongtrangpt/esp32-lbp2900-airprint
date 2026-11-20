@@ -20,6 +20,7 @@ export interface Job {
 
 export interface PrinterState {
   papers?: string[];
+  resolutions?: number[];
   name: string;
   model: string;
   connected: boolean;

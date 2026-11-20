@@ -893,6 +893,7 @@ static job_t *job_create(const ipp_request_t *req)
 
 typedef struct {
     job_t *job;
+    int64_t read_us, flush_us;
     int64_t out_us;             // time spent in the printer output hook
     int64_t render_us;          // time spent converting lines (render + dither + compress)
     uint32_t bytes_out;         // printer data so far
@@ -914,11 +915,19 @@ static int pipe_write(void *ctx, const uint8_t *data, size_t len)
 
 static int pipe_read(void *ctx, uint8_t *data, size_t len, unsigned timeout_ms)
 {
-    return s_cfg->job_read ? s_cfg->job_read(s_cfg->ctx, data, len, timeout_ms) : -1;
+    pipe_t *p = ctx;
+    int64_t start = now_us();
+    int r = s_cfg->job_read ? s_cfg->job_read(s_cfg->ctx, data, len, timeout_ms) : -1;
+    p->read_us += now_us() - start;
+    return r;
 }
 static int pipe_flush(void *ctx)
 {
-    return s_cfg->job_flush ? s_cfg->job_flush(s_cfg->ctx) : -1;
+    pipe_t *p = ctx;
+    int64_t start = now_us();
+    int r = s_cfg->job_flush ? s_cfg->job_flush(s_cfg->ctx) : -1;
+    p->flush_us += now_us() - start;
+    return r;
 }
 
 static int pipe_sync(void *ctx, const char *what)
@@ -1030,6 +1039,9 @@ static int print_document(conn_t *c, job_t *j)
          "%.1f s decoding", j->id, t_total / 1e6, rd.wait_us / 1e6,
          rd.wait_us ? j->bytes / 1.024 / (rd.wait_us / 1000.0) : 0.0, p->out_us / 1e6,
          (p->render_us - p->out_us) / 1e6, (t_total - rd.wait_us - p->render_us) / 1e6);
+
+    LOGI("job %d: USB response waits %.3f s, USB flush waits %.3f s (included in pipeline totals)",
+         j->id, p->read_us / 1e6, p->flush_us / 1e6);
 
     bool canceled = j->cancel;
     bool ok = r > 0 && !canceled;
@@ -1431,6 +1443,11 @@ int airprint_status_json(void *ctx, char *buf, size_t n)
     for (int i = 0; i < driver->npapers; i++) {
         if (i) PUT(",");
         STR(driver->papers[i].pwg);
+    }
+    PUT("],\"resolutions\":[");
+    for (int i = 0; i < driver->nresolutions; i++) {
+        if (i) PUT(",");
+        PUT("%d", driver->resolutions[i]);
     }
     PUT("]");
     pthread_mutex_lock(&s_lock);

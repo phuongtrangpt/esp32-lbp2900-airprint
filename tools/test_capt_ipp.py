@@ -78,8 +78,11 @@ def main():
             assert status >= 0x400, '150 dpi must be refused'
             status, _ = ipp(port, 2, white_urf(2, dpi=300, width=2480, height=3508), dpi=300)
             assert status == 0, hex(status)
-            status, _ = ipp(port, 2, white_urf(pages))
+            status, _ = ipp(port, 2, white_urf(pages, dpi=300, width=2480, height=3508), dpi=300)
             assert status == 0, hex(status)
+            # The Canon profile intentionally advertises only 300 dpi.
+            status, _ = ipp(port, 2, white_urf(1), dpi=600)
+            assert status >= 0x400, '600 dpi must be refused by the 300-only IPP profile'
             conn = http.client.HTTPConnection('127.0.0.1', port)
             conn.request('GET', '/api/state')
             result = json.loads(conn.getresponse().read())
@@ -90,9 +93,9 @@ def main():
             # valid job must still complete, with the simulated printer reset.
             status, _ = ipp(port, 2, b'not-a-raster')
             assert status >= 0x400, hex(status)
-            status, _ = ipp(port, 2, white_urf(1))
+            status, _ = ipp(port, 2, white_urf(1, dpi=300, width=2480, height=3508), dpi=300)
             assert status == 0, hex(status)
-            print(f'IPP CAPT: PASS: capabilities, 300 dpi two-page draft and unsupported 150 dpi, {pages}-page URF job, completed state, scanner disabled, malformed raster and next-job recovery')
+            print(f'IPP CAPT: PASS: capabilities, 300 dpi two-page draft and unsupported 150/600 dpi, {pages}-page 300 dpi URF job, completed state, scanner disabled, malformed raster and next-job recovery')
         finally:
             server.terminate()
             try: server.wait(timeout=5)

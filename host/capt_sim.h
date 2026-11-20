@@ -59,7 +59,8 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
     if(cmd==CAPT_GO_ONLINE) f->offline=0;
     if(cmd==CAPT_START_PRINT) { assert(n==6 && le(p)==f->pages); f->printed=le(p); f->start_print++; }
     size_t payload=2;
-    if(cmd==CAPT_GET_PRINTER_INFO) payload=10;
+    // Real LBP2900 customer log: 56 wire bytes, including the 4-byte header.
+    if(cmd==CAPT_GET_PRINTER_INFO) payload=52;
     if(cmd==CAPT_RESERVE_UNIT) payload=4;
     if(cmd==CAPT_GET_BASIC_STATUS) payload=10;
     if(cmd==CAPT_GET_EXTENDED_STATUS) payload=40;

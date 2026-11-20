@@ -1,1 +1,2 @@
+v0.9.2: Sửa LBP2900 CAPT 2.1 trả GetPrinterInfo 56 byte làm hủy lệnh trước trang đầu. Tăng bộ đệm thông tin, giữ kiểm tra giới hạn nhận; kiểm thử hồi quy với phản hồi 52 byte nội dung đúng log thực tế. Cần thử lại trên máy thật; chưa xác nhận in Canon thành công.
 v0.9.1: HP P1006 / Canon LBP2900 thêm A5 148×210 mm và A6 105×148 mm trong driver, IPP/AirPrint và trang in. A6 LBP2900 dùng hình học giấy tùy chỉnh theo cơ chế fallback upstream, cần kiểm chứng cấp giấy thật. Không gộp bản 6030 thử nghiệm. Giữ nguyên A4/Letter.

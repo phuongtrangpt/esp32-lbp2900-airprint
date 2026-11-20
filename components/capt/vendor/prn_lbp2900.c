@@ -113,7 +113,9 @@ static void lbp2900_wait_ready(const struct printer_ops_s *ops)
  */
 static void capt_get_printer_info(struct printer_state_s *state)
 {
-	uint8_t buf[32];
+	/* LBP2900 CAPT 2.1 returns a 52-byte body (56 on the wire).
+	 * Keep room for extended information; transport still checks bounds. */
+	uint8_t buf[256];
 	size_t size = sizeof(buf);
 	capt_sendrecv(CAPT_GET_PRINTER_INFO, NULL, 0, buf, &size);
 	if (size >= 10) {

@@ -15,13 +15,13 @@
   let input: HTMLInputElement;
 
   const status = $derived.by(() => {
-    if (!device.loaded) return { text: 'Connecting…', tone: '' };
-    if (!p) return { text: 'Unavailable', tone: 'err' };
-    if (!p.connected) return { text: 'Not connected', tone: 'warn' };
+    if (!device.loaded) return { text: 'Đang kết nối…', tone: '' };
+    if (!p) return { text: 'Chưa sẵn sàng', tone: 'err' };
+    if (!p.connected) return { text: 'Chưa cắm máy in', tone: 'warn' };
     if (p.reasons.some((r) => r.endsWith('-error'))) return { text: p.message, tone: 'err' };
-    if (p.state === 'processing') return { text: 'Printing', tone: 'busy' };
+    if (p.state === 'processing') return { text: 'Đang in', tone: 'busy' };
     if (device.scan?.state === 'scanning') return { text: 'Scanning', tone: 'busy' };
-    return { text: 'Ready', tone: 'ok' };
+    return { text: 'Sẵn sàng', tone: 'ok' };
   });
 
   const REASONS: Record<string, string> = {
@@ -43,12 +43,12 @@
   }
 
   const STATE: Record<Job['state'], [string, string]> = {
-    pending: ['Waiting', 'busy'],
+    pending: ['Đang chờ', 'busy'],
     held: ['Held', 'warn'],
-    processing: ['Printing', 'busy'],
-    completed: ['Done', 'ok'],
-    canceled: ['Canceled', ''],
-    aborted: ['Failed', 'err'],
+    processing: ['Đang in', 'busy'],
+    completed: ['Hoàn tất', 'ok'],
+    canceled: ['Đã hủy', ''],
+    aborted: ['Thất bại', 'err'],
   };
 
   // the device's clock is set over the network; without it, no time
@@ -100,6 +100,7 @@
   }
 </script>
 
+<div class="intro"><span>VIETPHUONG ESP / PRINT STUDIO</span><h2>In ấn thật đơn giản.</h2><p class="muted">Tài liệu của bạn. Kết nối không dây. Sẵn sàng trên mọi thiết bị.</p></div>
 <div class="grid">
   <section class="card hero">
     <div class="art"><Printer size={40} strokeWidth={1.5} /></div>
@@ -111,9 +112,9 @@
       <p class="muted">{p?.model || ''}{p?.connected && p.message && p.message !== status.text ? ` · ${p.message}` : ''}</p>
       <div class="actions row wrap">
         <button class="btn primary" onclick={() => input.click()} disabled={!p?.connected}>
-          <Upload size={17} /> Upload &amp; print
+          <Upload size={17} /> Chọn tệp và in
         </button>
-        <button class="btn" onclick={chooseFile} disabled={!p?.connected}><FolderOpen size={17} /> Print from Files</button>
+        <button class="btn" onclick={chooseFile} disabled={!p?.connected}><FolderOpen size={17} /> In từ tệp đã lưu</button>
         <button class="btn ghost" onclick={identify} disabled={!device.online}><Lightbulb size={17} /> Identify</button>
       </div>
       <input bind:this={input} type="file" accept="application/pdf,image/*" hidden onchange={upload} />
@@ -148,7 +149,7 @@
   {/if}
 
   <section class="card card-pad">
-    <h2>Ink</h2>
+    <h2>Mực in &amp; vật tư</h2>
     {#if p?.supplies.length}
       <div class="inks">
         {#each p.supplies as s}
@@ -162,12 +163,12 @@
       </div>
       <p class="muted small">Refilled cartridges report "unknown".</p>
     {:else}
-      <p class="muted">{p?.connected ? 'The printer has not reported its ink yet.' : 'No printer connected.'}</p>
+      <p class="muted">{p?.connected ? 'Máy in chưa cung cấp mức mực. Bạn vẫn có thể in bình thường.' : 'Cắm cáp máy in vào cổng USB OTG trên mạch.'}</p>
     {/if}
   </section>
 
   <section class="card card-pad">
-    <h2>Recent jobs</h2>
+    <h2>Lịch sử lệnh in</h2>
     {#if p?.jobs.length}
       <ul class="jobs">
         {#each p.jobs as j (j.id)}
@@ -184,20 +185,20 @@
         {/each}
       </ul>
     {:else}
-      <p class="muted">No jobs since the printer box started.</p>
+      <p class="muted">Chưa có lệnh in từ khi thiết bị khởi động.</p>
     {/if}
   </section>
 
   <section class="card card-pad tips">
-    <h2>Other ways to print</h2>
+    <h2>In từ điện thoại &amp; máy tính</h2>
     <p class="muted small">
-      iPhone, iPad and Mac: AirPrint (Share → Print). Android: the default print service. The button on the printer
-      box scans a page into Files; press it twice for a test page, hold it to cancel.
+      iPhone, iPad và Mac: chọn AirPrint trong menu Chia sẻ → In. Android và Windows: thêm máy in trong cùng mạng Wi-Fi. Nhấn BOOT để in trang kiểm tra trên bản đơn sắc; giữ 2 giây để hủy lệnh in.
     </p>
   </section>
 </div>
 
 <style>
+  .intro {margin:4px 0 26px}.intro span {color:var(--accent);font-size:.72rem;letter-spacing:2px;font-weight:700}.intro h2{font-size:clamp(1.7rem,4vw,2.4rem);margin:8px 0}.hero{border-color:#43706f;position:relative}.hero::before{content:"";position:absolute;top:0;left:24px;right:24px;height:2px;background:linear-gradient(90deg,var(--accent),transparent)}
   .grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

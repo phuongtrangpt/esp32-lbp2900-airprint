@@ -18,7 +18,12 @@
 
   const ROUTES = ['printer', 'scanner', 'files', 'process'] as const;
   type Route = (typeof ROUTES)[number];
-  const TITLES: Record<Route, string> = { printer: 'Printer', scanner: 'Scanner', files: 'Files', process: 'Process' };
+  const TITLES: Record<Route, string> = { printer: 'Trang in', scanner: 'Quét tài liệu', files: 'Tệp của bạn', process: 'Xử lý tài liệu' };
+
+  let firmware = $state('Đang đọc…');
+  onMount(() => {
+    fetch('/api/setup/status', { cache: 'no-store' }).then(r => r.ok ? r.json() : null).then(j => { firmware = j?.firmware || 'Không đọc được'; }).catch(() => { firmware = 'Không đọc được'; });
+  });
 
   let hash = $state(location.hash);
   let narrow = $state(false);
@@ -50,7 +55,7 @@
 </script>
 
 <div class="app" class:home={narrow && !current}>
-  <Sidebar current={current ?? ''} home={narrow && !current} />
+  <Sidebar {firmware} current={current ?? ''} home={narrow && !current} />
   {#if current}
     <main>
       {#if narrow}
@@ -70,6 +75,7 @@
           <ProcessView />
         {/if}
       </div>
+      <footer class="copyright"><span>© {new Date().getFullYear()} Việt Phương · <b>vietphuong esp</b></span><span>Firmware {firmware}</span><a href="https://www.facebook.com/leviethoaiphuong" target="_blank" rel="noopener noreferrer">Facebook hỗ trợ ↗</a></footer>
     </main>
   {/if}
 </div>
@@ -86,6 +92,7 @@
 <Toasts />
 
 <style>
+  .copyright { display:flex; flex-wrap:wrap; justify-content:space-between; gap:12px; padding:20px 32px; border-top:1px solid var(--border); color:var(--muted); font-size:.8rem; }
   .app {
     display: grid;
     grid-template-columns: var(--sidebar) 1fr;

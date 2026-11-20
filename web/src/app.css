@@ -1,27 +1,27 @@
 :root {
-  --bg: #f3f4f7;
-  --surface: #ffffff;
-  --surface-2: #f7f8fa;
-  --surface-3: #eef0f4;
-  --border: #e2e5eb;
-  --text: #191c23;
-  --muted: #687080;
-  --accent: #3f56e0;
-  --accent-text: #ffffff;
-  --accent-soft: rgba(63, 86, 224, 0.1);
-  --ok: #15803d;
+  --bg: #080f1d;
+  --surface: #142237;
+  --surface-2: #1b2d45;
+  --surface-3: #223850;
+  --border: #2d425d;
+  --text: #edf4ff;
+  --muted: #a1b4cd;
+  --accent: #70e6cd;
+  --accent-text: #08201e;
+  --accent-soft: #70e6cd18;
+  --ok: #69e1b0;
   --ok-soft: rgba(21, 128, 61, 0.12);
-  --warn: #b45309;
+  --warn: #ffd080;
   --warn-soft: rgba(180, 83, 9, 0.12);
-  --err: #c62828;
+  --err: #ff939d;
   --err-soft: rgba(198, 40, 40, 0.1);
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.05), 0 4px 16px rgba(16, 24, 40, 0.06);
   --shadow-lg: 0 12px 48px rgba(16, 24, 40, 0.22);
-  --radius: 14px;
+  --radius: 20px;
   --radius-sm: 9px;
   --sidebar: 252px;
   --paper: #ffffff;
-  color-scheme: light;
+  color-scheme: dark;
   font-family:
     Inter,
     ui-sans-serif,
@@ -38,29 +38,6 @@
   -webkit-tap-highlight-color: transparent;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #101216;
-    --surface: #181b21;
-    --surface-2: #1e2229;
-    --surface-3: #262b33;
-    --border: #2b3039;
-    --text: #e6e8ec;
-    --muted: #979eab;
-    --accent: #7c8dff;
-    --accent-text: #0e1020;
-    --accent-soft: rgba(124, 141, 255, 0.14);
-    --ok: #4ade80;
-    --ok-soft: rgba(74, 222, 128, 0.12);
-    --warn: #fbbf24;
-    --warn-soft: rgba(251, 191, 36, 0.12);
-    --err: #f87171;
-    --err-soft: rgba(248, 113, 113, 0.12);
-    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 16px rgba(0, 0, 0, 0.25);
-    --shadow-lg: 0 12px 48px rgba(0, 0, 0, 0.6);
-    color-scheme: dark;
-  }
-}
 
 * {
   box-sizing: border-box;
@@ -348,3 +325,9 @@ select {
   overflow: hidden;
   clip: rect(0 0 0 0);
 }
+
+body{background:radial-gradient(ellipse at top right,#12334a66,transparent 65%),var(--bg)}
+.card{background:linear-gradient(145deg,#192a40,#111e30);box-shadow:0 12px 32px #0003}
+.card-pad{padding:24px}.btn{min-height:44px}.btn.primary{box-shadow:0 5px 20px #70e6cd20}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}

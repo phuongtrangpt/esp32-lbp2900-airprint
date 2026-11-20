@@ -9,7 +9,7 @@
   import { work } from '../lib/process.svelte';
   import { scanProgress } from '../lib/scan.svelte';
 
-  let { current, home }: { current: string; home: boolean } = $props();
+  let { current, home, firmware = 'Đang đọc…' }: { current: string; home: boolean; firmware?: string } = $props();
 
   const printerLine = $derived.by(() => {
     const p = device.printer;
@@ -33,18 +33,18 @@
   });
 
   const items = $derived([
-    { id: 'printer', label: 'Printer', icon: Printer, line: printerLine, desc: 'Status, ink and print jobs' },
-    { id: 'scanner', label: 'Scanner', icon: ScanLine, line: scanLine, desc: 'Scan documents and photos' },
+    { id: 'printer', label: 'Trang in', icon: Printer, line: printerLine, desc: 'Status, ink and print jobs' },
+    { id: 'scanner', label: 'Quét tài liệu', icon: ScanLine, line: scanLine, desc: 'Scan documents and photos' },
     {
       id: 'files',
-      label: 'Files',
+      label: 'Tệp của bạn',
       icon: FolderOpen,
       line: files.loaded ? `${files.list.length} file${files.list.length === 1 ? '' : 's'}` : '…',
       desc: 'Scans and uploads: print or download',
     },
     {
       id: 'process',
-      label: 'Process',
+      label: 'Xử lý tài liệu',
       icon: Layers,
       line: work.items.length ? `${work.items.length} page${work.items.length === 1 ? '' : 's'}` : 'Empty',
       desc: 'Rotate, crop, ID card copies, PDF',
@@ -70,7 +70,7 @@
   </div>
 
   {#if home}
-    <p class="hello">What would you like to do?</p>
+    <p class="hello">Chọn tác vụ để bắt đầu</p>
   {/if}
 
   <ul>
@@ -97,6 +97,7 @@
   <a href="/diagnostics" style="display:block;padding:12px 18px;text-decoration:none">Nhật ký / Tải log lỗi ↗</a>
 
   <div class="foot">
+    <p class="muted small">© Việt Phương · vietphuong esp<br />Firmware {firmware}</p>
     <span class="pill {tone}">
       <span class="dot"></span>
       {device.online ? (tone === 'busy' ? 'Working' : tone === 'warn' ? 'No printer' : 'Online') : 'Reconnecting…'}

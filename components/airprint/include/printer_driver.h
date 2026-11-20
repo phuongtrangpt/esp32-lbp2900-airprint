@@ -65,6 +65,9 @@ typedef struct printer_driver {
     int (*page_begin)(void *job, int src_w, int src_h, int bytes_pp);
     // Source line y (in order); px NULL = a white line. 0 = ok.
     int (*page_line)(void *job, int y, const uint8_t *px);
+    // Optional optimized path for successive identical source rows.
+    // is_repeat only applies within one raster packet, never across pages.
+    int (*page_line_repeat)(void *job, int y, const uint8_t *px, bool is_repeat);
     int (*page_end)(void *job);
     // Finishes the job, also after an error or a cancel (ejects a partly
     // printed page), and frees it. Returns 0, or < 0 if the printer link

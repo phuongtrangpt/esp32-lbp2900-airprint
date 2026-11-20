@@ -24,6 +24,9 @@ typedef struct {
     unsigned rows_in_band;
     bool started, page_open, failed;
     uint8_t *raw, *compressed;
+    // Four dither phases; avoids re-packing identical input lines.
+    uint8_t *row_cache;
+    unsigned row_cache_valid;
     size_t raw_size, compressed_size;
     uint64_t compress_us, send_us;
     unsigned bands;
@@ -37,7 +40,8 @@ typedef struct {
 
 static void dispose(job_t *j)
 {
-    free(j->raw); free(j->compressed); free(j->link.buffer); free(j);
+    free(j->raw); free(j->compressed); free(j->row_cache);
+    free(j->link.buffer); free(j);
 }
 static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, int paper)
 {
@@ -65,8 +69,9 @@ static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, i
     j->compressed_size = j->raw_size * 2 + 64;
     j->raw = calloc(1, j->raw_size);
     j->compressed = malloc(j->compressed_size);
+    j->row_cache = malloc(m->line_size * 4);
     j->link.buffer = malloc(65536);
-    if (!j->raw || !j->compressed || !j->link.buffer) { dispose(j); return NULL; }
+    if (!j->raw || !j->compressed || !j->row_cache || !j->link.buffer) { dispose(j); return NULL; }
     return j;
 }
 static uint64_t micros(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec*1000000+t.tv_nsec/1000; }
@@ -95,6 +100,7 @@ static int page_begin(void *ctx, int width, int height, int bpp)
     GUARD(j);
     j->width = width; j->height = height; j->bpp = bpp;
     j->next_y = j->output_rows = j->rows_in_band = 0;
+    j->row_cache_valid = 0;
     memset(j->raw, 0, j->raw_size);
     j->state.ipage++;
     j->state.iband = j->state.isend = 0;
@@ -107,32 +113,62 @@ static int page_begin(void *ctx, int width, int height, int bpp)
     j->page_open = true;
     return 0;
 }
-static void append_row(job_t *j, const uint8_t *px, int y)
+// Cached bitmap rows survive flush_band(): that routine clears j->raw.
+// Phase-aware caching preserves the original 600 dpi ordered-dither pattern
+// across PWG/URF repeat counts. For 300 dpi, two output rows intentionally
+// share one 1-bit bitmap (nearest-neighbour 2x row replication).
+static void append_row(job_t *j, const uint8_t *px, int output_y, bool reusable)
 {
     uint8_t *out = j->raw + j->rows_in_band * j->dims.line_size;
-    int max = (j->driver->papers[j->paper].width - j->driver->margin_left - j->driver->margin_right) * 600 / 2540;
-    if (px) mono_pack(out, max, px, j->width, j->bpp, j->left, j->scale == 2, y);
-    j->rows_in_band++; j->output_rows++;
-    if (j->rows_in_band == BAND_LINES || (unsigned)j->output_rows == j->dims.num_lines) flush_band(j);
+    if (px) {
+        int dither_y = j->scale == 2 ? (output_y & ~1) : output_y;
+        unsigned phase = (unsigned)dither_y & 3u;
+        uint8_t *cache = j->row_cache + phase * j->dims.line_size;
+        if (reusable && (j->row_cache_valid & (1u << phase))) {
+            memcpy(out, cache, j->dims.line_size);
+        } else {
+            int max = (j->driver->papers[j->paper].width
+                       - j->driver->margin_left - j->driver->margin_right) * 600 / 2540;
+            mono_pack(out, max, px, j->width, j->bpp, j->left,
+                      j->scale == 2, dither_y);
+            memcpy(cache, out, j->dims.line_size);
+            j->row_cache_valid |= (1u << phase);
+        }
+    }
+    j->rows_in_band++;
+    j->output_rows++;
+    if (j->rows_in_band == BAND_LINES ||
+        (unsigned)j->output_rows == j->dims.num_lines)
+        flush_band(j);
 }
-static int page_line(void *ctx, int y, const uint8_t *px)
+
+static int page_line_repeat(void *ctx, int y, const uint8_t *px, bool is_repeat)
 {
     job_t *j = ctx;
-    if (j->failed || !j->page_open || y != j->next_y || y >= j->height) return -1;
+    if (j->failed || !j->page_open || y != j->next_y || y >= j->height)
+        return -1;
     GUARD(j);
     j->next_y++;
+    if (!is_repeat)
+        j->row_cache_valid = 0;
     for (int repeat = 0; repeat < j->scale; repeat++) {
         int output_y = y * j->scale + repeat;
-        if (output_y >= j->top && output_y < j->top + (int)j->dims.num_lines) append_row(j, px, output_y);
+        if (output_y >= j->top && output_y < j->top + (int)j->dims.num_lines)
+            append_row(j, px, output_y, is_repeat || repeat != 0);
     }
     return 0;
+}
+
+static int page_line(void *ctx, int y, const uint8_t *px)
+{
+    return page_line_repeat(ctx, y, px, false);
 }
 static int page_end(void *ctx)
 {
     job_t *j = ctx;
     if (j->failed || !j->page_open || j->next_y != j->height) return -1;
     GUARD(j);
-    while ((unsigned)j->output_rows < j->dims.num_lines) append_row(j, NULL, j->output_rows + j->top);
+    while ((unsigned)j->output_rows < j->dims.num_lines) append_row(j, NULL, j->output_rows + j->top, false);
     if (!j->state.ops->page_epilogue(&j->state, &j->dims)) capt_fail("CAPT page did not complete");
     j->page_open = false;
     return 0;
@@ -191,8 +227,9 @@ static const printer_paper_t papers[] = {
 const printer_driver_t canon_lbp2900_driver = {
     .id="canon-lbp2900", .make_model="Canon LBP2900 (experimental CAPT)",
     .usb_mfg="Canon", .usb_mdl="LBP2900", .usb_vid=0x04a9, .usb_pid=0x2676,
-    .color=false, .scanner=false, .resolutions={600,300}, .nresolutions=2,
+    .color=false, .scanner=false, .resolutions={300}, .nresolutions=1,
     .papers=papers, .npapers=4, .margin_left=500, .margin_right=450, .margin_top=400, .margin_bottom=400,
-    .job_begin=begin, .page_begin=page_begin, .page_line=page_line, .page_end=page_end, .job_end=end,
+    .job_begin=begin, .page_begin=page_begin, .page_line=page_line,
+    .page_line_repeat=page_line_repeat, .page_end=page_end, .job_end=end,
     .job_stats=stats, .test_page=test_page
 };

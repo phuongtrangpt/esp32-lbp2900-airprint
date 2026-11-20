@@ -13,6 +13,7 @@
 #include <string.h>
 
 #define PWG_HEADER_SIZE 1796
+#define RASTER_READ_BUF_SIZE 16384
 
 typedef struct {
     raster_read_fn read;
@@ -30,7 +31,7 @@ AP_HOT static int rd(reader_t *r, uint8_t *out, size_t n)
         if (r->pos == r->len) {
             if (r->eof)
                 return got == 0 ? 1 : -1;
-            int k = r->read(r->ctx, r->buf, 4096);
+            int k = r->read(r->ctx, r->buf, RASTER_READ_BUF_SIZE);
             if (k < 0)
                 return -1;
             if (k == 0) {
@@ -91,7 +92,11 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
             } else if (n < 128) {
                 size_t count = (size_t)n + 1;
                 uint8_t px[4];
-                if (bpp == 1 ? rd_byte(r, px) : rd(r, px, bpp)) {
+                // Fast path: read a complete pixel straight from the buffer.
+                if (r->len - r->pos >= (size_t)bpp) {
+                    memcpy(px, r->buf + r->pos, (size_t)bpp);
+                    r->pos += (size_t)bpp;
+                } else if (rd(r, px, (size_t)bpp)) {
                     ret = RASTER_ERR_IO;
                     break;
                 }
@@ -120,7 +125,12 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
                     ret = RASTER_ERR_FORMAT;
                     break;
                 }
-                if (rd(r, line + x, count * bpp)) {
+                // Most literal packets fit in the current 16 KB chunk.
+                size_t bytes = count * (size_t)bpp;
+                if (r->len - r->pos >= bytes) {
+                    memcpy(line + x, r->buf + r->pos, bytes);
+                    r->pos += bytes;
+                } else if (rd(r, line + x, bytes)) {
                     ret = RASTER_ERR_IO;
                     break;
                 }
@@ -131,8 +141,12 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
         if (ret)
             break;
         // an all-white line is passed as NULL so consumers can skip it
-        for (int k = 0; k <= rep && y < pg->height && ret == 0; k++, y++)
-            ret = cb->line ? cb->line(user, y, white ? NULL : line) : 0;
+        for (int k = 0; k <= rep && y < pg->height && ret == 0; k++, y++) {
+            if (cb->line_repeat)
+                ret = cb->line_repeat(user, y, white ? NULL : line, k != 0);
+            else
+                ret = cb->line ? cb->line(user, y, white ? NULL : line) : 0;
+        }
     }
     if (ret == 0 && cb->page_end)
         ret = cb->page_end(user, pg);
@@ -145,7 +159,7 @@ int raster_decode(raster_read_fn read, void *ctx, const raster_cb_t *cb, void *u
     reader_t *r = calloc(1, sizeof(*r));
     if (!r)
         return RASTER_ERR_NOMEM;
-    r->buf = AP_MALLOC_BULK(4096);
+    r->buf = AP_MALLOC_BULK(RASTER_READ_BUF_SIZE);
     if (!r->buf) { free(r); return RASTER_ERR_NOMEM; }
     r->read = read;
     r->ctx = ctx;

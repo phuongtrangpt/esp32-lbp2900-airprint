@@ -897,6 +897,7 @@ typedef struct {
     int64_t read_us, flush_us;
     int64_t out_us;             // time spent in the printer output hook
     int64_t render_us;          // time spent converting lines (render + dither + compress)
+    int64_t last_yield_us;      // per-job watchdog cooperative yield clock
     uint32_t bytes_out;         // printer data so far
     printer_io_t io;
     void *drv_job;              // the driver's job, once the first page started
@@ -967,20 +968,35 @@ static int pipe_page_begin(void *user, const raster_page_t *pg)
     return d->page_begin(p->drv_job, pg->width, pg->height, pg->bytes_pp) ? 4 : 0;
 }
 
-static int pipe_line(void *user, int y, const uint8_t *px)
+static int pipe_line_repeat(void *user, int y, const uint8_t *px, bool is_repeat)
 {
     pipe_t *p = user;
     if (p->job->cancel)
         return 1;
 #ifdef ESP_PLATFORM
-    if ((y & 63) == 63)
-        vTaskDelay(1);      // let the idle task run (task watchdog)
+    // Yield based on elapsed CPU time, not a fixed number of lines.
+    // Use a per-job timestamp: connections/jobs may run on different tasks.
+    int64_t t = now_us();
+    if (!p->last_yield_us)
+        p->last_yield_us = t;
+    if (t - p->last_yield_us >= 50000) {
+        vTaskDelay(1);
+        p->last_yield_us = now_us();
+    }
 #endif
     int64_t t0 = now_us();
-    int r = s_cfg->driver->page_line(p->drv_job, y, px) ? 4 : 0;
+    const printer_driver_t *d = s_cfg->driver;
+    int result = d->page_line_repeat
+        ? d->page_line_repeat(p->drv_job, y, px, is_repeat)
+        : d->page_line(p->drv_job, y, px);
     p->render_us += now_us() - t0;
     p->job->line = y + 1;
-    return r;
+    return result ? 4 : 0;
+}
+
+static int pipe_line(void *user, int y, const uint8_t *px)
+{
+    return pipe_line_repeat(user, y, px, false);
 }
 
 static int pipe_page_end(void *user, const raster_page_t *pg)
@@ -1026,7 +1042,8 @@ static int print_document(conn_t *c, job_t *j)
     }
     p->job = j;
     doc_reader_t rd = {c, j, 0};
-    raster_cb_t cb = {pipe_page_begin, pipe_line, pipe_page_end};
+    raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
+                       .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
     int64_t t_start = now_us();
     int r = raster_decode(doc_read, &rd, &cb, p);
     if (p->drv_job && s_cfg->driver->job_stats) {

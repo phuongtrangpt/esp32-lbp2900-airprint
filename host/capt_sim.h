@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #pragma once
+#include "capt-status.h"
 typedef struct {
     uint8_t reply[1024]; size_t len, pos;
     unsigned pages, printed, video, offline, bytes, fail_read, bad_cmd;
     unsigned begin_pages, black_end, start_print, last_page_width;
+    unsigned delivery_wait;
+    unsigned strict_session, reserved, job_id, next_job_id, session_end, drain_seen, cleanup_step, released_jobs, refuse_release;
     unsigned input_scale;
     unsigned row, height, left, top, crop_width, force_full, paper_code, paper_width, paper_height;
 } fake_t;
@@ -45,7 +48,7 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         for(unsigned y=0;y<rows;y++) for(unsigned x=0;x<f->last_page_width*8;x++) {
             unsigned source_y=f->top+f->row+y;
             unsigned scale=f->input_scale ? f->input_scale : 1;
-            unsigned expected=x<f->crop_width && (source_y/scale)%5 && !(((x+f->left)/scale+source_y/scale)&1);
+            unsigned expected=!f->strict_session && x<f->crop_width && (source_y/scale)%5 && !(((x+f->left)/scale+source_y/scale)&1);
             assert(!!(output[y*f->last_page_width+x/8] & (0x80>>(x&7)))==expected);
         }
         f->row+=rows;
@@ -57,6 +60,19 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         assert(f->row==f->height);
 #endif
  f->black_end++; return 0; }
+    if (f->strict_session) {
+        if (cmd==CAPT_SET_JOB_INFO2) {
+            unsigned flag=p[16];
+            assert(le(p+18)==f->job_id);
+            if (flag==CAPT_JOBFLAG_END_LIN) { f->session_end=1; f->delivery_wait=2; }
+        }
+        if (f->session_end) {
+            if (cmd==CAPT_GET_EXTENDED_STATUS) f->drain_seen=1;
+            if (cmd==CAPT_CLEAR_ERROR && f->drain_seen) { assert(!f->delivery_wait); f->cleanup_step=1; }
+            if (cmd==CAPT_DISCARD_DATA && f->cleanup_step==1) f->cleanup_step=2;
+            if (cmd==CAPT_GO_OFFLINE && f->cleanup_step==2 && le(p)==f->job_id) f->cleanup_step=3;
+        }
+    }
     if(cmd==CAPT_GO_OFFLINE) f->offline=1;
     if(cmd==CAPT_GO_ONLINE) f->offline=0;
     if(cmd==CAPT_START_PRINT) { assert(n==6 && le(p)==f->pages); f->printed=le(p); f->start_print++; }
@@ -70,10 +86,27 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
     put(f->reply,cmd+(f->bad_cmd?1:0)); put(f->reply+2,payload+4);
     uint8_t *s=f->reply+4;
     if(cmd==CAPT_GET_PRINTER_INFO) { put(s+6,65280); put(s+8,64); }
-    if(cmd==CAPT_RESERVE_UNIT) put(s+2,1);
+    if(cmd==CAPT_RESERVE_UNIT) {
+        if (f->strict_session) {
+            if (f->reserved) s[0]=0x8c;
+            else {
+                f->reserved=1; f->job_id=++f->next_job_id;
+                f->pages=f->printed=f->session_end=f->drain_seen=f->cleanup_step=0;
+            }
+            put(s+2,f->job_id);
+        } else put(s+2,1);
+    }
+    if(cmd==CAPT_RELEASE_UNIT && f->strict_session) {
+        if (f->refuse_release || !f->reserved || le(p)!=f->job_id || f->cleanup_step!=3) s[0]=0x8c;
+        else { f->reserved=0; f->released_jobs++; }
+    }
     if(cmd==CAPT_GET_BASIC_STATUS || cmd==CAPT_GET_EXTENDED_STATUS) {
         s[0]=f->offline?0x10:0; s[1]=1; s[4]=(f->force_full && f->video>1 && f->printed<f->pages)?0:15;
         if(payload>=40) { put(s+14,f->pages); put(s+16,f->printed); put(s+18,f->printed); put(s+20,f->printed); }
+    }
+    if (cmd==CAPT_GET_EXTENDED_STATUS && f->strict_session && f->session_end && f->delivery_wait) {
+        s[8]=CAPT_AUX_PAPER_DELIVERY;
+        f->delivery_wait--;
     }
     f->len=payload+4;
     return 0;

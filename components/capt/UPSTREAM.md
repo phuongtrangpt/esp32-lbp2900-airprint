@@ -12,3 +12,5 @@ with original MIT notices for esp32-usb-to-airprint preserved.
 
 Protocol diagnostics now use capt_log: ESP_LOG on ESP, stderr on native builds.
 Transport failures report command ID and transfer byte counts, never payload data.
+
+v0.9.6: use the documented Linux-style job termination sequence after final-page delivery, validate ReleaseUnit error payload and recover ownership of a known prior JobID. Stateful consecutive-job tests added; hardware confirmation required for observed ReserveUnit 0x8c.

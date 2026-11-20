@@ -3,6 +3,7 @@
 #include "printer_driver.h"
 #include "capt_transport.h"
 #include "capt-command.h"
+#include "capt-status.h"
 #include "hiscoa-common.h"
 #include "capt_reference/hiscoa-decompress.h"
 #include <assert.h>
@@ -57,10 +58,36 @@ static void failures(void)
     for(int y=0;y<7015;y++) if(d->page_line(j,y,NULL)<0) { failed=1;break; }
     assert(failed); assert(d->job_end(j)<0);
 }
+static void consecutive_jobs(void)
+{
+    fake_t f={.strict_session=1,.next_job_id=40};
+    printer_io_t link=io(&f); const printer_driver_t *d=&canon_lbp2900_driver;
+    for(int id=1;id<=3;id++) {
+        void *j=d->job_begin(d,&link,600,0);assert(j);
+        assert(!d->page_begin(j,4961,7016,1));
+        for(int y=0;y<7016;y++) assert(!d->page_line(j,y,NULL));
+        assert(!d->page_end(j));assert(!d->job_end(j));
+        assert(f.released_jobs==(unsigned)id && !f.reserved && f.job_id==(unsigned)(40+id));
+    }
+    // The previous known ID can be stale even though the transport is alive.
+    f.reserved=1;
+    void *recovered=d->job_begin(d,&link,600,0);assert(recovered);
+    assert(!d->page_begin(recovered,4961,7016,1));
+    for(int y=0;y<7016;y++)assert(!d->page_line(recovered,y,NULL));
+    assert(!d->page_end(recovered));assert(!d->job_end(recovered));
+    assert(f.job_id==44 && f.released_jobs==5 && !f.reserved);
+    f.refuse_release=1;
+    void *j=d->job_begin(d,&link,600,0);assert(j);
+    assert(!d->page_begin(j,4961,7016,1));
+    for(int y=0;y<7016;y++)assert(!d->page_line(j,y,NULL));
+    assert(!d->page_end(j));assert(d->job_end(j)<0);
+}
 int main(void)
 {
     assert(printer_driver_match(0x04a9,0x2676,"")==&canon_lbp2900_driver);
     for (int dpi=300; dpi<=600; dpi+=300) for(int paper=0;paper<4;paper++) for(int rgb=0;rgb<2;rgb++) lifecycle(paper,rgb,dpi);
     failures();
+    consecutive_jobs();
+    puts("CAPT sessions: 3 consecutive jobs on one device, incrementing IDs 41-43, delayed delivery and rejected ReleaseUnit passed");
     puts("CAPT: PASS: A4/Letter/A5/A6, grayscale/RGB, two pages, full-buffer streaming, fragmented replies, disconnect, malformed reply, incomplete/canceled job");
 }

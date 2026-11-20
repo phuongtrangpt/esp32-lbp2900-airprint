@@ -198,6 +198,21 @@ static void send_job_start(uint8_t fg)
 	capt_sendrecv(CAPT_SET_JOB_INFO2, buf, sizeof(buf), NULL, 0);
 }
 
+/* ReleaseUnit has an error payload: a transport ACK alone is not success. */
+static bool capt_release_unit(uint16_t id)
+{
+    uint8_t request[2] = { LO(id), HI(id) }, reply[8];
+    size_t size = sizeof(reply);
+    capt_sendrecv(CAPT_RELEASE_UNIT, request, sizeof(request), reply, &size);
+    if (size < 2 || reply[0]) {
+        capt_log("ERROR: CAPT: ReleaseUnit job=%u rejected (status=0x%02x size=%u)\n",
+                 id, size ? reply[0] : 0xff, (unsigned)size);
+        return false;
+    }
+    capt_log("INFO: CAPT: ReleaseUnit job=%u confirmed\n", id);
+    return true;
+}
+
 /*
  * ReserveUnit with error recovery (all job prologues).
  *
@@ -231,6 +246,21 @@ static uint16_t capt_reserve_unit(struct printer_state_s *state)
 		capt_sendrecv(CAPT_DISCARD_DATA, NULL, 0, NULL, 0);
 		capt_sendrecv(CAPT_CLEAR_MIS_PRINT, NULL, 0, NULL, 0);
 		capt_sendrecv(CAPT_CLEAR_ERROR, NULL, 0, NULL, 0);
+        /* A failed reservation may be a stale known job. Clear/online alone
+         * does not release its ownership. Do not guess an ID after a reboot. */
+        if (job) {
+            send_job_start(CAPT_JOBFLAG_END_LIN);
+            do {
+                capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
+                status = capt_get_xstatus_only();
+                if (status->aux & CAPT_AUX_PAPER_DELIVERY) usleep(100000);
+            } while (status->aux & CAPT_AUX_PAPER_DELIVERY);
+            capt_sendrecv(CAPT_CLEAR_ERROR, NULL, 0, NULL, 0);
+            capt_sendrecv(CAPT_DISCARD_DATA, NULL, 0, NULL, 0);
+            uint8_t old[2] = { LO(job), HI(job) };
+            capt_sendrecv(CAPT_GO_OFFLINE, old, sizeof(old), NULL, 0);
+            (void)capt_release_unit(job); // the following ReserveUnit validates recovery
+        }
 		capt_sendrecv(CAPT_GO_ONLINE, magicbuf_linux_online, ARRAY_SIZE(magicbuf_linux_online), NULL, 0);
 		lbp2900_wait_ready(state->ops);
 
@@ -781,42 +811,29 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 
 static void lbp2900_job_epilogue(struct printer_state_s *state)
 {
-	uint8_t jbuf[2] = { LO(job), HI(job) };
-
-	/* SetJobInfo2(flag=3): send immediately after last page's IC_BLACK_END.
-	 * Spec §9, §11, §14 Rule 14: do NOT wait for Printed==totalPages first.
-	 * GetExtendedStatus first to confirm final state, then send flag=3. */
-	capt_get_xstatus_only();
-	send_job_start(CAPT_JOBFLAG_END);
-
-	capt_sendrecv(CAPT_RELEASE_UNIT, jbuf, 2, NULL, 0);
-
-	/* Wait for RCF_PAPER_DELIVERY (Aux byte 9 bit 0x04) to clear before
-	 * issuing the teardown sequence.  The last sheet is still being
-	 * physically delivered while this bit is set; sending ClearError /
-	 * DiscardData / GoOffline / ReleaseUnit before it clears aborts the
-	 * delivery prematurely.  Poll GetExtendedStatus (with GetInputStatus
-	 * interleaved as the Windows driver does) until the bit is gone. */
-	{
-		const struct capt_status_s *s;
-		while (1) {
-			capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
-			s = capt_get_xstatus_only();
-			if (!(s->aux & CAPT_AUX_PAPER_DELIVERY))
-				break;
-			usleep(100000);
-		}
-	}
-	return;
-
-	/* Linux epilogue: ClearError → DiscardData → GetExtendedStatus
-	 * → GoOffline(JobID) → ReleaseUnit (protocol §3.1.1 Linux order) */
-	capt_get_xstatus_only();
-	capt_sendrecv(CAPT_CLEAR_ERROR, NULL, 0, NULL, 0);
-	capt_sendrecv(CAPT_DISCARD_DATA, NULL, 0, NULL, 0);
-	capt_get_xstatus_only();
-	capt_sendrecv(CAPT_GO_OFFLINE, jbuf, 2, NULL, 0);
-	capt_sendrecv(CAPT_RELEASE_UNIT, jbuf, 2, NULL, 0);
+    uint8_t jbuf[2] = { LO(job), HI(job) };
+    unsigned final_page = state->ipage - state->printer_page_offset;
+    /* Use one complete Linux termination sequence, rather than Windows
+     * ReleaseUnit followed by an unreachable Linux cleanup tail. Protocol
+     * info/lbp3000-protocol.md sections 2.7, 2.8 and 3.1.2. */
+    capt_get_xstatus_only();
+    send_job_start(CAPT_JOBFLAG_END_LIN);
+    unsigned polls = 0;
+    for (;;) {
+        capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
+        const struct capt_status_s *status = capt_get_xstatus_only();
+        if (status->page_completed >= final_page && !(status->aux & CAPT_AUX_PAPER_DELIVERY)) break;
+        if ((++polls % 50) == 0)
+            capt_log("INFO: CAPT: draining job=%u printed=%u target=%u aux=0x%02x\n",
+                     job, status->page_completed, final_page, status->aux);
+        usleep(100000);
+    }
+    /* Never discard/clear while the last page is still being delivered. */
+    capt_sendrecv(CAPT_CLEAR_ERROR, NULL, 0, NULL, 0);
+    capt_sendrecv(CAPT_DISCARD_DATA, NULL, 0, NULL, 0);
+    capt_get_xstatus_only();
+    capt_sendrecv(CAPT_GO_OFFLINE, jbuf, sizeof(jbuf), NULL, 0);
+    if (!capt_release_unit(job)) capt_fail("CAPT job ownership was not released");
 }
 
 static void lbp2900_page_setup(struct printer_state_s *state,

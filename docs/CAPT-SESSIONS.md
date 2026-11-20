@@ -1,0 +1,11 @@
+# v0.9.6 — Canon CAPT session completion
+
+Observed on a real LBP2900 running v0.9.5: the first four-page Word job completed; the next three jobs failed before page data with ReserveUnit response 0x8c. USB remained attached. The report proves reservation rejection, not the printer's internal reason for that status.
+
+Code review found that the old job-end routine used a Windows end/release path, discarded ReleaseUnit's error payload and returned before a Linux cleanup tail. Thus firmware could report completion without confirming ownership had been released. These details also exist in the pinned upstream snapshot; they were not introduced by v0.9.5's pixel packing. This does not mean every Windows-style termination sequence is invalid.
+
+The fix uses one complete Linux-style termination sequence documented in the pinned upstream `info/lbp3000-protocol.md` (sections 2.7, 2.8 and 3.1.2): end flag 3; poll printed count and paper-delivery flag; after delivery, ClearError, DiscardData, status, GoOffline(actual JobID), then ReleaseUnit(actual JobID). Release response must contain a valid zero error field; otherwise the job fails explicitly. Existing bounded CAPT deadlines remain. Recovery of a failed reservation also attempts to release the previous known JobID; an unknown JobID after ESP reboot is never guessed.
+
+The stateful simulator checks three separate jobs without resetting the device, incrementing IDs 41-43, delayed paper delivery, known stale ownership recovery, and rejection of ReleaseUnit. The old routine fails this stricter Linux-session model. This is a regression against the intended documented sequence, not proof that physical 0x8c is always caused by missing cleanup. Existing raster decode, multi-page, cancellation and error tests remain required.
+
+After updating, power-cycle the printer once to clear any stale state left by earlier firmware, then submit the same one-page file as three separate jobs. Save diagnostics after all attempts, before restarting ESP. Successful termination now logs `ReleaseUnit job=N confirmed`. Physical confirmation is required before considering the customer's repeated-job issue resolved. No additional speed improvement is claimed for this release.

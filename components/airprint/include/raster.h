@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,6 +24,9 @@ typedef struct {
     // pixels == NULL: the line is entirely white
     int (*line)(void *user, int y, const uint8_t *pixels);
     int (*page_end)(void *user, const raster_page_t *pg);
+    // Optional: same pixels as preceding decoded line (PWG/URF repeat flag).
+    // If set, called instead of line(). Existing consumers remain compatible.
+    int (*line_repeat)(void *user, int y, const uint8_t *pixels, bool is_repeat);
 } raster_cb_t;
 
 // Reads up to n bytes; returns bytes read (> 0), 0 at end of data, < 0 on error.

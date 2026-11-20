@@ -17,7 +17,7 @@
 typedef struct {
     raster_read_fn read;
     void *ctx;
-    uint8_t buf[4096];
+    uint8_t *buf;
     size_t pos, len;
     int eof;
 } reader_t;
@@ -30,7 +30,7 @@ AP_HOT static int rd(reader_t *r, uint8_t *out, size_t n)
         if (r->pos == r->len) {
             if (r->eof)
                 return got == 0 ? 1 : -1;
-            int k = r->read(r->ctx, r->buf, sizeof(r->buf));
+            int k = r->read(r->ctx, r->buf, 4096);
             if (k < 0)
                 return -1;
             if (k == 0) {
@@ -50,6 +50,13 @@ AP_HOT static int rd(reader_t *r, uint8_t *out, size_t n)
     return 0;
 }
 
+// The common packet-control/gray-pixel reads stay inside the buffered reader.
+static inline int rd_byte(reader_t *r, uint8_t *out)
+{
+    if (r->pos < r->len) { *out = r->buf[r->pos++]; return 0; }
+    return rd(r, out, 1);
+}
+
 static uint32_t be32(const uint8_t *p)
 {
     return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
@@ -66,7 +73,7 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
     int y = 0;
     while (ret == 0 && y < pg->height) {
         uint8_t rep;
-        if (rd(r, &rep, 1)) {
+        if (rd_byte(r, &rep)) {
             ret = RASTER_ERR_IO;
             break;
         }
@@ -74,7 +81,7 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
         bool white = true;      // only white runs / fills so far
         while (x < line_bytes) {
             uint8_t n;
-            if (rd(r, &n, 1)) {
+            if (rd_byte(r, &n)) {
                 ret = RASTER_ERR_IO;
                 break;
             }
@@ -84,7 +91,7 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
             } else if (n < 128) {
                 size_t count = (size_t)n + 1;
                 uint8_t px[4];
-                if (rd(r, px, bpp)) {
+                if (bpp == 1 ? rd_byte(r, px) : rd(r, px, bpp)) {
                     ret = RASTER_ERR_IO;
                     break;
                 }
@@ -138,6 +145,8 @@ int raster_decode(raster_read_fn read, void *ctx, const raster_cb_t *cb, void *u
     reader_t *r = calloc(1, sizeof(*r));
     if (!r)
         return RASTER_ERR_NOMEM;
+    r->buf = AP_MALLOC_BULK(4096);
+    if (!r->buf) { free(r); return RASTER_ERR_NOMEM; }
     r->read = read;
     r->ctx = ctx;
 
@@ -220,6 +229,7 @@ int raster_decode(raster_read_fn read, void *ctx, const raster_cb_t *cb, void *u
     } else {
         ret = RASTER_ERR_FORMAT;
     }
+    free(r->buf);
     free(r);
     return ret ? ret : pages;
 }

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // LBP2900 raster adapter. Experimental until verified on a physical printer.
 #include "printer_driver.h"
+#include "mono_raster.h"
 #include "capt_transport.h"
 #include "printer.h"
 #include "paper.h"
@@ -106,17 +107,11 @@ static int page_begin(void *ctx, int width, int height, int bpp)
     j->page_open = true;
     return 0;
 }
-static const uint8_t bayer[4][4] = {{0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}};
 static void append_row(job_t *j, const uint8_t *px, int y)
 {
     uint8_t *out = j->raw + j->rows_in_band * j->dims.line_size;
     int max = (j->driver->papers[j->paper].width - j->driver->margin_left - j->driver->margin_right) * 600 / 2540;
-    for (int x = 0; px && x < max && (x + j->left) / j->scale < j->width; x++) {
-        const uint8_t *p = px + ((x + j->left) / j->scale) * j->bpp;
-        unsigned gray = j->bpp == 1 ? p[0] : (77u*p[0] + 150u*p[1] + 29u*p[2]) >> 8;
-        unsigned threshold = bayer[y & 3][x & 3] * 16 + 8;
-        if (gray < threshold) out[x / 8] |= 0x80 >> (x & 7);
-    }
+    if (px) mono_pack(out, max, px, j->width, j->bpp, j->left, j->scale == 2, y);
     j->rows_in_band++; j->output_rows++;
     if (j->rows_in_band == BAND_LINES || (unsigned)j->output_rows == j->dims.num_lines) flush_band(j);
 }

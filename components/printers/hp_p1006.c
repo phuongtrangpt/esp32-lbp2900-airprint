@@ -2,6 +2,7 @@
 // XQX framing adapted from Rick Richardson's foo2xqx (GPL-2.0-or-later).
 // Experimental HP LaserJet P1006, 600 dpi monochrome, simplex A4 / Letter / A5 / A6.
 #include "printer_driver.h"
+#include "mono_raster.h"
 #include "jbig.h"
 #include <stdlib.h>
 #include <string.h>
@@ -152,18 +153,13 @@ static int page_begin(void *ctx,int w,int h,int bpp) {
     memset(j->raw,0,(size_t)j->stride*j->height); return 0;
 }
 static int line(void *ctx,int y,const uint8_t *p) {
-    static const unsigned char matrix[4][4]={{0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}};
     hp_job *j=ctx;
     if (!j->open || j->failed || y!=j->y || y>=j->src_h) return -1;
     j->y++;
     int row=y-96;
     if (p && row>=0 && row<j->height) {
         unsigned char *out=j->raw+(size_t)row*j->stride;
-        for (int x=0;x<j->width && x+96<j->src_w;x++) {
-            int off=(x+96)*j->bpp;
-            unsigned gray=j->bpp==1 ? p[off] : (77*p[off]+150*p[off+1]+29*p[off+2])>>8;
-            if (gray < (unsigned)matrix[row&3][x&3]*16+8) { out[x>>3]|=0x80>>(x&7); j->ink_pixels++; }
-        }
+        j->ink_pixels += mono_pack(out,j->width,p,j->src_w,j->bpp,96,0,row);
     }
     return 0;
 }

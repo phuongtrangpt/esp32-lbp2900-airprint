@@ -26,6 +26,7 @@
 #include "ipp.h"
 #include "printer_driver.h"
 #include "raster.h"
+#include "mem.h"
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
@@ -1136,7 +1137,8 @@ static int check_job_request(const ipp_request_t *req, ipp_out_t *unsup)
 
 static void handle_ipp(conn_t *c)
 {
-    ipp_request_t *req = calloc(1, sizeof(*req));
+    ipp_request_t *req = AP_MALLOC_BULK(sizeof(*req));
+    if (req) memset(req, 0, sizeof(*req));
     ipp_out_t out, unsup;
     ipp_out_init(&out);
     ipp_out_init(&unsup);

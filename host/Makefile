@@ -15,7 +15,7 @@ INC = -I../components/xqx/vendor -I../components/capt/include -I../components/ca
       -I../components/scanner/include -I../components/scanner -I../components/webui/include \
       -I../components/oled/include
 
-all: bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host memory_host standard_host network_config_host hp_bootstrap_host portal_dns_host
+all: mono_host bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host memory_host standard_host network_config_host hp_bootstrap_host portal_dns_host
 
 bjl_host: bjl_host.c $(BJL) $(PRINTERS) ../components/airprint/printer_driver.c ../components/canon_bjl/include/*.h \
           ../components/airprint/include/printer_driver.h
@@ -65,3 +65,8 @@ hp_bootstrap_host: hp_bootstrap_host.c ../components/hp_bootstrap/hp_bootstrap.c
 
 portal_dns_host: portal_dns_host.c ../components/portal_dns/portal_dns.c
 	$(CC) $(CFLAGS) -I../components/portal_dns/include $^ -o $@
+
+# Shared raster implementation changes must invalidate every consumer.
+capt_host hp_host airprint_host memory_host standard_host: ../components/printers/mono_raster.h
+mono_host: mono_host.c ../components/printers/mono_raster.h
+	$(CC) $(CFLAGS) mono_host.c -o $@

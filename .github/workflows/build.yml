@@ -59,6 +59,8 @@ jobs:
           python -c "import tarfile; t=tarfile.open('/tmp/hp-source.tar.gz'); open('/tmp/hp-source.img','wb').write(t.extractfile('sihpP1006.img').read())"
           HP_SOURCE_IMAGE=/tmp/hp-source.img go test tools/offline/main.go tools/offline/main_test.go
           python tools/test_profiles.py
+      - name: Byte-exact optimized monochrome raster
+        run: ASAN_OPTIONS=detect_leaks=0 host/mono_host
       - name: CAPT raster and error tests
         run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
       - name: CAPT watchdog scheduling and deadline regression

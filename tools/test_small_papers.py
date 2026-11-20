@@ -18,7 +18,9 @@ for driver in ['hp-p1006','canon-lbp2900']:
    status,caps=ipp(port,0x0b);assert status==0
    for paper,w,h in [('iso_a5_148x210mm',3496,4961),('iso_a6_105x148mm',2480,3496)]:
     assert paper.encode() in caps
-    status,_=ipp(port,2,white_urf(2,width=w,height=h));assert status==0,hex(status)
+    dpi = 300 if driver == 'canon-lbp2900' else 600
+    raster_w, raster_h = (w // 2, h // 2) if dpi == 300 else (w, h)
+    status,_=ipp(port,2,white_urf(2,dpi=dpi,width=raster_w,height=raster_h),dpi=dpi);assert status==0,hex(status)
     conn=http.client.HTTPConnection('127.0.0.1',port);conn.request('GET','/api/state');st=json.loads(conn.getresponse().read());conn.close()
     assert paper in st['printer']['papers']
     assert st['printer']['jobs'][0]['state']=='completed' and st['printer']['jobs'][0]['pages']==2,st

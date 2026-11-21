@@ -726,6 +726,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 	/* SetJobInfo2(flag=6) at job end is now sent once in lbp2900_job_epilogue,
 	 * not per-page here, per protocol §2.7 §3.1.1. */
 
+	unsigned no_paper_polls = 0;
 	while (1) {
 		status = lbp2900_get_status(state->ops);
 
@@ -801,9 +802,13 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 
 		/* Legacy no-paper flags from extended status */
 		if (FLAG(status, CAPT_FL_NOPAPER2) || FLAG(status, CAPT_FL_NOTREADY)) {
-			capt_log( "DEBUG: CAPT: no paper\n");
-			if (FLAG(status, CAPT_FL_PRINTING) || FLAG(status, CAPT_FL_PROCESSING1))
+			/* Rate-limit repeated status logs while paper runs out. */
+			if ((no_paper_polls++ % 20) == 0)
+				capt_log("DEBUG: CAPT: no paper / not ready (waiting for extended status)\n");
+			if (FLAG(status, CAPT_FL_PRINTING) || FLAG(status, CAPT_FL_PROCESSING1)) {
+				usleep(100000);
 				continue;
+			}
 			return false;
 		}
 		usleep(100000);

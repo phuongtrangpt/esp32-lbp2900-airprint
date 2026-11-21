@@ -86,13 +86,17 @@ def main():
             assert status == 0, 'legacy 600 dpi job attributes must be accepted'
             status, _ = ipp(port, 2, white_urf(1), dpi=600)
             assert status == 0, 'legacy 600 dpi raster must still print'
+            # Valid 300 dpi job attributes must not conceal an invalid 150 dpi raster.
+            status, _ = ipp(port, 2, white_urf(1, dpi=150, width=1240, height=1754), dpi=300)
+            assert status >= 0x400, 'unsupported raster must not be reported as completed'
             conn = http.client.HTTPConnection('127.0.0.1', port)
             conn.request('GET', '/api/state')
             result = json.loads(conn.getresponse().read())
             jobs = result['printer']['jobs']
-            assert jobs[0]['state'] == 'completed' and jobs[0]['pages'] == 1, result
-            assert jobs[1]['state'] == 'completed' and jobs[1]['pages'] == pages, result
-            assert jobs[2]['state'] == 'completed' and jobs[2]['pages'] == 2, result
+            assert jobs[0]['state'] == 'aborted' and jobs[0]['pages'] == 0, result
+            assert jobs[1]['state'] == 'completed' and jobs[1]['pages'] == 1, result
+            assert jobs[2]['state'] == 'completed' and jobs[2]['pages'] == pages, result
+            assert jobs[3]['state'] == 'completed' and jobs[3]['pages'] == 2, result
             assert not result['scan']['scanner'], result
             # A malformed/unsupported raster aborts only this job; a following
             # valid job must still complete, with the simulated printer reset.

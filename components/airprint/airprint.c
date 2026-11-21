@@ -30,6 +30,7 @@
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #define LOGI(...) ESP_LOGI("airprint", __VA_ARGS__)
@@ -1700,13 +1701,31 @@ static void *listen_thread(void *arg)
         int fd = accept(ls, NULL, NULL);
         if (fd < 0)
             continue;
+#ifdef ESP_PLATFORM
+        // A FreeRTOS pthread stack needs contiguous internal RAM. Refuse
+        // optional control connections before they starve the active print
+        // pipeline, Wi-Fi, or USB tasks.
+        size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+        size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        bool heap_low = internal_free < (36 * 1024) || internal_largest < (14 * 1024);
+#else
+        bool heap_low = false;
+#endif
         pthread_mutex_lock(&s_lock);
-        bool full = s_connections >= MAX_CONNECTIONS;
+        bool full = heap_low || s_connections >= MAX_CONNECTIONS;
         if (!full)
             s_connections++;
         pthread_mutex_unlock(&s_lock);
-        if (full)
+        if (full) {
+#ifdef ESP_PLATFORM
+            static unsigned refused;
+            if ((++refused % 32) == 1)
+                LOGW("HTTP connection refused (active=%d max=%d; internal=%u largest=%u)",
+                     s_connections, MAX_CONNECTIONS, (unsigned)internal_free, (unsigned)internal_largest);
+#else
             LOGW("too many connections (%d), refusing one", MAX_CONNECTIONS);
+#endif
+        }
         conn_t *c = full ? NULL : calloc(1, sizeof(*c));
         if (!c) {
             if (!full) {

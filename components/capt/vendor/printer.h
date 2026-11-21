@@ -43,6 +43,7 @@ struct printer_state_s {
 	uint8_t paper_sz;          /* paper size byte (for SetLEDStatus NoPaper payload) */
 	int pages_printed_before_error; /* pages successfully printed before out-of-paper */
 	unsigned printer_page_offset; /* ipage bias after OOP recovery (printer counters reset to 0) */
+	bool oop_retry_pending; /* recovery succeeded; resend this page's cached CAPT bands */
 };
 
 struct printer_ops_s {

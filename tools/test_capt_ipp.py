@@ -89,8 +89,10 @@ def main():
             conn = http.client.HTTPConnection('127.0.0.1', port)
             conn.request('GET', '/api/state')
             result = json.loads(conn.getresponse().read())
-            assert result['printer']['jobs'][0]['state'] == 'completed', result
-            assert result['printer']['jobs'][0]['pages'] == pages, result
+            jobs = result['printer']['jobs']
+            assert jobs[0]['state'] == 'completed' and jobs[0]['pages'] == 1, result
+            assert jobs[1]['state'] == 'completed' and jobs[1]['pages'] == pages, result
+            assert jobs[2]['state'] == 'completed' and jobs[2]['pages'] == 2, result
             assert not result['scan']['scanner'], result
             # A malformed/unsupported raster aborts only this job; a following
             # valid job must still complete, with the simulated printer reset.

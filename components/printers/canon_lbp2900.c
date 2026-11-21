@@ -10,9 +10,15 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#ifdef ESP_PLATFORM
+#include "esp_heap_caps.h"
+#endif
 
 extern const struct printer_ops_s *capt_lbp2900_ops(void);
 #define BAND_LINES 70
+#define PAGE_CACHE_BANDS 160
+
+typedef struct { uint8_t *payload; size_t size; } capt_cached_band_t;
 
 typedef struct {
     capt_transport_t link;
@@ -30,6 +36,9 @@ typedef struct {
     size_t raw_size, compressed_size;
     uint64_t compress_us, send_us;
     unsigned bands;
+    capt_cached_band_t *cached_page;
+    unsigned cached_count;
+    bool cache_usable;
 } job_t;
 
 // All upstream operations run inside a guard: a malformed reply, disconnect,
@@ -38,8 +47,30 @@ typedef struct {
     (j)->failed = true; capt_log( "ERROR: CAPT: %s\n", (j)->link.error); return -1; \
     } capt_deadline(&(j)->link, 120000); } while (0)
 
+static void clear_cached_page(job_t *j)
+{
+    if (j->cached_page) {
+        for (unsigned i = 0; i < j->cached_count; i++)
+            free(j->cached_page[i].payload);
+        free(j->cached_page);
+    }
+    j->cached_page = NULL;
+    j->cached_count = 0;
+    j->cache_usable = false;
+}
+
+static void *cache_malloc(size_t n)
+{
+#ifdef ESP_PLATFORM
+    return heap_caps_malloc(n, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+    return malloc(n);
+#endif
+}
+
 static void dispose(job_t *j)
 {
+    clear_cached_page(j);
     free(j->raw); free(j->compressed); free(j->row_cache);
     free(j->link.buffer); free(j);
 }
@@ -84,6 +115,23 @@ static void flush_band(job_t *j)
         j->raw, j->dims.line_size, j->rows_in_band, last);
     if (!n || n >= j->compressed_size) capt_fail("CAPT compression overflow");
     j->compress_us += micros() - start;
+    // Keep compressed CAPT bands for the current page in PSRAM, so paper-out
+    // recovery can replay just the interrupted page after printer counters reset.
+    if (j->cache_usable) {
+        if (j->cached_count >= PAGE_CACHE_BANDS) {
+            j->cache_usable = false;
+        } else {
+            uint8_t *copy = cache_malloc(n);
+            if (!copy) {
+                j->cache_usable = false;
+            } else {
+                memcpy(copy, j->compressed, n);
+                j->cached_page[j->cached_count++] = (capt_cached_band_t){copy, n};
+            }
+        }
+        if (!j->cache_usable)
+            capt_log("WARNING: CAPT page replay cache unavailable; paper-out will abort safely\n");
+    }
     start = micros();
     j->state.ops->send_band(&j->state, j->compressed, n);
     j->send_us += micros() - start;
@@ -98,6 +146,12 @@ static int page_begin(void *ctx, int width, int height, int bpp)
     if (j->failed || j->page_open || width <= 0 || width > 10000 || height <= 0 ||
         height > 10000 || (bpp != 1 && bpp != 3)) return -1;
     GUARD(j);
+    clear_cached_page(j);
+    j->cached_page = cache_malloc(sizeof(capt_cached_band_t) * PAGE_CACHE_BANDS);
+    if (j->cached_page) {
+        memset(j->cached_page, 0, sizeof(capt_cached_band_t) * PAGE_CACHE_BANDS);
+        j->cache_usable = true;
+    }
     j->width = width; j->height = height; j->bpp = bpp;
     j->next_y = j->output_rows = j->rows_in_band = 0;
     j->row_cache_valid = 0;
@@ -169,8 +223,30 @@ static int page_end(void *ctx)
     if (j->failed || !j->page_open || j->next_y != j->height) return -1;
     GUARD(j);
     while ((unsigned)j->output_rows < j->dims.num_lines) append_row(j, NULL, j->output_rows + j->top, false);
-    if (!j->state.ops->page_epilogue(&j->state, &j->dims)) capt_fail("CAPT page did not complete");
+    // On out-of-paper, upstream CAPT recovery resets the printer page
+    // counters and requests a replay. Re-send only the current page's cached
+    // compressed bands; never replay pages already acknowledged by the engine.
+    // Keep a bounded retry count to prevent a repeating paper-out loop.
+    for (int retry = 0; ; retry++) {
+        if (j->state.ops->page_epilogue(&j->state, &j->dims))
+            break;
+        if (!j->state.oop_retry_pending)
+            capt_fail("CAPT page did not complete");
+        j->state.oop_retry_pending = false;
+        if (!j->cache_usable || j->cached_count == 0 || retry >= 3)
+            capt_fail("CAPT paper-out replay unavailable or limit reached");
+        capt_log("INFO: CAPT: replaying interrupted page %u after paper refill (attempt %d, bands=%u)\n",
+                 j->state.ipage, retry + 1, j->cached_count);
+        j->state.iband = j->state.isend = 0;
+        if (!j->state.ops->page_prologue(&j->state, &j->dims))
+            capt_fail("CAPT cannot restart page after paper refill");
+        for (unsigned i = 0; i < j->cached_count; i++) {
+            j->state.ops->send_band(&j->state, j->cached_page[i].payload, j->cached_page[i].size);
+            j->state.iband++;
+        }
+    }
     j->page_open = false;
+    clear_cached_page(j);
     return 0;
 }
 static int end(void *ctx)

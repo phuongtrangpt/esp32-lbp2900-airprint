@@ -1084,6 +1084,12 @@ static int print_document(conn_t *c, job_t *j)
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
     int64_t t_start = now_us();
     int r = raster_decode(doc_read, &rd, &cb, p);
+    if (r == RASTER_ERR_IO) {
+        LOGW("job %d: raster stream truncated: recv=%lld bytes, pending HTTP body=%lld, "
+             "eof=%d, chunked=%d, remaining buffered=%u",
+             j->id, (long long)j->bytes, (long long)c->remaining,
+             (int)c->body_eof, (int)c->chunked, (unsigned)(c->len - c->pos));
+    }
     if (p->drv_job && s_cfg->driver->job_stats) {
         char stats[160];
         s_cfg->driver->job_stats(p->drv_job, stats, sizeof(stats));

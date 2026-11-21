@@ -13,6 +13,8 @@ export interface Job {
   user: string;
   state: 'pending' | 'held' | 'processing' | 'canceled' | 'aborted' | 'completed';
   reason: string;
+  queuePosition?: number;
+  receiving?: boolean;
   pages: number;
   bytes: number;
   time: number; // when it was created or ended, s since 1970 (device clock)
@@ -29,6 +31,8 @@ export interface PrinterState {
   reasons: string[];
   supplies: Supply[];
   active: number;
+  jobCount?: number;
+  jobLimit?: number;
   jobs: Job[];
 }
 

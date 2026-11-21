@@ -82,7 +82,11 @@
   const blocker = $derived.by(() => {
     if (!device.online) return 'The printer box is not reachable.';
     if (!p?.connected) return 'No printer is connected to the printer box.';
-    if (p.state === 'processing') return 'The printer is busy with another job.';
+    if ((p.jobLimit ?? 1) > 1) {
+      if ((p.jobCount ?? 0) >= (p.jobLimit ?? 1)) return 'Hàng đợi đã đầy. Hãy thử lại khi có lệnh hoàn tất.';
+    } else if (p.state === 'processing') {
+      return 'The printer is busy with another job.';
+    }
     if (device.scan?.state === 'scanning') return 'The printer is scanning.';
     return '';
   });
@@ -147,7 +151,7 @@
       phase = 'send';
       frac = 0;
       detail = 'Sending to the printer';
-      await sendJob(
+      const result = await sendJob(
         doc,
         name,
         (f) => {
@@ -159,7 +163,8 @@
         },
         signal,
       );
-      toast(`Printed ${sheets} page${sheets === 1 ? '' : 's'} of ${name}`, 'ok');
+      if (result.queued) toast(`Đã xếp hàng lệnh #${result.jobId}: ${name}`, 'ok');
+      else toast(`Printed ${sheets} page${sheets === 1 ? '' : 's'} of ${name}`, 'ok');
       if (!closed) onclose();
     } catch (e) {
       if ((e as Error).name === 'AbortError') {

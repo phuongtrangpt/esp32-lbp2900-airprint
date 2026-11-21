@@ -172,7 +172,7 @@ void ipp_out_free(ipp_out_t *o)
 
 static void put(ipp_out_t *o, const void *data, size_t n)
 {
-    if (o->oom)
+    if (!n || o->oom)
         return;
     if (o->len + n > o->cap) {
         size_t cap = o->cap ? o->cap : 1024;

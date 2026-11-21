@@ -62,6 +62,11 @@
 #define ACTIVE_IPP_TIMEOUT_S 120
 #define ACTIVE_IPP_SLICE_S 1
 #define MAX_JOBS 10
+#define CANON_MAX_JOBS 3
+#define SPOOL_JOB_LIMIT (2 * 1024 * 1024)
+#define SPOOL_TOTAL_LIMIT (4 * 1024 * 1024)
+#define SPOOL_PSRAM_RESERVE (1024 * 1024)
+#define SPOOL_UPLOAD_TIMEOUT_S 30
 #define MULTIPLE_OP_TIMEOUT_S 60
 
 #define MAX_PAPERS 8         // of a driver, in the IPP attributes
@@ -87,6 +92,11 @@ typedef struct {
     int64_t bytes;
     volatile int line, height;  // progress of the page being printed (read without the lock)
     atomic_bool cancel;
+    uint64_t order;             // document admission order, zero until submitted
+    uint8_t *spool;
+    size_t spool_size, spool_capacity;
+    bool receiving;
+    bool replying;              // retain the job until its IPP response is serialized
     bool printer_open;          // permits the hardware cancel hook while the device is in use
 } job_t;
 
@@ -94,7 +104,9 @@ static const airprint_config_t *s_cfg;
 static pthread_mutex_t s_lock = PTHREAD_MUTEX_INITIALIZER;
 static job_t s_jobs[MAX_JOBS];      // ring of recent jobs
 static int s_next_id = 1;
-static job_t *s_active;             // pending or processing job
+static job_t *s_active;
+static uint64_t s_next_order = 1;
+static size_t s_spool_bytes;
 static time_t s_start;
 static int s_connections;
 
@@ -118,8 +130,10 @@ struct airprint_http {
     int64_t remaining;          // Content-Length mode: bytes left; chunked: bytes left in chunk
     bool body_eof;
     bool body_failed;
+    int64_t upload_deadline;    // absolute timeout for a queued upload
     job_t *receiving_job;       // only set while an admitted job owns this connection
     bool in_chunks;             // a chunk was read: CRLF precedes the next size line
+    bool dispatch_queue;
     bool detached;              // the socket was handed over (airprint_http_detach)
 };
 typedef struct airprint_http conn_t;
@@ -151,7 +165,7 @@ static int conn_fill(conn_t *c)
         int64_t now = now_us();
         if (!deadline)
             deadline = now + (int64_t)(ACTIVE_IPP_TIMEOUT_S - ACTIVE_IPP_SLICE_S) * 1000000;
-        if (now >= deadline)
+        if (now >= deadline || (c->upload_deadline && now >= c->upload_deadline))
             break;
         n = recv(c->fd, c->buf, sizeof(c->buf), 0);
     }
@@ -283,11 +297,21 @@ typedef struct {
     conn_t *c;
     job_t *job;
     int64_t wait_us;            // time spent waiting for document data
+    size_t offset;
 } doc_reader_t;
 
 static int doc_read(void *ctx, uint8_t *buf, size_t n)
 {
     doc_reader_t *d = ctx;
+    if (!d->c) {
+        size_t left = d->job->spool_size - d->offset;
+        if (n > left)
+            n = left;
+        memcpy(buf, d->job->spool + d->offset, n);
+        d->offset += n;
+        d->job->bytes += n;
+        return (int)n;
+    }
     int64_t t0 = now_us();
     int k = body_read(d->c, buf, n);
     d->wait_us += now_us() - t0;
@@ -534,6 +558,26 @@ static void get_status(airprint_status_t *st)
 }
 
 // printer-state from the job table and the printer
+static bool queue_enabled(void)
+{
+    return !strcmp(s_cfg->driver->id, "canon-lbp2900");
+}
+
+static int job_limit(void)
+{
+    return queue_enabled() ? CANON_MAX_JOBS : 1;
+}
+
+// The job table and queue fields are protected by s_lock.
+static int outstanding_jobs(void)
+{
+    int count = 0;
+    for (int i = 0; i < MAX_JOBS; i++)
+        if (s_jobs[i].id && s_jobs[i].state < JOB_CANCELED)
+            count++;
+    return count;
+}
+
 static int printer_state(const airprint_status_t *st)
 {
     if (!st->connected)
@@ -819,7 +863,7 @@ static void add_printer_attrs(ipp_out_t *o, const conn_t *c, const filter_t *f)
         ipp_out_strs(o, IPP_TAG_KEYWORD, "pwg-raster-document-type-supported",
                      drv->color ? (const char *[]){"sgray_8", "srgb_8", NULL} : (const char *[]){"sgray_8", NULL});
     if (W("queued-job-count"))
-        ipp_out_int(o, IPP_TAG_INTEGER, "queued-job-count", s_active ? 1 : 0);
+        ipp_out_int(o, IPP_TAG_INTEGER, "queued-job-count", outstanding_jobs());
     if (W("sides-default"))
         ipp_out_str(o, IPP_TAG_KEYWORD, "sides-default", "one-sided");
     if (W("sides-supported"))
@@ -851,7 +895,7 @@ static const char *job_reason(const job_t *j)
     if (j->reason)
         return j->reason;
     switch (j->state) {
-    case JOB_PENDING: return "job-incoming";
+    case JOB_PENDING: return j->spool_size ? "job-queued" : "job-incoming";
     case JOB_PROCESSING: return "job-printing";
     case JOB_CANCELED: return "job-canceled-by-user";
     case JOB_ABORTED: return "aborted-by-system";
@@ -920,33 +964,85 @@ static job_t *job_find(int id)
     return NULL;
 }
 
+// Iterates by ID even when a long-running job predates the recent history.
+static job_t *job_before(int id, bool live_only)
+{
+    job_t *latest = NULL;
+    for (int i = 0; i < MAX_JOBS; i++) {
+        job_t *job = &s_jobs[i];
+        if (job->id && job->id < id && (!live_only || job->state < JOB_CANCELED) &&
+            (!latest || job->id > latest->id))
+            latest = job;
+    }
+    return latest;
+}
+
 static bool job_done(const job_t *j)
 {
     return j->state >= JOB_CANCELED;
 }
 
+static job_t *next_document(void)
+{
+    job_t *next = NULL;
+    for (int i = 0; i < MAX_JOBS; i++) {
+        job_t *j = &s_jobs[i];
+        if (j->state == JOB_PENDING && j->order && (!next || j->order < next->order))
+            next = j;
+    }
+    return next;
+}
+
+static int queue_position(const job_t *j)
+{
+    if (j->state != JOB_PENDING || !j->order)
+        return 0;
+    int position = 1;
+    for (int i = 0; i < MAX_JOBS; i++)
+        if (s_jobs[i].state == JOB_PENDING && s_jobs[i].order && s_jobs[i].order < j->order)
+            position++;
+    return position;
+}
+
 static void job_finish(job_t *j, int state)
 {
+    free(j->spool);
+    s_spool_bytes -= j->spool_capacity;
+    j->spool = NULL;
+    j->spool_size = j->spool_capacity = 0;
+    j->receiving = false;
     j->state = state;
     j->completed = time(NULL);
     if (s_active == j)
         s_active = NULL;
 }
 
-// Aborts a Create-Job job whose document never arrived.
+// Aborts Create-Job reservations whose documents never arrived.
 static void expire_pending(void)
 {
-    if (s_active && s_active->state == JOB_PENDING &&
-        time(NULL) - s_active->created > MULTIPLE_OP_TIMEOUT_S) {
-        LOGW("job %d: no document within %d s, aborted", s_active->id, MULTIPLE_OP_TIMEOUT_S);
-        s_active->reason = "aborted-by-system";
-        job_finish(s_active, JOB_ABORTED);
+    time_t now = time(NULL);
+    for (int i = 0; i < MAX_JOBS; i++) {
+        job_t *j = &s_jobs[i];
+        if (j->state == JOB_PENDING && !j->order && now - j->created > MULTIPLE_OP_TIMEOUT_S) {
+            LOGW("job %d: no document within %d s, aborted", j->id, MULTIPLE_OP_TIMEOUT_S);
+            j->reason = "aborted-by-system";
+            job_finish(j, JOB_ABORTED);
+        }
     }
 }
 
 static job_t *job_create(const ipp_request_t *req)
 {
-    job_t *j = &s_jobs[(s_next_id - 1) % MAX_JOBS];
+    job_t *j = NULL;
+    for (int i = 0; i < MAX_JOBS; i++) {
+        job_t *slot = &s_jobs[i];
+        if (!slot->id || (job_done(slot) && !slot->replying && (!j || slot->id < j->id)))
+            j = slot;
+        if (!slot->id)
+            break;
+    }
+    if (!j)
+        return NULL;
     memset(j, 0, sizeof(*j));
     atomic_init(&j->cancel, false);
     j->id = s_next_id++;
@@ -954,7 +1050,6 @@ static job_t *job_create(const ipp_request_t *req)
     j->created = time(NULL);
     ipp_attr_str(ipp_find(req, IPP_TAG_OPERATION, "job-name"), j->name, sizeof(j->name));
     ipp_attr_str(ipp_find(req, IPP_TAG_OPERATION, "requesting-user-name"), j->user, sizeof(j->user));
-    s_active = j;
     return j;
 }
 
@@ -1099,10 +1194,10 @@ static int pipe_page_end(void *user, const raster_page_t *pg)
     return 0;
 }
 
-// Under s_lock, claim the only document slot before releasing the
-// mutex to open the printer. Multiple Send-Document requests can race here.
+// Claim the printer under s_lock before opening the hardware.
 static void job_start(job_t *j)
 {
+    s_active = j;
     j->state = JOB_PROCESSING;
     j->processing = time(NULL);
 }
@@ -1147,14 +1242,16 @@ static int print_document(conn_t *c, job_t *j)
         return canceled ? IPP_OK : IPP_INTERNAL_ERROR;
     }
     p->job = j;
-    doc_reader_t rd = {c, j, 0};
+    doc_reader_t rd = {.c = c, .job = j};
     raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
     int64_t t_start = now_us();
-    c->receiving_job = j;
-    set_recv_timeout(c, ACTIVE_IPP_SLICE_S);
+    if (c) {
+        c->receiving_job = j;
+        set_recv_timeout(c, ACTIVE_IPP_SLICE_S);
+    }
     int r = j->cancel ? 0 : raster_decode(doc_read, &rd, &cb, p);
-    if (r == RASTER_ERR_IO && !j->cancel) {
+    if (c && r == RASTER_ERR_IO && !j->cancel) {
         LOGW("job %d: raster stream truncated: recv=%lld bytes, pending HTTP body=%lld, "
              "eof=%d, chunked=%d, remaining buffered=%u",
              j->id, (long long)j->bytes, (long long)c->remaining,
@@ -1189,14 +1286,15 @@ static int print_document(conn_t *c, job_t *j)
 
     // A counted URF stream can finish decoding before the HTTP body ends.
     // Confirm its transport completed before publishing a successful job.
-    if (decoded && link_ok && !j->cancel) {
-        drain_body(c);
-        if (!c->body_eof)
-            r = RASTER_ERR_IO;
+    if (c) {
+        if (decoded && link_ok && !j->cancel) {
+            drain_body(c);
+            if (!c->body_eof)
+                r = RASTER_ERR_IO;
+        }
+        c->receiving_job = NULL;
+        set_recv_timeout(c, IDLE_TIMEOUT_S);
     }
-
-    c->receiving_job = NULL;
-    set_recv_timeout(c, IDLE_TIMEOUT_S);
     int status = IPP_OK;
     pthread_mutex_lock(&s_lock);
     if (j->cancel) {
@@ -1224,6 +1322,127 @@ static int print_document(conn_t *c, job_t *j)
     pthread_mutex_unlock(&s_lock);
     free(p);
     return status;
+}
+
+// Admission and the ordering decision are made under the same lock.
+static void admit_document(job_t *j)
+{
+    bool wait = s_active || next_document();
+    j->order = s_next_order++;
+    j->replying = true;
+    if (wait)
+        j->receiving = true;
+    else
+        job_start(j);
+}
+
+static int spool_document(conn_t *c, job_t *j, const char **message)
+{
+    int status = IPP_OK;
+    size_t capacity = c->chunked ? SPOOL_JOB_LIMIT : c->remaining > 0 ? (size_t)c->remaining : 0;
+    if (!c->chunked && c->remaining > SPOOL_JOB_LIMIT) {
+        *message = "A queued document may use at most 2 MiB";
+        status = IPP_REQUEST_ENTITY_TOO_LARGE;
+    } else if (!capacity) {
+        status = IPP_DOCUMENT_FORMAT_ERROR;
+    } else {
+        pthread_mutex_lock(&s_lock);
+        if (s_spool_bytes + capacity <= SPOOL_TOTAL_LIMIT) {
+#ifdef ESP_PLATFORM
+            if (heap_caps_get_free_size(MALLOC_CAP_SPIRAM) >= capacity + SPOOL_PSRAM_RESERVE)
+                j->spool = heap_caps_malloc(capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+            j->spool = malloc(capacity);
+#endif
+            if (j->spool) {
+                j->spool_capacity = capacity;
+                s_spool_bytes += capacity;
+            }
+        }
+        pthread_mutex_unlock(&s_lock);
+        if (!j->spool) {
+            *message = "Queue memory is full. Try again when an earlier job finishes";
+            status = IPP_BUSY;
+        }
+    }
+
+    size_t received = 0;
+    if (status == IPP_OK) {
+        c->receiving_job = j;
+        c->upload_deadline = now_us() + (int64_t)SPOOL_UPLOAD_TIMEOUT_S * 1000000;
+        set_recv_timeout(c, ACTIVE_IPP_SLICE_S);
+        while (!c->body_eof && !j->cancel && now_us() < c->upload_deadline) {
+            uint8_t extra;
+            int n = received == capacity ? body_read(c, &extra, 1) :
+                body_read(c, j->spool + received, capacity - received);
+            if (n <= 0)
+                break;
+            if (received == capacity) {
+                *message = "A queued document may use at most 2 MiB";
+                status = IPP_REQUEST_ENTITY_TOO_LARGE;
+                break;
+            }
+            received += n;
+        }
+        if (status == IPP_OK && (!received || !c->body_eof))
+            status = IPP_DOCUMENT_FORMAT_ERROR;
+        if (!c->body_eof && (j->cancel || now_us() >= c->upload_deadline))
+            c->body_failed = true;
+        c->receiving_job = NULL;
+        c->upload_deadline = 0;
+        set_recv_timeout(c, IDLE_TIMEOUT_S);
+    }
+    pthread_mutex_lock(&s_lock);
+    if (j->cancel) {
+        status = IPP_JOB_CANCELED;
+        job_finish(j, JOB_CANCELED);
+    } else if (status != IPP_OK) {
+        job_finish(j, JOB_ABORTED);
+    } else {
+        j->spool_size = received;
+        j->receiving = false;
+    }
+    pthread_mutex_unlock(&s_lock);
+    return status;
+}
+
+// Reuse an existing request thread after sending its response. If the next
+// upload is still in flight, its own request will resume dispatch on exit.
+static void print_waiting_documents(void)
+{
+    for (;;) {
+        pthread_mutex_lock(&s_lock);
+        job_t *j = s_active ? NULL : next_document();
+        if (!j || j->receiving || !j->spool_size) {
+            pthread_mutex_unlock(&s_lock);
+            return;
+        }
+        job_start(j);
+        pthread_mutex_unlock(&s_lock);
+        print_document(NULL, j);
+    }
+}
+
+static int submit_document(conn_t *c, job_t *j, ipp_out_t *body, const char **message)
+{
+    int status = j->receiving ? spool_document(c, j, message) : print_document(c, j);
+    pthread_mutex_lock(&s_lock);
+    ipp_out_group(body, IPP_TAG_JOB);
+    add_job_attrs(body, c, j, NULL);
+    j->replying = false;
+    pthread_mutex_unlock(&s_lock);
+    return status;
+}
+
+// s_lock held. An upload retains ownership of its spool until it exits.
+static void cancel_job(job_t *j)
+{
+    j->cancel = true;
+    if (j->state == JOB_PENDING && !j->receiving)
+        job_finish(j, JOB_CANCELED);
+    else if (j->printer_open && s_cfg->job_cancel)
+        s_cfg->job_cancel(s_cfg->ctx);
+    LOGI("job %d: cancel requested", j->id);
 }
 
 // ===========================================================================
@@ -1349,23 +1568,23 @@ static void handle_ipp(conn_t *c)
             }
             pthread_mutex_lock(&s_lock);
             expire_pending();
-            if (s_active || st.busy) {
+            if ((!s_active && st.busy) || outstanding_jobs() >= job_limit() ||
+                !(j = job_create(req))) {
                 pthread_mutex_unlock(&s_lock);
                 status = IPP_BUSY;
-                message = "Printer is busy";
+                message = queue_enabled() ? "Printer or print queue is full" : "Printer is busy";
                 break;
             }
-            j = job_create(req);
             snprintf(j->format, sizeof(j->format), "%s", fmt[0] ? fmt : "application/octet-stream");
-            if (req->op == IPP_OP_PRINT_JOB)
-                job_start(j);
-            pthread_mutex_unlock(&s_lock);
-            if (req->op == IPP_OP_PRINT_JOB)
-                status = print_document(c, j);
-            pthread_mutex_lock(&s_lock);
-            ipp_out_group(&body, IPP_TAG_JOB);
-            add_job_attrs(&body, c, j, NULL);
-            pthread_mutex_unlock(&s_lock);
+            if (req->op == IPP_OP_PRINT_JOB) {
+                admit_document(j);
+                pthread_mutex_unlock(&s_lock);
+                status = submit_document(c, j, &body, &message);
+            } else {
+                ipp_out_group(&body, IPP_TAG_JOB);
+                add_job_attrs(&body, c, j, NULL);
+                pthread_mutex_unlock(&s_lock);
+            }
             break;
 
         case IPP_OP_SEND_DOCUMENT:
@@ -1375,10 +1594,9 @@ static void handle_ipp(conn_t *c)
             if (!ipp_find(req, IPP_TAG_OPERATION, "last-document")) {
                 status = IPP_BAD_REQUEST;
                 message = "Missing last-document";
-                j = NULL;
             } else if (!j) {
                 status = IPP_NOT_FOUND;
-            } else if (j->state != JOB_PENDING) {
+            } else if (j->state != JOB_PENDING || j->order) {
                 status = IPP_NOT_POSSIBLE;
                 message = "Job does not accept documents";
             } else if (!format_supported(fmt)) {
@@ -1386,17 +1604,15 @@ static void handle_ipp(conn_t *c)
             } else {
                 if (fmt[0])
                     snprintf(j->format, sizeof(j->format), "%s", fmt);
-                job_start(j);
+                admit_document(j);
+            }
+            if (status && j) {
+                ipp_out_group(&body, IPP_TAG_JOB);
+                add_job_attrs(&body, c, j, NULL);
             }
             pthread_mutex_unlock(&s_lock);
             if (status == IPP_OK)
-                status = print_document(c, j);
-            if (j) {
-                pthread_mutex_lock(&s_lock);
-                ipp_out_group(&body, IPP_TAG_JOB);
-                add_job_attrs(&body, c, j, NULL);
-                pthread_mutex_unlock(&s_lock);
-            }
+                status = submit_document(c, j, &body, &message);
             break;
 
         case IPP_OP_CLOSE_JOB:
@@ -1404,37 +1620,35 @@ static void handle_ipp(conn_t *c)
             j = job_find(job_id);
             if (!j)
                 status = IPP_NOT_FOUND;
-            else if (j->state == JOB_PENDING)
-                job_finish(j, JOB_COMPLETED);   // no document: nothing to print
+            else if (j->state == JOB_PENDING && !j->order)
+                job_finish(j, JOB_COMPLETED);
             pthread_mutex_unlock(&s_lock);
             break;
 
         case IPP_OP_CANCEL_JOB:
-        case IPP_OP_CANCEL_MY_JOBS:
             pthread_mutex_lock(&s_lock);
-            j = req->op == IPP_OP_CANCEL_JOB ? job_find(job_id) : s_active;
-            if (req->op == IPP_OP_CANCEL_JOB && !j) {
+            j = job_find(job_id);
+            if (!j)
                 status = IPP_NOT_FOUND;
-            } else if (j && job_done(j)) {
-                status = req->op == IPP_OP_CANCEL_JOB ? IPP_NOT_POSSIBLE : IPP_OK;
-            } else if (j) {
-                if (req->op == IPP_OP_CANCEL_MY_JOBS) {
-                    char user[sizeof(j->user)];
-                    ipp_attr_str(ipp_find(req, IPP_TAG_OPERATION, "requesting-user-name"), user, sizeof(user));
-                    if (!user[0] || strcmp(j->user, user)) {
-                        pthread_mutex_unlock(&s_lock);
-                        break;
-                    }
-                }
-                j->cancel = true;
-                if (j->state == JOB_PENDING)
-                    job_finish(j, JOB_CANCELED);
-                else if (j->printer_open && s_cfg->job_cancel)
-                    s_cfg->job_cancel(s_cfg->ctx);
-                LOGI("job %d: cancel requested", j->id);
+            else if (job_done(j))
+                status = IPP_NOT_POSSIBLE;
+            else
+                cancel_job(j);
+            pthread_mutex_unlock(&s_lock);
+            break;
+
+        case IPP_OP_CANCEL_MY_JOBS: {
+            char user[sizeof(s_jobs[0].user)];
+            ipp_attr_str(ipp_find(req, IPP_TAG_OPERATION, "requesting-user-name"), user, sizeof(user));
+            pthread_mutex_lock(&s_lock);
+            for (int i = 0; user[0] && i < MAX_JOBS; i++) {
+                j = &s_jobs[i];
+                if (j->id && !job_done(j) && !strcmp(j->user, user))
+                    cancel_job(j);
             }
             pthread_mutex_unlock(&s_lock);
             break;
+        }
 
         case IPP_OP_GET_JOB_ATTRIBUTES:
             pthread_mutex_lock(&s_lock);
@@ -1454,9 +1668,8 @@ static void handle_ipp(conn_t *c)
             bool completed = !strcmp(which, "completed"), all = !strcmp(which, "all");
             bool minimal = f.idx < 0;   // RFC 8011: default is job-id + job-uri only
             pthread_mutex_lock(&s_lock);
-            for (int id = s_next_id - 1; id > 0 && id >= s_next_id - MAX_JOBS; id--) {
-                job_t *jj = job_find(id);
-                if (!jj || (!all && job_done(jj) != completed))
+            for (job_t *jj = job_before(s_next_id, false); jj; jj = job_before(jj->id, false)) {
+                if (!all && job_done(jj) != completed)
                     continue;
                 ipp_out_group(&body, IPP_TAG_JOB);
                 if (minimal) {
@@ -1497,6 +1710,12 @@ static void handle_ipp(conn_t *c)
     }
     ipp_out_append(&out, &body);
     ipp_out_end(&out);
+
+    c->dispatch_queue = queue_enabled() &&
+        (req->op == IPP_OP_PRINT_JOB || req->op == IPP_OP_SEND_DOCUMENT ||
+         req->op == IPP_OP_CANCEL_JOB || req->op == IPP_OP_CANCEL_MY_JOBS);
+    if (c->dispatch_queue)
+        c->keep_alive = false;
 
     // document data the operation did not consume (e.g. a rejected Print-Job)
     drain_body(c);
@@ -1614,16 +1833,17 @@ int airprint_status_json(void *ctx, char *buf, size_t n)
         STR(st.supply[i].color);
         PUT(",\"level\":%d}", st.supply[i].level);
     }
-    PUT("],\"active\":%d,\"jobs\":[", s_active ? s_active->id : 0);
+    PUT("],\"active\":%d,\"jobCount\":%d,\"jobLimit\":%d,\"jobs\":[",
+        s_active ? s_active->id : 0, outstanding_jobs(), job_limit());
     int listed = 0;
-    for (int id = s_next_id - 1; id > 0 && id >= s_next_id - MAX_JOBS && listed < 6 && p < n - 300; id--) {
-        const job_t *j = job_find(id);
-        if (!j)
+    for (job_t *j = job_before(s_next_id, false); j && p < n - 300; j = job_before(j->id, listed >= 6)) {
+        if (listed >= 6 && job_done(j))
             continue;
         PUT("%s{\"id\":%d,\"name\":", listed++ ? "," : "", j->id);
         STR(j->name[0] ? j->name : "Untitled");
         PUT(",\"user\":");
         STR(j->user);
+        PUT(",\"queuePosition\":%d,\"receiving\":%s", queue_position(j), j->receiving ? "true" : "false");
         // a time, not an age: the snapshot only changes when something happens
         PUT(",\"state\":\"%s\",\"reason\":\"%s\",\"pages\":%d,\"bytes\":%lld,\"time\":%lld}",
             job_state_name(j->state), job_reason(j), j->impressions, (long long)j->bytes,
@@ -1774,7 +1994,10 @@ static void *conn_thread(void *arg)
     }
     if (!c->detached)
         close(c->fd);
+    bool dispatch = c->dispatch_queue;
     free(c);
+    if (dispatch)
+        print_waiting_documents();
     pthread_mutex_lock(&s_lock);
     s_connections--;
     pthread_mutex_unlock(&s_lock);

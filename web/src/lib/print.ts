@@ -68,11 +68,12 @@ export async function renderJob(src: Source, o: PrintOptions, progress: Progress
 
 export interface SendResult {
   jobId: number;
+  queued: boolean;
 }
 
 // POSTs the job; upload(fraction) follows the transfer, which runs at the
-// printer's pace (the server prints while it receives). Resolves when the
-// server is done with it.
+// printer's pace for immediate jobs. A queued response confirms storage
+// and returns a job ID for tracking in the printer view.
 export function sendJob(
   doc: Blob,
   name: string,
@@ -90,7 +91,10 @@ export function sendJob(
       try {
         const r = decodeResponse(xhr.response);
         if (!statusOk(r.status)) return reject(new Error(statusText(r)));
-        resolve({ jobId: Number(r.attrs['job-id']?.[0] || 0) });
+        const state = Number(r.attrs['job-state']?.[0]);
+        if (state === 7) return reject(new DOMException('canceled', 'AbortError'));
+        if (state === 8) return reject(new Error('Lệnh in đã thất bại'));
+        resolve({ jobId: Number(r.attrs['job-id']?.[0] || 0), queued: state === 3 || state === 4 || state === 5 });
       } catch (e) {
         reject(e);
       }

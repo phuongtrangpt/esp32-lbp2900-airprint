@@ -116,7 +116,7 @@
     try {
       const r = await cancelJob(id);
       if (!statusOk(r.status)) throw new Error(statusText(r));
-      toast('Canceling: the sheet is finished and ejected');
+      toast('Đã gửi yêu cầu hủy lệnh in');
     } catch (e) {
       toast(`Cannot cancel: ${(e as Error).message}`, 'error');
     }
@@ -208,7 +208,10 @@
   </section>
 
   <section class="card card-pad">
-    <h2>Lịch sử lệnh in</h2>
+    <h2>Lệnh in</h2>
+    {#if (p?.jobLimit ?? 1) > 1}
+      <p class="muted small">Đang nhận, chờ hoặc in {p?.jobCount ?? 0}/{p?.jobLimit} lệnh</p>
+    {/if}
     {#if p?.jobs.length}
       <ul class="jobs">
         {#each p.jobs as j (j.id)}
@@ -220,7 +223,12 @@
                 {[`${j.pages} page${j.pages === 1 ? '' : 's'}`, ago(j.time), j.user].filter(Boolean).join(' · ')}
               </div>
             </div>
-            <span class="pill {tone}">{label}</span>
+            {#if j.state === 'pending' && j.id !== p.active}
+              <button class="btn" onclick={() => cancel(j.id)}>Hủy</button>
+            {/if}
+            <span class="pill {tone}">
+              {j.receiving ? 'Đang nhận' : j.queuePosition ? `Chờ #${j.queuePosition}` : label}
+            </span>
           </li>
         {/each}
       </ul>

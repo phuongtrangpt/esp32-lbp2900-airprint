@@ -23,6 +23,7 @@ static uint64_t now_ms(void)
 }
 void capt_bind(capt_transport_t *t) { current = t; }
 void capt_deadline(capt_transport_t *t, unsigned ms) { t->deadline_ms = now_ms() + ms; }
+void capt_current_deadline(unsigned ms) { if (current) capt_deadline(current, ms); }
 _Noreturn void capt_fail(const char *message)
 {
     capt_log("ERROR: CAPT cmd=0x%04x tx=%u rx=%u: %s\n",current->command,(unsigned)current->used,(unsigned)current->rx_bytes,message);

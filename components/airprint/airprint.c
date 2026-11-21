@@ -937,13 +937,22 @@ static int pipe_sync(void *ctx, const char *what)
     return s_cfg->job_sync ? s_cfg->job_sync(s_cfg->ctx, what) : 0;
 }
 
+// Some clients continue sending 600 dpi PWG/URF after the printer starts
+// advertising only 300 dpi (cached queue capability or web raster renderer).
+// Accept this legacy CAPT resolution without re-advertising it.
+static bool accepts_raster_dpi(const printer_driver_t *d, int dpi)
+{
+    return printer_driver_has_dpi(d, dpi) ||
+           (strcmp(d->id, "canon-lbp2900") == 0 && dpi == 600);
+}
+
 static int pipe_page_begin(void *user, const raster_page_t *pg)
 {
     pipe_t *p = user;
     const printer_driver_t *d = s_cfg->driver;
     if (p->job->cancel)
         return 1;
-    if (!printer_driver_has_dpi(d, pg->dpi)) {
+    if (!accepts_raster_dpi(d, pg->dpi)) {
         LOGW("page %d: unsupported resolution %d dpi", pg->page, pg->dpi);
         p->err = IPP_DOCUMENT_FORMAT_ERROR;
         return 2;
@@ -1144,7 +1153,7 @@ static int check_job_request(const ipp_request_t *req, ipp_out_t *unsup)
         const uint8_t *v = res->value;
         uint32_t x = (uint32_t)v[0] << 24 | (uint32_t)v[1] << 16 | (uint32_t)v[2] << 8 | v[3];
         uint32_t y = (uint32_t)v[4] << 24 | (uint32_t)v[5] << 16 | (uint32_t)v[6] << 8 | v[7];
-        if (x != y || x > 10000 || !printer_driver_has_dpi(s_cfg->driver, (int)x)) {
+        if (x != y || x > 10000 || !accepts_raster_dpi(s_cfg->driver, (int)x)) {
             ipp_out_res(unsup, "printer-resolution", (int)x, (int)y);
             return IPP_ATTRIBUTES_NOT_SUPPORTED;
         }

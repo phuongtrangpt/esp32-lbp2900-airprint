@@ -773,6 +773,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 				 * offset is (ipage - 1): the next attempt at ipage maps to pipage=1.
 				 */
 				state->printer_page_offset = state->ipage - 1;
+				state->oop_retry_pending = true;
 				capt_log( "DEBUG: CAPT: printer_page_offset set to %u (ipage=%u)\n",
 					state->printer_page_offset, state->ipage);
 				/*

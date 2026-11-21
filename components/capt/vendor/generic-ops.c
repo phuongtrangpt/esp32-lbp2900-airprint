@@ -44,6 +44,8 @@ size_t ops_compress_band_hiscoa(struct printer_state_s *state,
 void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_t size)
 {
 	const uint8_t *pdata = (const uint8_t *) data;
+	/* After paper-out recovery the engine resets its counters to zero. */
+	unsigned printer_page = state->ipage - state->printer_page_offset;
 	const struct capt_status_s *status;
 	int buflevel_slots;
 	int chunks_since_poll = 0;
@@ -73,14 +75,14 @@ void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_
 				/* Streaming mode: fire StartPrint(N) only after Start==N is confirmed.
 				 * GetExtendedStatus is required — GetBasicStatus does NOT update
 				 * page_decoding (Start counter). Spec §4.4: Start==N exact match. */
-				uint8_t spbuf[2] = { LO(state->ipage), HI(state->ipage) };
-				for (int w = 0; w < 20 && status->page_decoding != state->ipage; w++) {
+				uint8_t spbuf[2] = { LO(printer_page), HI(printer_page) };
+				for (int w = 0; w < 20 && status->page_decoding != printer_page; w++) {
 					status = capt_get_xstatus_only();
 					usleep(50000);
 				}
-				if (status->page_decoding == state->ipage) {
+				if (status->page_decoding == printer_page) {
 					capt_log( "DEBUG: CAPT: streaming mode: BufLevel=0, sending StartPrint(%u)\n",
-						state->ipage);
+						printer_page);
 					capt_sendrecv(CAPT_START_PRINT, spbuf, 2, NULL, 0);
 					state->startprint_sent = true;
 				}
@@ -146,19 +148,19 @@ void ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_
 	if (buflevel_slots == 0 && !state->startprint_sent) {
 		/* Poll GetExtendedStatus to confirm Start==N before sending StartPrint.
 		 * Spec §4.4: StartPrint requires Start==N exact match. */
-		uint8_t spbuf[2] = { LO(state->ipage), HI(state->ipage) };
-		for (int w = 0; w < 20 && status->page_decoding != state->ipage; w++) {
+		uint8_t spbuf[2] = { LO(printer_page), HI(printer_page) };
+		for (int w = 0; w < 20 && status->page_decoding != printer_page; w++) {
 			status = capt_get_xstatus_only();
 			usleep(50000);
 		}
-		if (status->page_decoding == state->ipage) {
+		if (status->page_decoding == printer_page) {
 			capt_log( "DEBUG: CAPT: streaming mode (post-loop): BufLevel=0, sending StartPrint(%u)\n",
-				state->ipage);
+				printer_page);
 			capt_sendrecv(CAPT_START_PRINT, spbuf, 2, NULL, 0);
 			state->startprint_sent = true;
 		} else {
 			capt_log( "WARNING: CAPT: BufLevel=0 after all chunks sent, but Start=%u != page=%u, cannot send StartPrint\n",
-				status->page_decoding, state->ipage);
+				status->page_decoding, printer_page);
 		}
 	}
 

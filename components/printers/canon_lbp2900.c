@@ -106,9 +106,10 @@ static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, i
     return j;
 }
 static uint64_t micros(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (uint64_t)t.tv_sec*1000000+t.tv_nsec/1000; }
-static void flush_band(job_t *j)
+static int flush_band(job_t *j)
 {
-    if (!j->rows_in_band) return;
+    GUARD(j);   // compression and USB writes can raise a CAPT error
+
     bool last = (unsigned)j->output_rows == j->dims.num_lines;
     uint64_t start = micros();
     size_t n = j->state.ops->compress_band(&j->state, j->compressed, j->compressed_size,
@@ -139,6 +140,7 @@ static void flush_band(job_t *j)
     j->state.iband++;
     j->rows_in_band = 0;
     memset(j->raw, 0, j->raw_size);
+    return 0;
 }
 static int page_begin(void *ctx, int width, int height, int bpp)
 {
@@ -171,7 +173,7 @@ static int page_begin(void *ctx, int width, int height, int bpp)
 // Phase-aware caching preserves the original 600 dpi ordered-dither pattern
 // across PWG/URF repeat counts. For 300 dpi, two output rows intentionally
 // share one 1-bit bitmap (nearest-neighbour 2x row replication).
-static void append_row(job_t *j, const uint8_t *px, int output_y, bool reusable)
+static int append_row(job_t *j, const uint8_t *px, int output_y, bool reusable)
 {
     uint8_t *out = j->raw + j->rows_in_band * j->dims.line_size;
     if (px) {
@@ -193,7 +195,8 @@ static void append_row(job_t *j, const uint8_t *px, int output_y, bool reusable)
     j->output_rows++;
     if (j->rows_in_band == BAND_LINES ||
         (unsigned)j->output_rows == j->dims.num_lines)
-        flush_band(j);
+        return flush_band(j);
+    return 0;
 }
 
 static int page_line_repeat(void *ctx, int y, const uint8_t *px, bool is_repeat)
@@ -201,14 +204,14 @@ static int page_line_repeat(void *ctx, int y, const uint8_t *px, bool is_repeat)
     job_t *j = ctx;
     if (j->failed || !j->page_open || y != j->next_y || y >= j->height)
         return -1;
-    GUARD(j);
     j->next_y++;
     if (!is_repeat)
         j->row_cache_valid = 0;
     for (int repeat = 0; repeat < j->scale; repeat++) {
         int output_y = y * j->scale + repeat;
-        if (output_y >= j->top && output_y < j->top + (int)j->dims.num_lines)
-            append_row(j, px, output_y, is_repeat || repeat != 0);
+        if (output_y >= j->top && output_y < j->top + (int)j->dims.num_lines &&
+            append_row(j, px, output_y, is_repeat || repeat != 0))
+            return -1;
     }
     return 0;
 }
@@ -221,8 +224,11 @@ static int page_end(void *ctx)
 {
     job_t *j = ctx;
     if (j->failed || !j->page_open || j->next_y != j->height) return -1;
+    while ((unsigned)j->output_rows < j->dims.num_lines) {
+        if (append_row(j, NULL, j->output_rows + j->top, false))
+            return -1;
+    }
     GUARD(j);
-    while ((unsigned)j->output_rows < j->dims.num_lines) append_row(j, NULL, j->output_rows + j->top, false);
     // On out-of-paper, upstream CAPT recovery resets the printer page
     // counters and requests a replay. Re-send only the current page's cached
     // compressed bands; never replay pages already acknowledged by the engine.

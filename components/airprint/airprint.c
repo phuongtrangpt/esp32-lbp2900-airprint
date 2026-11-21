@@ -114,6 +114,7 @@ struct airprint_http {
     bool chunked;
     int64_t remaining;          // Content-Length mode: bytes left; chunked: bytes left in chunk
     bool body_eof;
+    bool body_failed;
     bool in_chunks;             // a chunk was read: CRLF precedes the next size line
     bool detached;              // the socket was handed over (airprint_http_detach)
 };
@@ -181,7 +182,7 @@ static int send_all(int fd, const void *data, size_t len)
 }
 
 // Reads up to n body bytes; 0 at end of body, < 0 on error.
-static int body_read(conn_t *c, uint8_t *out, size_t n)
+static int body_read_unchecked(conn_t *c, uint8_t *out, size_t n)
 {
     if (c->body_eof)
         return 0;
@@ -194,8 +195,11 @@ static int body_read(conn_t *c, uint8_t *out, size_t n)
         long size = strtol(line, NULL, 16);
         c->in_chunks = true;
         if (size <= 0) {
-            while (read_line(c, line, sizeof(line)) > 0)   // trailers until empty line
+            int trailer;
+            while ((trailer = read_line(c, line, sizeof(line))) > 0)
                 ;
+            if (trailer < 0)
+                return -1;
             c->body_eof = true;
             return 0;
         }
@@ -218,6 +222,18 @@ static int body_read(conn_t *c, uint8_t *out, size_t n)
     if (!c->chunked && c->remaining == 0)
         c->body_eof = true;
     return (int)take;
+}
+
+// A failed body read is terminal. In particular, draining must not wait
+// through a second socket timeout after the decoder has already seen one.
+static int body_read(conn_t *c, uint8_t *out, size_t n)
+{
+    if (c->body_failed)
+        return -1;
+    int result = body_read_unchecked(c, out, n);
+    if (result < 0)
+        c->body_failed = true;
+    return result;
 }
 
 // exact read for the IPP parser
@@ -1003,7 +1019,11 @@ static int pipe_page_begin(void *user, const raster_page_t *pg)
     }
     p->job->line = 0;
     p->job->height = pg->height;
-    return d->page_begin(p->drv_job, pg->width, pg->height, pg->bytes_pp) ? 4 : 0;
+    if (d->page_begin(p->drv_job, pg->width, pg->height, pg->bytes_pp)) {
+        p->err = IPP_DEVICE_ERROR;
+        return 4;
+    }
+    return 0;
 }
 
 static int pipe_line_repeat(void *user, int y, const uint8_t *px, bool is_repeat)
@@ -1029,7 +1049,11 @@ static int pipe_line_repeat(void *user, int y, const uint8_t *px, bool is_repeat
         : d->page_line(p->drv_job, y, px);
     p->render_us += now_us() - t0;
     p->job->line = y + 1;
-    return result ? 4 : 0;
+    if (result) {
+        p->err = IPP_DEVICE_ERROR;
+        return 4;
+    }
+    return 0;
 }
 
 static int pipe_line(void *user, int y, const uint8_t *px)
@@ -1040,8 +1064,10 @@ static int pipe_line(void *user, int y, const uint8_t *px)
 static int pipe_page_end(void *user, const raster_page_t *pg)
 {
     pipe_t *p = user;
-    if (s_cfg->driver->page_end(p->drv_job))
+    if (s_cfg->driver->page_end(p->drv_job)) {
+        p->err = IPP_DEVICE_ERROR;
         return 4;
+    }
     pthread_mutex_lock(&s_lock);
     p->job->impressions++;
     pthread_mutex_unlock(&s_lock);
@@ -1105,49 +1131,47 @@ static int print_document(conn_t *c, job_t *j)
     LOGI("job %d: USB response waits %.3f s, USB flush waits %.3f s (included in pipeline totals)",
          j->id, p->read_us / 1e6, p->flush_us / 1e6);
 
-    bool canceled = j->cancel;
-    // A positive decoder return may also be a callback error code.
-    // Never claim success for a zero-page or explicitly rejected document.
-    bool ok = r > 0 && j->impressions > 0 && !p->err && !canceled;
+    // A positive decoder return may also be a callback error code. Printer
+    // callbacks set p->err, and the page count must match completed callbacks.
+    bool decoded = r > 0 && r == j->impressions && !p->err;
     bool link_ok = true;
     if (p->drv_job) {
-        // the driver finishes the job whatever happened (cancel, bad data,
-        // client gone): a partly printed sheet is ejected
+        // Finalize or clean up the CAPT session even after cancellation/EOF.
+        int64_t t_end = now_us();
         link_ok = s_cfg->driver->job_end(p->drv_job) == 0;
-        if (!link_ok)
-            ok = false;
+        LOGI("job %d: printer finalization %.3f s", j->id, (now_us() - t_end) / 1e6);
     }
-    // ok = false makes the platform reset the printer
     if (s_cfg->job_close)
         s_cfg->job_close(s_cfg->ctx, link_ok);
     if (s_cfg->job_state)
         s_cfg->job_state(s_cfg->ctx, false);
 
+    // A counted URF stream can finish decoding before the HTTP body ends.
+    // Confirm its transport completed before publishing a successful job.
+    if (decoded && link_ok && !j->cancel) {
+        drain_body(c);
+        if (!c->body_eof)
+            r = RASTER_ERR_IO;
+    }
+
     int status = IPP_OK;
     pthread_mutex_lock(&s_lock);
-    if (canceled) {
+    if (j->cancel) {
         job_finish(j, JOB_CANCELED);
-    } else if (ok) {
+    } else if (decoded && link_ok && r > 0) {
         job_finish(j, JOB_COMPLETED);
     } else {
-        if (p->err) {
-            j->reason = "document-unprintable-error";
-            status = p->err;
-        } else if (r == 0 || j->impressions == 0) {
-            j->reason = "document-format-error";
-            status = IPP_DOCUMENT_FORMAT_ERROR;
-        } else if (r < 0) {
-            bool bad_data = r == RASTER_ERR_UNSUPPORTED || r == RASTER_ERR_FORMAT;
-            j->reason = bad_data ? "document-unprintable-error" : "aborted-by-system";
-            if (r == RASTER_ERR_IO)
-                status = IPP_OK;    // client went away; nobody reads the status
-            else if (bad_data && !p->drv_job)
-                status = IPP_DOCUMENT_FORMAT_NOT_SUPPORTED;  // not URF/PWG at all (autodetect failed)
-            else
-                status = IPP_DOCUMENT_FORMAT_ERROR;
-        } else {
+        if (p->err == IPP_INTERNAL_ERROR || r == RASTER_ERR_NOMEM) {
+            j->reason = "aborted-by-system";
+            status = IPP_INTERNAL_ERROR;
+        } else if (p->err == IPP_DEVICE_ERROR || (decoded && !link_ok)) {
             j->reason = "printer-stopped";
             status = IPP_DEVICE_ERROR;
+        } else {
+            j->reason = p->err || r == RASTER_ERR_FORMAT || r == RASTER_ERR_UNSUPPORTED
+                ? "document-unprintable-error" : "document-format-error";
+            status = !p->err && !p->drv_job && (r == RASTER_ERR_FORMAT || r == RASTER_ERR_UNSUPPORTED)
+                ? IPP_DOCUMENT_FORMAT_NOT_SUPPORTED : IPP_DOCUMENT_FORMAT_ERROR;
         }
         job_finish(j, JOB_ABORTED);
     }
@@ -1627,6 +1651,7 @@ static void *conn_thread(void *arg)
         c->chunked = false;
         c->remaining = 0;
         c->body_eof = false;
+        c->body_failed = false;
         c->in_chunks = false;
         c->host[0] = 0;
         c->if_none_match[0] = 0;

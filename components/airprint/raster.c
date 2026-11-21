@@ -178,8 +178,11 @@ int raster_decode(raster_read_fn read, void *ctx, const raster_cb_t *cb, void *u
             uint8_t ph[32];
             for (;;) {
                 int e = rd(r, ph, sizeof(ph));
-                if (e == 1)
-                    break;      // end of data
+                if (e == 1) {
+                    if (npages && (uint32_t)pages < npages)
+                        ret = RASTER_ERR_IO;
+                    break;
+                }
                 if (e) {
                     ret = RASTER_ERR_IO;
                     break;

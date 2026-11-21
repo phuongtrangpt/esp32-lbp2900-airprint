@@ -16,6 +16,7 @@ typedef struct {
 } capt_transport_t;
 void capt_bind(capt_transport_t *t);
 void capt_deadline(capt_transport_t *t, unsigned timeout_ms);
+void capt_current_deadline(unsigned timeout_ms);
 _Noreturn void capt_fail(const char *message);
 
 // Portable protocol diagnostics; ESP routes these to the shared log ring.

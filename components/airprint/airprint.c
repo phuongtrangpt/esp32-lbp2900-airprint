@@ -465,6 +465,11 @@ static const char **media_names(const char *names[MAX_PAPERS + 1])
 static void resolutions(ipp_out_t *o, const char *name)
 {
     const printer_driver_t *d = s_cfg->driver;
+    if (s_cfg->preferred_dpi && !strcmp(d->id, "canon-lbp2900")) {
+        int dpi = s_cfg->preferred_dpi(s_cfg->ctx);
+        ipp_out_res(o, name, dpi == 600 ? 600 : 300, dpi == 600 ? 600 : 300);
+        return;
+    }
     for (int i = 0; i < d->nresolutions; i++)
         ipp_out_res(o, i ? NULL : name, d->resolutions[i], d->resolutions[i]);
 }
@@ -674,8 +679,13 @@ static void add_printer_attrs(ipp_out_t *o, const conn_t *c, const filter_t *f)
     if (W("printer-organizational-unit"))
         ipp_out_str(o, IPP_TAG_TEXT, "printer-organizational-unit", "");
     if (W("printer-resolution-default"))
-        ipp_out_res(o, "printer-resolution-default", drv->resolutions[drv->nresolutions - 1],
-                    drv->resolutions[drv->nresolutions - 1]);
+        ipp_out_res(o, "printer-resolution-default",
+                    (s_cfg->preferred_dpi && !strcmp(drv->id, "canon-lbp2900"))
+                        ? (s_cfg->preferred_dpi(s_cfg->ctx) == 600 ? 600 : 300)
+                        : drv->resolutions[drv->nresolutions - 1],
+                    (s_cfg->preferred_dpi && !strcmp(drv->id, "canon-lbp2900"))
+                        ? (s_cfg->preferred_dpi(s_cfg->ctx) == 600 ? 600 : 300)
+                        : drv->resolutions[drv->nresolutions - 1]);
     if (W("printer-resolution-supported"))
         resolutions(o, "printer-resolution-supported");
     if (W("printer-state"))

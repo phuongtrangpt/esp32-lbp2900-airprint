@@ -8,7 +8,7 @@
 
 #include "printer_driver.h"
 
-extern const printer_driver_t canon_lbp2900_driver, hp_p1006_driver;
+extern const printer_driver_t canon_lbp2900_driver, hp_p1006_driver, hp_p1008_driver;
 extern const printer_driver_t generic_pcl5_driver, generic_postscript_driver;
 
 extern const printer_driver_t canon_mg2500_driver, canon_mg2400_driver, canon_p200_driver, canon_mg2900_driver,
@@ -18,7 +18,9 @@ extern const printer_driver_t canon_mg2500_driver, canon_mg2400_driver, canon_p2
     canon_mx350_driver, canon_mx360_driver, canon_mx410_driver, canon_mx420_driver;
 
 const printer_driver_t *const printer_drivers[] = {
-#if defined(PRINTSERVER_PROFILE_HP)
+#if defined(PRINTSERVER_PROFILE_HP_P1008)
+    &hp_p1008_driver,
+#elif defined(PRINTSERVER_PROFILE_HP)
     &hp_p1006_driver,
 #elif defined(PRINTSERVER_PROFILE_CANON)
     &canon_lbp2900_driver,

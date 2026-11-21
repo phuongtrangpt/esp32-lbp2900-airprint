@@ -32,6 +32,11 @@ jobs:
           pio run -e hp
           python tools/package_firmware.py --env hp --out firmware/hp
           python tools/prepare_web_installer.py --source firmware/hp --dest installer/public/firmware/hp
+      - name: Build experimental HP P1008 firmware
+        run: |
+          pio run -e hp_p1008
+          python tools/package_firmware.py --env hp_p1008 --out firmware/hp_p1008
+          python tools/prepare_web_installer.py --source firmware/hp_p1008 --dest installer/public/firmware/hp_p1008
       - name: Build dedicated Canon LBP2900 firmware
         run: |
           pio run -e canon
@@ -48,7 +53,7 @@ jobs:
           python tools/package_firmware.py --env standard --out firmware/standard
           python tools/prepare_web_installer.py --source firmware/standard --dest installer/public/firmware/standard
       - name: Build host tests
-        run: make -C host all
+        run: make -C host all hp_p1008_host
       - name: Static IP and automatic HP bootstrap tests
         run: |
           ASAN_OPTIONS=detect_leaks=0 host/portal_dns_host
@@ -67,6 +72,8 @@ jobs:
         run: python tools/test_capt_scheduler.py
       - name: HP P1006 raster tests
         run: ASAN_OPTIONS=detect_leaks=0 host/hp_host
+      - name: HP P1008 raster tests
+        run: ASAN_OPTIONS=detect_leaks=0 host/hp_p1008_host
       - name: Standard printer streams and memory stress
         run: |
           sudo apt-get update -qq
@@ -83,6 +90,7 @@ jobs:
           git -C /tmp/foo2xqx-reference checkout --detach FETCH_HEAD
           cc -O2 -o /tmp/foo2xqx-reference/foo2xqx-ref /tmp/foo2xqx-reference/foo2xqx.c /tmp/foo2xqx-reference/jbig.c /tmp/foo2xqx-reference/jbig_ar.c
           ASAN_OPTIONS=detect_leaks=0 python tools/test_hp_reference.py /tmp/foo2xqx-reference/foo2xqx-ref
+          ASAN_OPTIONS=detect_leaks=0 python tools/test_hp_reference.py /tmp/foo2xqx-reference/foo2xqx-ref host/hp_p1008_host --paper-count 3
       - name: Browser Wi-Fi protocol tests
         run: ASAN_OPTIONS=detect_leaks=0 host/improv_host
       - name: Quality settings HTTP route regression

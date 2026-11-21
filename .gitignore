@@ -5,6 +5,7 @@ managed_components/
 dependencies.lock
 # generated from sdkconfig.defaults + Kconfig on every build
 sdkconfig.esp32s3
+sdkconfig.hp_p1008
 sdkconfig.qemu
 sdkconfig.old
 
@@ -65,3 +66,4 @@ host/portal_dns_host
 src/hp_p1006.dl
 src/hp_p1006.tmp
 src/hp_p1006_blob.c
+/host/hp_p1008_host

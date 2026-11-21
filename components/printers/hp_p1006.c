@@ -211,10 +211,24 @@ static int test(const printer_driver_t *d,const printer_io_t *io,int dpi,const c
     }
     free(p); int rc=page_end(j); if (end(j)<0) rc=-1; return rc;
 }
+#ifdef PRINTSERVER_PROFILE_HP_P1008
+// OpenPrinting ships the same XQX options and P1006 bootstrap for P1008.
+// Require the actual P1008 VID/PID for the dedicated experimental profile.
+const printer_driver_t hp_p1008_driver={
+    .id="hp-p1008",.make_model="HP LaserJet P1008",
+    .usb_vid=0x03f0,.usb_pid=0x4917,
+#else
 const printer_driver_t hp_p1006_driver={
     .id="hp-p1006",.make_model="HP LaserJet P1006",.usb_mfg="HP",.usb_mdl="LaserJet P1006",
-    .usb_vid=0x03f0,.usb_pid=0x3e17,.color=false,.scanner=false,
-    .resolutions={600},.nresolutions=1,.papers=papers,.npapers=4,
+    .usb_vid=0x03f0,.usb_pid=0x3e17,
+#endif
+    .color=false,.scanner=false,
+    .resolutions={600},.nresolutions=1,.papers=papers,
+#ifdef PRINTSERVER_PROFILE_HP_P1008
+    .npapers=3,  // A4, Letter and A5 are present in the upstream P1008 PPD.
+#else
+    .npapers=4,
+#endif
     .margin_left=407,.margin_right=407,.margin_top=407,.margin_bottom=407,
     .job_begin=begin,.page_begin=page_begin,.page_line=line,.page_end=page_end,.job_end=end,.test_page=test
 };

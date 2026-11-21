@@ -40,7 +40,7 @@ oled_host: oled_host.c $(OLED) ../components/oled/include/*.h ../components/airp
 	$(CC) $(CFLAGS) $(INC) oled_host.c $(OLED) -o $@
 
 clean:
-	rm -rf bjl_host airprint_host scan_host oled_host out *.prn *.png *.raw
+	rm -rf bjl_host airprint_host scan_host oled_host hp_p1008_host out *.prn *.png *.raw
 
 capt_host: capt_reference/hiscoa-decompress.c capt_host.c capt_sim.h $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) capt_host.c capt_reference/hiscoa-decompress.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
@@ -50,6 +50,10 @@ improv_host: improv_host.c ../components/improv_serial/improv_serial.c ../compon
 
 hp_host: hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
+
+hp_p1008_host: hp_host.c ../components/printers/printers.c ../components/printers/hp_p1006.c \
+               ../components/xqx/vendor/jbig.c ../components/xqx/vendor/jbig_ar.c
+	$(CC) $(CFLAGS) $(INC) -DPRINTSERVER_PROFILE_HP -DPRINTSERVER_PROFILE_HP_P1008 $(filter %.c,$^) -lm -o $@
 
 memory_host: memory_host.c capt_sim.h $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) memory_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -Wl,--wrap=malloc,--wrap=calloc,--wrap=realloc,--wrap=free -lm -o $@
@@ -67,6 +71,6 @@ portal_dns_host: portal_dns_host.c ../components/portal_dns/portal_dns.c
 	$(CC) $(CFLAGS) -I../components/portal_dns/include $^ -o $@
 
 # Shared raster implementation changes must invalidate every consumer.
-capt_host hp_host airprint_host memory_host standard_host: ../components/printers/mono_raster.h
+capt_host hp_host hp_p1008_host airprint_host memory_host standard_host: ../components/printers/mono_raster.h
 mono_host: mono_host.c ../components/printers/mono_raster.h
 	$(CC) $(CFLAGS) mono_host.c -o $@

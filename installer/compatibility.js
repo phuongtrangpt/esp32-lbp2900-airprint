@@ -1,16 +1,21 @@
-import {profiles,excluded,lookupModel} from './compatibility-data.js';
+import {profiles,excluded,underResearch,lookupModel} from './compatibility-data.js';
 const select=document.querySelector('#printer-model');
 const note=document.querySelector('#compatibility-note');
-function update(){note.textContent=profiles[select.value]?.note||'';}
+const feedback=document.querySelector('#p1008-feedback');
+function update(){
+ note.textContent=profiles[select.value]?.note||'';
+ feedback.hidden=select.value!=='hp_p1008';
+}
 select.addEventListener('change',update);queueMicrotask(update);
 const list=document.querySelector('#known-models');
-for(const model of [...Object.values(profiles).flatMap(p=>p.models),...excluded]){const option=document.createElement('option');option.value=model;list.append(option);}
+for(const model of [...Object.values(profiles).flatMap(p=>p.models),...excluded,...underResearch]){const option=document.createElement('option');option.value=model;list.append(option);}
 const input=document.querySelector('#model-search'),result=document.querySelector('#model-result'),choose=document.querySelector('#choose-profile');
 let found;
 input.addEventListener('input',()=>{
  found=lookupModel(input.value);choose.hidden=true;
  if(!found){result.textContent='Nhập model trên vỏ máy, ví dụ: LBP2900, P1006, MP280, P2015.';return;}
  if(found.unsupported){result.textContent=`${found.model}: chưa hỗ trợ trong các bản hiện tại. Không chọn bản LBP2900 thay thế. ${found.reason==='capt'?'LBP3300 dùng CAPT nhưng chưa có driver riêng cho model này.':'Máy UFR II/UFR II LT hoặc chỉ PCL6 cần giải pháp driver khác.'}`;return;}
+ if(found.research){result.textContent=`${found.model}: đang nghiên cứu driver, chưa có firmware để tải.`;return;}
  if(found.unknown){result.textContent='Chưa có tên này trong danh sách. Không tự chọn bản gần giống. Kiểm tra đúng model hoặc liên hệ hỗ trợ trước khi mua mạch.';return;}
  result.textContent=`${found.model} → ${found.info.label}. ${found.info.note}`;
  choose.textContent=`Chọn bản ${found.info.label}`;choose.hidden=false;

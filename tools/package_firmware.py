@@ -14,11 +14,19 @@ ROOT=Path(__file__).resolve().parent.parent
 BUILD=ROOT/'.pio/build/esp32s3'
 OUT=ROOT/'firmware'
 
+PROFILE_NAMES = {
+    'hp': 'HP LaserJet P1006 ESP 32',
+    'hp_p1008': 'HP LaserJet P1008 TEST ESP 32',
+    'canon': 'Canon LBP2900 ESP 32',
+    'pixma': 'Canon PIXMA USB ESP 32',
+    'standard': 'USB Printer PCL PS ESP 32',
+}
+
 def main():
     global BUILD,OUT
     parser=argparse.ArgumentParser();parser.add_argument('--env',default='esp32s3');parser.add_argument('--out',default='firmware')
     args=parser.parse_args();BUILD=ROOT/'.pio/build'/args.env;OUT=ROOT/args.out
-    if args.env in ('hp','canon','pixma','standard'):
+    if args.env in PROFILE_NAMES:
         cache=(BUILD/'CMakeCache.txt').read_text()
         profile=re.search(r'^PRINTSERVER_PROFILE:[^=]+=(.+)$',cache,re.M)
         if not profile or profile.group(1).strip()!=args.env:
@@ -35,7 +43,7 @@ def main():
                 raise SystemExit('Refusing to package firmware built with embedded Wi-Fi. Clear .env and rebuild.')
     OUT.mkdir(parents=True,exist_ok=True)
     for name in names: shutil.copyfile(BUILD/name,OUT/name)
-    if args.env in ('hp','canon','pixma','standard'):
+    if args.env in PROFILE_NAMES:
         app=(OUT/'firmware.bin').read_bytes()
         # IDF app descriptor follows the first image and segment headers.
         expected=('vietphuong_'+args.env).encode()
@@ -57,7 +65,7 @@ def main():
     version=re.search(r'set\(PROJECT_VER \"([^\"]+)\"\)', (ROOT/'CMakeLists.txt').read_text()).group(1)
     manifest={'chip':'esp32s3','board':'ESP32-S3 N16R8','version':version,
               'physical_printer_tested':False,'flash_size':settings['flash_size'],'flash_mode':settings['flash_mode'],'flash_freq':settings['flash_freq'],
-              'profile':args.env,'name':('HP LaserJet P1006 ESP 32' if args.env=='hp' else 'Canon LBP2900 ESP 32' if args.env=='canon' else 'Canon PIXMA USB ESP 32' if args.env=='pixma' else 'USB Printer PCL PS ESP 32' if args.env=='standard' else 'Print Server ESP 32'),
+              'profile':args.env,'name':PROFILE_NAMES.get(args.env, 'Print Server ESP 32'),
               'files':{'0x0':'bootloader.bin','0x8000':'partitions.bin','0xf000':'ota_data_initial.bin',hex(app_offset):'firmware.bin'}}
     (OUT/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
     for name in ['LICENSE','LICENSE.upstream-MIT','README.md','VALIDATION.md','BUILD_STATUS.md']:

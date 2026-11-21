@@ -1,5 +1,5 @@
 # Dedicated firmware only compiles the selected printer family.
-if(PRINTSERVER_PROFILE STREQUAL "hp")
+if(PRINTSERVER_PROFILE STREQUAL "hp" OR PRINTSERVER_PROFILE STREQUAL "hp_p1008")
   idf_component_register(SRCS "printers.c" "hp_p1006.c" REQUIRES airprint xqx heap)
 elseif(PRINTSERVER_PROFILE STREQUAL "canon")
   idf_component_register(SRCS "printers.c" "canon_lbp2900.c" REQUIRES airprint capt heap)

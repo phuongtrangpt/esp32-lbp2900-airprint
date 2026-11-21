@@ -34,10 +34,15 @@ static SemaphoreHandle_t lock(void) {
 static const esp_partition_t *partition(void) {
     return esp_partition_find_first(ESP_PARTITION_TYPE_DATA,0x40,"hp_firmware");
 }
+#ifdef PRINTSERVER_PROFILE_HP_P1008
+#define HP_DISPLAY_MODEL "HP LaserJet P1008"
+#else
+#define HP_DISPLAY_MODEL "HP LaserJet P1006"
+#endif
 static const char page[]=
 "<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-"<title>HP P1006 firmware</title><style>body{font:18px system-ui;max-width:680px;margin:40px auto;padding:20px}button,input{font:inherit;margin:12px 0}a{color:teal}</style>"
-"<h1>HP LaserJet P1006</h1><p>Chọn file <b>sihpP1006.dl</b> từ bộ driver của bạn. ESP lưu một lần và gửi lại vào máy in khi bắt đầu in sau mỗi lần kết nối USB.</p>"
+"<title>" HP_DISPLAY_MODEL " firmware</title><style>body{font:18px system-ui;max-width:680px;margin:40px auto;padding:20px}button,input{font:inherit;margin:12px 0}a{color:teal}</style>"
+"<h1>" HP_DISPLAY_MODEL "</h1><p>Chọn file <b>sihpP1006.dl</b> từ bộ driver của bạn. ESP lưu một lần và gửi lại vào máy in khi bắt đầu in sau mỗi lần kết nối USB.</p>"
 "<p>Không dùng firmware ESP (.bin), file .img hay file của máy in khác. Bản thử nghiệm chưa được kiểm chứng trên máy in thật.</p>"
 "<input type=file id=f accept=.dl><br><button id=b>Lưu firmware HP</button><p id=s></p><a href='/'>Về trang in</a>"
 "<script>b.onclick=async()=>{if(!f.files.length)return;s.textContent='Đang lưu…';b.disabled=true;try{let r=await fetch('/hp-firmware',{method:'POST',body:f.files[0]});s.textContent=await r.text()}catch(e){s.textContent=e.message}finally{b.disabled=false}}</script></html>";

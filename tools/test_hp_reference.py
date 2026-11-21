@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Optional independent foo2xqx comparison. Pass path to upstream executable."""
-import pathlib, subprocess, sys, tempfile
+import argparse, pathlib, subprocess, tempfile
 root=pathlib.Path(__file__).resolve().parents[1]
-reference=pathlib.Path(sys.argv[1]).resolve()
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('reference', type=pathlib.Path)
+parser.add_argument('host', nargs='?', type=pathlib.Path, default=root/'host/hp_host')
+parser.add_argument('--paper-count', type=int, choices=(3, 4), default=4)
+args = parser.parse_args()
+reference = args.reference.resolve()
+host = args.host.resolve()
 with tempfile.TemporaryDirectory() as td:
     prefix=pathlib.Path(td)/'hp'
-    subprocess.run([str(root/'host/hp_host'),str(prefix)],check=True)
-    for paper, (w,h,code) in enumerate([(21000*600//2540,29700*600//2540,9),(5100,6600,1),(14800*600//2540,21000*600//2540,11),(10500*600//2540,14800*600//2540,70)]):
+    subprocess.run([str(host),str(prefix)],check=True)
+    papers = [(21000*600//2540,29700*600//2540,9),(5100,6600,1),(14800*600//2540,21000*600//2540,11),(10500*600//2540,14800*600//2540,70)]
+    for paper, (w,h,code) in enumerate(papers[:args.paper_count]):
         iw,ih=w-192,h-192
         bpl=(iw*2+7)//8
         pbm=bytearray()

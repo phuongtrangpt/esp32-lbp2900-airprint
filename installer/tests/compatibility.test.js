@@ -1,9 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {lookupModel,profiles} from '../compatibility-data.js';
 test('customer model lookup resolves groups, rejects unsupported and unknown near names',()=>{
- for(const [model,profile] of [['P1006','hp'],['Canon LBP2900','canon'],['MP280','pixma'],['Canon MG2500 series','pixma'],['P2015','standard']])assert.equal(lookupModel(model).profile,profile);
+ for(const [model,profile] of [['P1006','hp'],['P1008','hp_p1008'],['Canon LBP2900','canon'],['MP280','pixma'],['Canon MG2500 series','pixma'],['P2015','standard']])assert.equal(lookupModel(model).profile,profile);
  for(const m of ['LBP3300','LBP6030','LBP6230dn','LBP151dw'])assert.equal(lookupModel(m).unsupported,true);
- for(const m of ['LBP2900B','MP288','Canon G2010'])assert.equal(lookupModel(m).unknown,true);
+ for(const m of ['P1008w','LBP2900B','MP288','Canon G2010'])assert.equal(lookupModel(m).unknown,true);
+ for(const m of ['HL-1201','Canon LBP3050','1020']){const found=lookupModel(m);assert.equal(found.research,true);assert.equal(found.profile,undefined);}
  assert.equal(profiles.pixma.models.length,23);
 });
 test('public PIXMA model list matches actual compiled driver families',async()=>{

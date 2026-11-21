@@ -12,7 +12,7 @@ window.addEventListener('installer-state',({detail})=>{
 });
 const model=document.querySelector("#printer-model");
 const requested=new URLSearchParams(location.search).get("model");
-model.value=["hp","canon","pixma","standard"].includes(requested)?requested:"hp";
+model.value=["hp","hp_p1008","canon","pixma","standard"].includes(requested)?requested:"hp";
 model.addEventListener("change",ready);
 async function ready() {
   installer.style.display="none";

@@ -71,6 +71,9 @@ def main():
         profile=env.GetProjectOption("custom_printer_profile", "all")
     except NameError:
         profile="all"
+    if profile == "hp_p1008":
+        values["PRINTER_NAME"] = "HP LaserJet P1008 TEST ESP 32"
+        values["HOSTNAME"] = "hp-p1008-esp32"
     if profile in ("hp","canon"):
         values["PRINTER_NAME"]="HP LaserJet P1006 ESP 32" if profile=="hp" else "Canon LBP2900 ESP 32"
         values["HOSTNAME"]="hp-p1006-esp32" if profile=="hp" else "canon-lbp2900-esp32"

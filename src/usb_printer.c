@@ -577,9 +577,10 @@ static void open_device(uint8_t addr)
     memset(&s_p.status, 0, sizeof(s_p.status));
     s_p.in_stopped = false;
     s_p.connected = true;
-    s_p.hp = info.vid == 0x03f0 && info.pid == 0x3e17;
-    s_p.hp_loaded = s_p.hp && strstr(info.device_id,"FWVER:") != NULL;
-    const printer_driver_t *driver=printer_driver_match(info.vid,info.pid,info.device_id);
+    const printer_driver_t *driver = printer_driver_match(info.vid, info.pid, info.device_id);
+    s_p.hp = driver && driver->usb_vid == info.vid && driver->usb_pid == info.pid &&
+        (!strcmp(driver->id, "hp-p1006") || !strcmp(driver->id, "hp-p1008"));
+    s_p.hp_loaded = s_p.hp && strstr(info.device_id, "FWVER:") != NULL;
     bool standard=driver && !strncmp(driver->id,"generic-",8);
     s_p.capt = standard || (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
     s_p.raw_len = 0;

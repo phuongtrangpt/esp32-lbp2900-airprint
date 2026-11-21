@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile,stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-for (const profile of ['hp','canon','pixma','standard']) {
+for (const profile of ['hp','hp_p1008','canon','pixma','standard']) {
 const root=new URL(`../public/firmware/${profile}/`,import.meta.url);
 const available=await stat(new URL('web-manifest.json',root)).then(()=>true,()=>false);
 test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`,{skip:!available},async()=>{
  const manifest=JSON.parse(await readFile(new URL('web-manifest.json',root),'utf8'));
+ if(profile==='hp_p1008')assert.equal(manifest.hpBootstrapEmbedded,true);
  assert.equal(manifest.builds.length,1);const build=manifest.builds[0];
  assert.equal(build.chipFamily,'ESP32-S3');assert.equal(build.serialType,'uart');
  const ota=JSON.parse(await readFile(new URL('ota-manifest.json',root),'utf8'));

@@ -86,6 +86,8 @@ typedef struct {
     // job state
     volatile bool job_active;           // a print job or a scan holds the device
     volatile bool cancel;
+    atomic_bool needs_reconnect;
+    bool lbp2900;
     volatile usb_transfer_status_t out_status;  // first failed OUT status in the job
 
     bool hp, hp_loaded;
@@ -576,16 +578,18 @@ static void open_device(uint8_t addr)
     s_p.last_status[0] = 0;
     memset(&s_p.status, 0, sizeof(s_p.status));
     s_p.in_stopped = false;
-    s_p.connected = true;
     const printer_driver_t *driver = printer_driver_match(info.vid, info.pid, info.device_id);
     s_p.hp = driver && driver->usb_vid == info.vid && driver->usb_pid == info.pid &&
         (!strcmp(driver->id, "hp-p1006") || !strcmp(driver->id, "hp-p1008"));
     s_p.hp_loaded = s_p.hp && strstr(info.device_id, "FWVER:") != NULL;
     bool standard=driver && !strncmp(driver->id,"generic-",8);
-    s_p.capt = standard || (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
+    s_p.lbp2900 = info.vid == 0x04a9 && info.pid == 0x2676;
+    s_p.capt = standard || s_p.lbp2900 || s_p.hp;
     s_p.raw_len = 0;
     s_p.raw_error = false;
     s_p.raw_wanted = false;
+    atomic_store(&s_p.needs_reconnect, false);
+    s_p.connected = true;
     if (!s_p.capt) in_submit();
     if (s_p.conn_cb)
         s_p.conn_cb(true, &info);
@@ -696,6 +700,11 @@ bool usb_printer_connected(void)
     return s_p.connected && !s_p.gone;
 }
 
+bool usb_printer_needs_reconnect(void)
+{
+    return usb_printer_connected() && atomic_load(&s_p.needs_reconnect);
+}
+
 bool usb_printer_job_active(void)
 {
     return s_p.job_active;
@@ -725,8 +734,8 @@ bool usb_printer_get_info(usb_printer_info_t *out)
 static bool claim_device(void)
 {
     xSemaphoreTake(s_p.lock, portMAX_DELAY);
-    bool ok = !s_p.job_active;
-    s_p.job_active = true;
+    bool ok = usb_printer_connected() && !s_p.job_active && !atomic_load(&s_p.needs_reconnect);
+    if (ok) s_p.job_active = true;
     xSemaphoreGive(s_p.lock);
     return ok;
 }
@@ -763,7 +772,7 @@ esp_err_t usb_printer_job_begin(void)
     s_p.job_active = true;
     if (s_p.hp && !s_p.hp_loaded) {
         esp_err_t err=hp_firmware_load();
-        if (err!=ESP_OK) { usb_printer_job_end(); return err; }
+        if (err!=ESP_OK) { usb_printer_job_end(true); return err; }
         s_p.hp_loaded=true;
     }
     return ESP_OK;
@@ -906,13 +915,18 @@ esp_err_t usb_printer_wait_response(const char *needle, uint32_t timeout_ms)
     return ESP_ERR_TIMEOUT;
 }
 
-void usb_printer_job_end(void)
+void usb_printer_job_end(bool ok)
 {
     // the job's last bytes (end of page, end of job) are still in the
     // transfer being filled unless the driver synced at the end: send them.
     // Not after a cancel or a failed transfer (job_check stops the flush).
-    if (s_p.fill && s_p.fill->num_bytes && job_check() == ESP_OK && usb_printer_flush() != ESP_OK)
+    if (!ok)
+        s_p.cancel = true;
+    if (s_p.fill && s_p.fill->num_bytes && job_check() == ESP_OK && usb_printer_flush() != ESP_OK) {
         ESP_LOGW(TAG, "the end of the job did not reach the printer");
+        s_p.cancel = true;
+        ok = false;
+    }
     if (s_p.fill) {
         usb_transfer_t *x = s_p.fill;
         s_p.fill = NULL;
@@ -923,6 +937,19 @@ void usb_printer_job_end(void)
         abort_endpoint(s_p.ep_out);
     s_p.raw_wanted = false;
     if (s_p.capt && s_p.in_inflight && !s_p.gone) abort_endpoint(s_p.ep_in);
+    // Keep ownership through reset so another job cannot write mid-recovery.
+    if (!ok && usb_printer_connected()) {
+        uint8_t req = USB_BM_REQUEST_TYPE_DIR_OUT | USB_BM_REQUEST_TYPE_TYPE_CLASS |
+                      USB_BM_REQUEST_TYPE_RECIP_INTERFACE;
+        esp_err_t err = ctrl_request(req, PRN_REQ_SOFT_RESET, 0, s_p.intf, 0, NULL, NULL);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "printer soft reset failed: %s", esp_err_to_name(err));
+            if (s_p.lbp2900) {
+                atomic_store(&s_p.needs_reconnect, true);
+                ESP_LOGW(TAG, "Canon LBP2900 needs a USB reconnect before accepting more print jobs");
+            }
+        }
+    }
     s_p.job_active = false;
 }
 
@@ -932,12 +959,6 @@ void usb_printer_cancel(void)
         return;
     ESP_LOGW(TAG, "cancelling job");
     s_p.cancel = true;
-}
-
-esp_err_t usb_printer_soft_reset(void)
-{
-    uint8_t req = USB_BM_REQUEST_TYPE_DIR_OUT | USB_BM_REQUEST_TYPE_TYPE_CLASS | USB_BM_REQUEST_TYPE_RECIP_INTERFACE;
-    return ctrl_request(req, PRN_REQ_SOFT_RESET, 0, s_p.intf, 0, NULL, NULL);
 }
 
 esp_err_t usb_printer_port_status(uint8_t *status)

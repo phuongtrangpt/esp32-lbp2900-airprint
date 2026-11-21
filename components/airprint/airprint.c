@@ -1545,9 +1545,9 @@ static void handle_ipp(conn_t *c)
     ipp_out_t body;     // operation results (job / printer groups)
     ipp_out_init(&body);
     const char *message = NULL;
+    airprint_status_t st;
 
     if (status == 0) {
-        airprint_status_t st;
         filter_t f;
         filter_init(&f, req);
         int job_id = ipp_attr_int(ipp_find(req, IPP_TAG_OPERATION, "job-id"), 0);
@@ -1580,7 +1580,7 @@ static void handle_ipp(conn_t *c)
             get_status(&st);
             if (!st.connected) {
                 status = IPP_NOT_ACCEPTING_JOBS;
-                message = "Printer not connected";
+                message = st.message[0] ? st.message : "Printer not connected";
                 break;
             }
             pthread_mutex_lock(&s_lock);

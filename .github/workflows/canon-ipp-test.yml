@@ -43,4 +43,4 @@ jobs:
           gh release create "lbp2900-ipp-test-${GITHUB_SHA:0:8}" LBP2900-IPP-TEST.zip \
             --target "$GITHUB_SHA" --prerelease --latest=false \
             --title 'Canon LBP2900 IPP test firmware' \
-            --notes 'Bản thử cho ESP32-S3 N16R8. Nạp USB. Sửa việc duyệt phiên HTTP đồng thời và kiểm tra dấu kết thúc HTTP. Cần thử in trực tiếp từ Windows trên máy thật.'
+            --notes 'Bản thử cho ESP32-S3 N16R8. Nạp USB. Chặn lệnh in tiếp theo khi reset Canon thất bại. Tắt bật Canon và kết nối lại USB để mở nhận lệnh. Cần kiểm thử phục hồi trên máy thật.'

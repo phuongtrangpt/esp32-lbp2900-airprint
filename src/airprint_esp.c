@@ -165,6 +165,10 @@ static void add_reason(airprint_status_t *st, const char *reason)
 
 static void get_status(void *ctx, airprint_status_t *st)
 {
+    if (usb_printer_needs_reconnect()) {
+        snprintf(st->message, sizeof(st->message), "Printer recovery failed. Power-cycle the Canon and reconnect USB.");
+        return;
+    }
     st->connected = usb_printer_connected() && print_job_supported();
     if (!st->connected)
         return;
@@ -226,17 +230,11 @@ static int job_sync(void *ctx, const char *what)
 
 static void job_close(void *ctx, bool ok)
 {
-    usb_printer_job_end();      // sends the job's last bytes: a cancel may still need the timer
+    usb_printer_job_end(ok);      // sends the job's last bytes: a cancel may still need the timer
     esp_timer_stop(s_cancel_timer);
     s_job_running = false;
     ESP_LOGI(TAG,"IPP job ended: %s",ok?"completed":"failed/canceled");
     debug_memory("IPP job end");
-    if (!ok && usb_printer_connected()) {
-        ESP_LOGW(TAG, "job failed, resetting printer");
-        esp_err_t err = usb_printer_soft_reset();
-        if (err != ESP_OK)
-            ESP_LOGW(TAG, "printer soft reset failed: %s", esp_err_to_name(err));
-    }
 }
 
 static void cancel_timeout(void *arg)

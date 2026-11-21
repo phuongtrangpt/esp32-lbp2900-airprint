@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, onMount } from 'svelte';
   import Printer from '@lucide/svelte/icons/printer';
   import ChevronLeft from '@lucide/svelte/icons/chevron-left';
   import ChevronRight from '@lucide/svelte/icons/chevron-right';
@@ -43,7 +43,17 @@
   // svelte-ignore state_referenced_locally
   let fit = $state<Fit>(file.source === 'scan' && file.dpi ? 'actual' : 'fit'); // a scan: a 1:1 copy
   let gray = $state<boolean>(true);
-  let dpi = $state<300 | 600>(600);
+  let dpi = $state<300 | 600>(saved.dpi === 300 ? 300 : 600);
+  onMount(async () => {
+    try {
+      const response = await fetch('/api/print-quality', { cache: 'no-store' });
+      if (response.ok) {
+        const config = await response.json();
+        if (phase === 'setup' && (p?.model || '').includes('LBP2900'))
+          dpi = config.dpi === 600 ? 600 : 300;
+      }
+    } catch { /* keep the locally selected quality when offline */ }
+  });
   let pageIdx = $state(0);
   let previewEl: HTMLDivElement;
 
@@ -53,7 +63,7 @@
   let detail = $state('');
   let abort: AbortController | null = null;
   let closed = false;
-  $effect(() => { if (dpi === 300 && !p?.resolutions?.includes(300)) dpi = 600; });
+  $effect(() => { if (dpi === 300 && !(p?.model || '').includes('LBP2900') && !p?.resolutions?.includes(300)) dpi = 600; });
   const paperOptions = $derived((Object.keys(PAPERS) as PaperId[]).filter((id) =>
     device.printer?.papers ? device.printer.papers.includes(PAPERS[id].pwg) : id === 'a4' || id === 'letter'));
   $effect(() => {
@@ -264,7 +274,7 @@
         <div class="field">
           <span class="label">Quality</span>
           <div class="seg">
-            {#if p?.resolutions?.includes(300)}
+            {#if p?.resolutions?.includes(300) || (p?.model || '').includes('LBP2900')}
               <button class:on={dpi === 300} onclick={() => (dpi = 300)}>Bản nháp · 300 dpi</button>
             {/if}
             <button class:on={dpi === 600} onclick={() => (dpi = 600)}>Standard · 600 dpi</button>

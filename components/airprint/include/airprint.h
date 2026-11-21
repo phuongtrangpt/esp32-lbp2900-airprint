@@ -43,6 +43,9 @@ typedef struct {
     int web_port;               // the same server on a second port for browsers (80), 0 = none
     // the printer model: capabilities and its raster -> printer data conversion
     const struct printer_driver *driver;
+    // Preferred IPP resolution; 0 keeps the driver's existing default.
+    // A client's explicit supported raster DPI is still accepted unchanged.
+    int (*preferred_dpi)(void *ctx);
 
     // platform hooks; all optional except job_write
     void (*get_status)(void *ctx, airprint_status_t *st);

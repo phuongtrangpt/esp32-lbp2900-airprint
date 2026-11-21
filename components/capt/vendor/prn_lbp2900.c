@@ -797,7 +797,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 		 * status signals a fault, and confirm a second consecutive sample
 		 * before treating a jam/door-open as fatal.
 		 */
-		if (FLAG(status, CAPT_FL_ERROR_BIT) ||
+		if (FLAG(status, CAPT_FL_ERROR) ||
 		    FLAG(status, CAPT_FL_NOTREADY) || FLAG(status, CAPT_FL_OFFLINE)) {
 			status = capt_get_xstatus_only();
 			uint16_t eng = status->xstat_eng & (CAPT_ENG_JAM | CAPT_ENG_DOOR_OPEN);

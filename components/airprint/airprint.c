@@ -55,6 +55,7 @@
 #endif
 #ifdef ESP_PLATFORM
 #define IDLE_TIMEOUT_S 4
+#define ACTIVE_IPP_TIMEOUT_S 120
 #else
 #define IDLE_TIMEOUT_S 15
 #endif
@@ -123,8 +124,17 @@ static int conn_fill(conn_t *c)
     if (c->pos < c->len)
         return 0;
     ssize_t n = recv(c->fd, c->buf, sizeof(c->buf), 0);
-    if (n <= 0)
+    if (n <= 0) {
+#ifdef ESP_PLATFORM
+        // Zero means peer closed. A timeout or network error is negative.
+        // Include body bytes remaining to distinguish client cancellation
+        // from a truncated raster/short HTTP upload.
+        LOGW("HTTP recv %s: fd=%d errno=%d remaining=%lld chunked=%d path=%s",
+             n == 0 ? "EOF" : "failed", c->fd, n == 0 ? 0 : errno,
+             (long long)c->remaining, (int)c->chunked, c->path);
+#endif
         return -1;
+    }
     c->pos = 0;
     c->len = (size_t)n;
     return 0;
@@ -1655,6 +1665,16 @@ static void *conn_thread(void *arg)
             send_all(c->fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 
         bool ipp_path = !strcmp(c->path, "/") || !strncmp(c->path, "/ipp", 4);
+#ifdef ESP_PLATFORM
+        // The short timeout is only for an idle connection waiting for its
+        // first request. IPP uploads can pause while the ESP decodes a full
+        // raster page and the printer drains CAPT bands; do not time them out
+        // like idle browsers. Keep a bounded but generous active-job timeout.
+        if (!strcmp(c->method, "POST") && ipp_path) {
+            struct timeval active_tv = {.tv_sec = ACTIVE_IPP_TIMEOUT_S};
+            setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &active_tv, sizeof(active_tv));
+        }
+#endif
         if (!strcmp(c->method, "POST") && (ipp_path || !s_cfg->http_handler)) {
             handle_ipp(c);
         } else if (!strcmp(c->method, "POST") || !strcmp(c->method, "DELETE")) {

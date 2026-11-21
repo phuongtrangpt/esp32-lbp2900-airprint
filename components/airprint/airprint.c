@@ -40,15 +40,23 @@
 #endif
 
 // iOS keeps several keep-alive connections open while it watches a job
-#define MAX_CONNECTIONS 8
 #ifdef ESP_PLATFORM
+// On ESP32-S3 each HTTP connection owns a 12 KiB pthread stack in internal RAM.
+// Reserving too many at once can starve Wi-Fi/USB tasks while printing.
+// Leave room for one print stream and two control/status connections.
+#define MAX_CONNECTIONS 3
 #define CONN_STACK_SIZE (12 * 1024)     // the print pipeline runs on this stack
 #define LISTEN_STACK_SIZE (4 * 1024)
 #else
+#define MAX_CONNECTIONS 8
 #define CONN_STACK_SIZE (512 * 1024)    // host build runs with sanitizers
 #define LISTEN_STACK_SIZE (256 * 1024)
 #endif
+#ifdef ESP_PLATFORM
+#define IDLE_TIMEOUT_S 4
+#else
 #define IDLE_TIMEOUT_S 15
+#endif
 #define MAX_JOBS 10
 #define MULTIPLE_OP_TIMEOUT_S 60
 
@@ -1624,6 +1632,12 @@ static void *conn_thread(void *arg)
         }
         if (hl < 0)
             break;
+#ifdef ESP_PLATFORM
+        // A long-lived idle HTTP/1.1 keep-alive occupies an entire FreeRTOS
+        // pthread stack. Close after each request on the microcontroller;
+        // IPP clients may open a fresh connection for their next request.
+        c->keep_alive = false;
+#endif
         if (!c->chunked && !has_length)
             c->body_eof = true;
         if (expect_continue && !c->body_eof)

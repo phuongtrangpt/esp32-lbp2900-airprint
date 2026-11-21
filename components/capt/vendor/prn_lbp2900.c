@@ -631,6 +631,10 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 	lbp2900_get_status(state->ops);
 
 	capt_log( "DEBUG: CAPT: out-of-paper: waiting for user to insert paper\n");
+	/* Allow several minutes for the user to refill the tray, not merely the
+	 * regular 120-second CAPT transport window. All USB I/O still has bounded
+	 * reads and a hard 10-minute deadline. */
+	capt_current_deadline(600000);
 
 	/* [Wait for user — poll loop:]
 	 * 18. Poll GetBasicStatus repeatedly until NEED_INPUT_STATUS bit set
@@ -644,6 +648,7 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 	}
 
 	/* 19. NEED_INPUT_STATUS is set: paper inserted and button pressed. */
+	capt_current_deadline(120000);
 	/* GetInputStatus — byte3 changes from 0x80 → 0xc0 (engine ready) */
 	capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
 

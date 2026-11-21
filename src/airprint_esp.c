@@ -415,7 +415,7 @@ static void scan_sleep(void *ctx, int ms)
 
 static bool http_handler(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
-    return wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+    return print_quality_http(h,method,path) || wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
 }
 
 // Most of the PSRAM, for scans (and the dev mode print capture)

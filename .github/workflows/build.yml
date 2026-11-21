@@ -85,6 +85,8 @@ jobs:
           ASAN_OPTIONS=detect_leaks=0 python tools/test_hp_reference.py /tmp/foo2xqx-reference/foo2xqx-ref
       - name: Browser Wi-Fi protocol tests
         run: ASAN_OPTIONS=detect_leaks=0 host/improv_host
+      - name: Quality settings HTTP route regression
+        run: python tools/test_quality_route.py
       - name: IPP integration
         run: TEST_CAPT_PAGES=100 python tools/test_capt_ipp.py
       - name: Small paper IPP integration

@@ -790,19 +790,30 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 		}
 
 		/*
-		 * Fatal hardware errors: paper jam (Eng bit 0x0100) or door open
-		 * (Eng bits 0x4000).  These conditions cannot be recovered by the
-		 * driver.  Release the reserved unit so the printer is not left
-		 * in a locked state, then abort.
+		 * Never infer a paper jam from cached xstat_eng. GetBasicStatus is
+		 * only 10 bytes; decode_status() intentionally leaves the extended
+		 * engine fields untouched, so an old Eng=0x0100 could otherwise abort
+		 * an entirely healthy page. Read GetExtendedStatus while the basic
+		 * status signals a fault, and confirm a second consecutive sample
+		 * before treating a jam/door-open as fatal.
 		 */
-		if (status->xstat_eng & (CAPT_ENG_JAM | CAPT_ENG_DOOR_OPEN)) {
-			const char *reason = (status->xstat_eng & CAPT_ENG_JAM)
-				? "paper jam" : "door open";
-			capt_log( "ERROR: CAPT: fatal printer error: %s (Eng=0x%04x) — aborting\n",
-				reason, status->xstat_eng);
-			uint8_t jbuf[2] = { LO(job), HI(job) };
-			capt_sendrecv(CAPT_RELEASE_UNIT, jbuf, 2, NULL, 0);
-			capt_fail("CAPT printer error");
+		if (FLAG(status, CAPT_FL_ERROR_BIT) ||
+		    FLAG(status, CAPT_FL_NOTREADY) || FLAG(status, CAPT_FL_OFFLINE)) {
+			status = capt_get_xstatus_only();
+			uint16_t eng = status->xstat_eng & (CAPT_ENG_JAM | CAPT_ENG_DOOR_OPEN);
+			if (eng) {
+				usleep(100000);
+				status = capt_get_xstatus_only();
+				uint16_t confirmed = status->xstat_eng & eng;
+				if (confirmed) {
+					const char *reason = (confirmed & CAPT_ENG_JAM)
+						? "paper jam" : "door open";
+					capt_log("ERROR: CAPT: confirmed printer fault: %s (Eng=0x%04x, Bas=0x%04x)\n",
+						reason, status->xstat_eng, status->status[0]);
+					capt_fail("CAPT printer error");
+				}
+				capt_log("WARNING: CAPT: transient engine status Eng=0x%04x ignored\n", eng);
+			}
 		}
 
 		/* Legacy no-paper flags from extended status */

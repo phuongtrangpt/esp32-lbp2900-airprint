@@ -89,6 +89,8 @@ jobs:
         run: python tools/test_quality_route.py
       - name: IPP integration
         run: TEST_CAPT_PAGES=100 python tools/test_capt_ipp.py
+      - name: Large IPP upload and disconnect simulation
+        run: python tools/test_capt_ipp_transport.py
       - name: Small paper IPP integration
         run: python tools/test_small_papers.py
       - name: Web validation

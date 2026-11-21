@@ -82,12 +82,32 @@ static void consecutive_jobs(void)
     for(int y=0;y<7016;y++)assert(!d->page_line(j,y,NULL));
     assert(!d->page_end(j));assert(d->job_end(j)<0);
 }
+static void paper_refill(unsigned confirmation_delay)
+{
+    const printer_driver_t *d=&canon_lbp2900_driver;
+    fake_t f={.strict_session=1,.paper_out_page=2,.paper_out_confirmation_delay=confirmation_delay};
+    printer_io_t link=io(&f);
+    void *j=d->job_begin(d,&link,300,0); assert(j);
+    for (int page=0; page<2; page++) {
+        assert(!d->page_begin(j,2480,3508,1));
+        for (int y=0; y<3508; y++) assert(!d->page_line(j,y,NULL));
+        assert(!d->page_end(j));
+    }
+    assert(!d->job_end(j));
+    assert(f.paper_pauses==1 && f.paper_resumes==1);
+    assert(f.begin_pages==3 && f.start_print==3 && f.released_jobs==1);
+    printf("CAPT paper-out: second page waited, reported refill, and replayed once (confirmation delay %u)\n",
+           confirmation_delay);
+}
+
 int main(void)
 {
     assert(printer_driver_match(0x04a9,0x2676,"")==&canon_lbp2900_driver);
     for (int dpi=300; dpi<=600; dpi+=300) for(int paper=0;paper<4;paper++) for(int rgb=0;rgb<2;rgb++) lifecycle(paper,rgb,dpi);
     failures();
     consecutive_jobs();
+    paper_refill(0);
+    paper_refill(8);
     puts("CAPT sessions: 3 consecutive jobs on one device, incrementing IDs 41-43, delayed delivery and rejected ReleaseUnit passed");
     puts("CAPT: PASS: A4/Letter/A5/A6, grayscale/RGB, two pages, full-buffer streaming, fragmented replies, disconnect, malformed reply, incomplete/canceled job");
 }

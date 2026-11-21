@@ -50,13 +50,13 @@ int usb_printer_read(uint8_t *buf, size_t len, uint32_t timeout_ms);
 // ESP_OK = found, ESP_ERR_TIMEOUT = not seen in time, ESP_ERR_NOT_SUPPORTED =
 // the printer has no bulk IN endpoint.
 esp_err_t usb_printer_wait_response(const char *needle, uint32_t timeout_ms);
-void usb_printer_job_end(void);
+void usb_printer_job_end(bool ok);
+bool usb_printer_needs_reconnect(void);
+bool usb_printer_recovering(void);
 
 // Abort a running job from any task: stops pending transfers and makes the
 // job's write/flush calls fail with ESP_ERR_INVALID_STATE.
 void usb_printer_cancel(void);
-// Printer class SOFT_RESET request (what Canon's driver sends on cancel).
-esp_err_t usb_printer_soft_reset(void);
 // Printer class GET_PORT_STATUS: bit 5 paper empty, bit 4 selected, bit 3 no error.
 esp_err_t usb_printer_port_status(uint8_t *status);
 

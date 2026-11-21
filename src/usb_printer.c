@@ -44,6 +44,10 @@ static const char *TAG = "usb_printer";
 #define PRN_REQ_GET_PORT_STATUS 1
 #define PRN_REQ_SOFT_RESET 2
 
+enum recovery_state {
+    RECOVERY_IDLE, RECOVERY_REQUESTED, RECOVERY_PORT_OFF, RECOVERY_ENUMERATING, RECOVERY_FAILED,
+};
+
 typedef struct {
     usb_host_client_handle_t client;
     TaskHandle_t client_task;
@@ -69,7 +73,8 @@ typedef struct {
     volatile bool in_inflight;
     bool in_stopped;                    // IN endpoint failed, stop polling
     TickType_t in_last;                 // when the last IN read completed
-    volatile bool ctrl_done;
+    atomic_bool ctrl_done;
+    atomic_bool ctrl_inflight;
     SemaphoreHandle_t raw_sem, out_sem; // completion signals, no fixed USB polling delay
     SemaphoreHandle_t ctrl_sem;
     SemaphoreHandle_t ctrl_mutex;
@@ -86,6 +91,8 @@ typedef struct {
     // job state
     volatile bool job_active;           // a print job or a scan holds the device
     volatile bool cancel;
+    atomic_int recovery;
+    bool lbp2900;
     volatile usb_transfer_status_t out_status;  // first failed OUT status in the job
 
     bool hp, hp_loaded;
@@ -243,6 +250,7 @@ static void in_cb(usb_transfer_t *xfer)
 static void ctrl_cb(usb_transfer_t *xfer)
 {
     s_p.ctrl_done = true;
+    atomic_store(&s_p.ctrl_inflight, false);
     xSemaphoreGive(s_p.ctrl_sem);
 }
 
@@ -251,11 +259,15 @@ static void ctrl_cb(usb_transfer_t *xfer)
 static esp_err_t ctrl_request(uint8_t bmRequestType, uint8_t bRequest, uint16_t wValue, uint16_t wIndex,
                               uint16_t wLength, uint8_t *data, size_t *actual)
 {
-    if (!s_p.dev || s_p.gone)
-        return ESP_ERR_INVALID_STATE;
     if (wLength > CTRL_XFER_SIZE - sizeof(usb_setup_packet_t))
         return ESP_ERR_INVALID_SIZE;
+    bool in_client = xTaskGetCurrentTaskHandle() == s_p.client_task;
     xSemaphoreTake(s_p.ctrl_mutex, portMAX_DELAY);
+    if (!s_p.ctrl || s_p.gone || atomic_load(&s_p.ctrl_inflight) ||
+        (!in_client && (!s_p.connected || atomic_load(&s_p.recovery) != RECOVERY_IDLE))) {
+        xSemaphoreGive(s_p.ctrl_mutex);
+        return ESP_ERR_INVALID_STATE;
+    }
     usb_setup_packet_t *setup = (usb_setup_packet_t *)s_p.ctrl->data_buffer;
     setup->bmRequestType = bmRequestType;
     setup->bRequest = bRequest;
@@ -270,9 +282,11 @@ static esp_err_t ctrl_request(uint8_t bmRequestType, uint8_t bRequest, uint16_t 
     s_p.ctrl_done = false;
     xSemaphoreTake(s_p.ctrl_sem, 0);
 
+    atomic_store(&s_p.ctrl_inflight, true);
     esp_err_t err = usb_host_transfer_submit_control(s_p.client, s_p.ctrl);
+    if (err != ESP_OK)
+        atomic_store(&s_p.ctrl_inflight, false);
     if (err == ESP_OK) {
-        bool in_client = xTaskGetCurrentTaskHandle() == s_p.client_task;
         TickType_t start = xTaskGetTickCount();
         while (!s_p.ctrl_done && xTaskGetTickCount() - start < pdMS_TO_TICKS(2000)) {
             if (in_client)
@@ -576,19 +590,22 @@ static void open_device(uint8_t addr)
     s_p.last_status[0] = 0;
     memset(&s_p.status, 0, sizeof(s_p.status));
     s_p.in_stopped = false;
-    s_p.connected = true;
     const printer_driver_t *driver = printer_driver_match(info.vid, info.pid, info.device_id);
     s_p.hp = driver && driver->usb_vid == info.vid && driver->usb_pid == info.pid &&
         (!strcmp(driver->id, "hp-p1006") || !strcmp(driver->id, "hp-p1008"));
     s_p.hp_loaded = s_p.hp && strstr(info.device_id, "FWVER:") != NULL;
     bool standard=driver && !strncmp(driver->id,"generic-",8);
-    s_p.capt = standard || (info.vid == 0x04a9 && info.pid == 0x2676) || s_p.hp;
+    s_p.lbp2900 = info.vid == 0x04a9 && info.pid == 0x2676;
+    s_p.capt = standard || s_p.lbp2900 || s_p.hp;
     s_p.raw_len = 0;
     s_p.raw_error = false;
     s_p.raw_wanted = false;
+    s_p.connected = true;
     if (!s_p.capt) in_submit();
     if (s_p.conn_cb)
         s_p.conn_cb(true, &info);
+    if (atomic_exchange(&s_p.recovery, RECOVERY_IDLE) != RECOVERY_IDLE && s_p.lbp2900)
+        ESP_LOGI(TAG, "Canon LBP2900 USB connection restored");
 }
 
 static void abort_endpoint(uint8_t ep)
@@ -608,12 +625,50 @@ static void client_event_cb(const usb_host_client_event_msg_t *msg, void *arg)
         s_p.gone = true;
 }
 
+// Run on the USB client task so normal disconnect/attach processing keeps
+// running. The port is switched only after the failed job releases ownership.
+static void recover_usb(TickType_t *since)
+{
+    int state = atomic_load(&s_p.recovery);
+    TickType_t now = xTaskGetTickCount();
+    if (state == RECOVERY_REQUESTED && !s_p.job_active) {
+        *since = now;
+        if (!s_p.dev || s_p.gone) {
+            atomic_store(&s_p.recovery, RECOVERY_ENUMERATING);
+            return;
+        }
+        ESP_LOGW(TAG, "Recovering Canon LBP2900 USB connection");
+        esp_err_t err = usb_host_lib_set_root_port_power(false);
+        if (err == ESP_OK) {
+            atomic_store(&s_p.recovery, RECOVERY_PORT_OFF);
+        } else {
+            ESP_LOGW(TAG, "Cannot disable USB root port: %s", esp_err_to_name(err));
+            atomic_store(&s_p.recovery, RECOVERY_FAILED);
+        }
+    } else if (state == RECOVERY_PORT_OFF &&
+               ((!s_p.dev && now - *since >= pdMS_TO_TICKS(250)) ||
+                now - *since >= pdMS_TO_TICKS(2500))) {
+        esp_err_t err = usb_host_lib_set_root_port_power(true);
+        if (err == ESP_OK) {
+            *since = now;
+            atomic_store(&s_p.recovery, RECOVERY_ENUMERATING);
+        } else if (now - *since >= pdMS_TO_TICKS(3000)) {
+            ESP_LOGW(TAG, "Cannot enable USB root port: %s", esp_err_to_name(err));
+            atomic_store(&s_p.recovery, RECOVERY_FAILED);
+        }
+    } else if (state == RECOVERY_ENUMERATING && now - *since >= pdMS_TO_TICKS(4000)) {
+        ESP_LOGW(TAG, "Canon LBP2900 did not reappear after USB recovery");
+        atomic_store(&s_p.recovery, RECOVERY_FAILED);
+    }
+}
+
 static void client_task(void *arg)
 {
     bool teardown = false;
+    TickType_t recovery_since = 0;
     while (1) {
         usb_host_client_handle_events(s_p.client, pdMS_TO_TICKS(50));
-        if (s_p.pending_addr && !teardown) {   // a re-plug waits for the old teardown
+        if (s_p.pending_addr && !s_p.gone && !teardown) {   // a re-plug waits for the old teardown
             uint8_t addr = s_p.pending_addr;
             s_p.pending_addr = 0;
             open_device(addr);
@@ -636,14 +691,17 @@ static void client_task(void *arg)
                 abort_endpoint(s_p.ep_out);
             if (s_p.in_inflight)
                 abort_endpoint(s_p.ep_in);
-            if (atomic_load(&s_p.out_inflight) == 0 && !s_p.in_inflight) {
+            if (atomic_load(&s_p.out_inflight) == 0 && !s_p.in_inflight &&
+                !atomic_load(&s_p.ctrl_inflight) && xSemaphoreTake(s_p.ctrl_mutex, 0) == pdTRUE) {
                 release_device();
+                xSemaphoreGive(s_p.ctrl_mutex);
                 s_p.gone = false;
                 s_p.cancel = false;
                 teardown = false;
                 ESP_LOGI(TAG, "printer resources released");
             }
         }
+        recover_usb(&recovery_since);
     }
 }
 
@@ -696,6 +754,17 @@ bool usb_printer_connected(void)
     return s_p.connected && !s_p.gone;
 }
 
+bool usb_printer_needs_reconnect(void)
+{
+    return atomic_load(&s_p.recovery) == RECOVERY_FAILED;
+}
+
+bool usb_printer_recovering(void)
+{
+    int state = atomic_load(&s_p.recovery);
+    return state == RECOVERY_REQUESTED || state == RECOVERY_PORT_OFF || state == RECOVERY_ENUMERATING;
+}
+
 bool usb_printer_job_active(void)
 {
     return s_p.job_active;
@@ -725,8 +794,8 @@ bool usb_printer_get_info(usb_printer_info_t *out)
 static bool claim_device(void)
 {
     xSemaphoreTake(s_p.lock, portMAX_DELAY);
-    bool ok = !s_p.job_active;
-    s_p.job_active = true;
+    bool ok = usb_printer_connected() && !s_p.job_active && atomic_load(&s_p.recovery) == RECOVERY_IDLE;
+    if (ok) s_p.job_active = true;
     xSemaphoreGive(s_p.lock);
     return ok;
 }
@@ -763,7 +832,7 @@ esp_err_t usb_printer_job_begin(void)
     s_p.job_active = true;
     if (s_p.hp && !s_p.hp_loaded) {
         esp_err_t err=hp_firmware_load();
-        if (err!=ESP_OK) { usb_printer_job_end(); return err; }
+        if (err!=ESP_OK) { usb_printer_job_end(true); return err; }
         s_p.hp_loaded=true;
     }
     return ESP_OK;
@@ -906,13 +975,18 @@ esp_err_t usb_printer_wait_response(const char *needle, uint32_t timeout_ms)
     return ESP_ERR_TIMEOUT;
 }
 
-void usb_printer_job_end(void)
+void usb_printer_job_end(bool ok)
 {
     // the job's last bytes (end of page, end of job) are still in the
     // transfer being filled unless the driver synced at the end: send them.
     // Not after a cancel or a failed transfer (job_check stops the flush).
-    if (s_p.fill && s_p.fill->num_bytes && job_check() == ESP_OK && usb_printer_flush() != ESP_OK)
+    if (!ok)
+        s_p.cancel = true;
+    if (s_p.fill && s_p.fill->num_bytes && job_check() == ESP_OK && usb_printer_flush() != ESP_OK) {
         ESP_LOGW(TAG, "the end of the job did not reach the printer");
+        s_p.cancel = true;
+        ok = false;
+    }
     if (s_p.fill) {
         usb_transfer_t *x = s_p.fill;
         s_p.fill = NULL;
@@ -923,6 +997,18 @@ void usb_printer_job_end(void)
         abort_endpoint(s_p.ep_out);
     s_p.raw_wanted = false;
     if (s_p.capt && s_p.in_inflight && !s_p.gone) abort_endpoint(s_p.ep_in);
+    // Keep ownership through reset so another job cannot write mid-recovery.
+    if (!ok && usb_printer_connected()) {
+        uint8_t req = USB_BM_REQUEST_TYPE_DIR_OUT | USB_BM_REQUEST_TYPE_TYPE_CLASS |
+                      USB_BM_REQUEST_TYPE_RECIP_INTERFACE;
+        esp_err_t err = ctrl_request(req, PRN_REQ_SOFT_RESET, 0, s_p.intf, 0, NULL, NULL);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "printer soft reset failed: %s", esp_err_to_name(err));
+            if (s_p.lbp2900) {
+                atomic_store(&s_p.recovery, RECOVERY_REQUESTED);
+            }
+        }
+    }
     s_p.job_active = false;
 }
 
@@ -932,12 +1018,6 @@ void usb_printer_cancel(void)
         return;
     ESP_LOGW(TAG, "cancelling job");
     s_p.cancel = true;
-}
-
-esp_err_t usb_printer_soft_reset(void)
-{
-    uint8_t req = USB_BM_REQUEST_TYPE_DIR_OUT | USB_BM_REQUEST_TYPE_TYPE_CLASS | USB_BM_REQUEST_TYPE_RECIP_INTERFACE;
-    return ctrl_request(req, PRN_REQ_SOFT_RESET, 0, s_p.intf, 0, NULL, NULL);
 }
 
 esp_err_t usb_printer_port_status(uint8_t *status)

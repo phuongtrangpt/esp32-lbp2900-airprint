@@ -9,13 +9,15 @@
   import { work } from '../lib/process.svelte';
   import { scanProgress } from '../lib/scan.svelte';
 
-  let { current, home, firmware = 'Đang đọc…' }: { current: string; home: boolean; firmware?: string } = $props();
+  let { current, home, firmware = 'Đang đọc…', audioSupported, audioEnabled, audioPending, toggleAudio }:
+    { current: string; home: boolean; firmware?: string; audioSupported: boolean;
+      audioEnabled: boolean; audioPending: boolean; toggleAudio: () => void } = $props();
 
   const printerLine = $derived.by(() => {
     const p = device.printer;
     if (!device.loaded) return 'Connecting…';
     if (!p) return 'Unavailable';
-    if (!p.connected) return 'Printer not connected';
+    if (!p.connected) return p.reasons.includes('other-error') ? p.message : 'Chưa cắm máy in';
     const job = p.jobs.find((j) => j.id === p.active);
     if (job && job.state === 'processing') return `Printing · page ${job.pages + 1}`;
     if (device.scan?.state === 'scanning') return 'Busy scanning';
@@ -95,6 +97,11 @@
   <a href="https://www.facebook.com/leviethoaiphuong" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 18px;text-decoration:none">Facebook · Hỗ trợ Việt Phương ↗</a>
   <a href="/network" style="display:block;padding:12px 18px;text-decoration:none">Cài đặt IP động / IP tĩnh ↗</a>
   <a href="/diagnostics" style="display:block;padding:12px 18px;text-decoration:none">Nhật ký / Tải log lỗi ↗</a>
+  {#if audioSupported}
+    <button class="btn" type="button" onclick={toggleAudio} disabled={audioPending}>
+      {audioEnabled ? 'Tắt âm báo' : 'Bật âm báo'}
+    </button>
+  {/if}
 
   <div class="foot">
     <p class="muted small">© Việt Phương · vietphuong esp<br />Firmware {firmware}</p>

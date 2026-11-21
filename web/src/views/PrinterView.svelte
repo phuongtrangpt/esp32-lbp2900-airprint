@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import Printer from '@lucide/svelte/icons/printer';
   import Upload from '@lucide/svelte/icons/upload';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
@@ -14,34 +13,11 @@
   const p = $derived(device.printer);
   const active = $derived(p?.jobs.find((j) => j.id === p.active && (j.state === 'processing' || j.state === 'pending')));
   let input: HTMLInputElement;
-  const isCanon = $derived((p?.model || '').includes('LBP2900'));
-  let preferredDpi = $state(300);
-  let savingDpi = $state(false);
-  onMount(async () => {
-    try {
-      const r = await fetch('/api/print-quality', { cache: 'no-store' });
-      if (r.ok) preferredDpi = (await r.json()).dpi === 600 ? 600 : 300;
-    } catch { /* printer may be offline during Wi-Fi setup */ }
-  });
-  async function saveDpi() {
-    savingDpi = true;
-    try {
-      const r = await fetch('/api/print-quality', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dpi: preferredDpi })
-      });
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      toast('Đã lưu chất lượng in ' + preferredDpi + ' dpi. Windows có thể cần làm mới máy in để cập nhật.', 'ok');
-    } catch (e) {
-      toast('Không lưu được độ phân giải: ' + (e as Error).message, 'error');
-    } finally { savingDpi = false; }
-  }
-
   const status = $derived.by(() => {
     if (!device.loaded) return { text: 'Đang kết nối…', tone: '' };
     if (!p) return { text: 'Chưa sẵn sàng', tone: 'err' };
-    if (!p.connected) return { text: 'Chưa cắm máy in', tone: 'warn' };
     if (p.reasons.some((r) => r.endsWith('-error'))) return { text: p.message, tone: 'err' };
+    if (!p.connected) return { text: 'Chưa cắm máy in', tone: 'warn' };
     if (p.state === 'processing') return { text: 'Đang in', tone: 'busy' };
     if (device.scan?.state === 'scanning') return { text: 'Scanning', tone: 'busy' };
     return { text: 'Sẵn sàng', tone: 'ok' };
@@ -54,6 +30,7 @@
     'media-jam-error': 'Paper jam',
     'cover-open-error': 'The cover is open',
     'offline-report': 'The printer is not connected',
+    'other-error': 'Máy in đang chờ khôi phục',
   };
 
   function reasonText(r: string): string {
@@ -143,23 +120,6 @@
       <input bind:this={input} type="file" accept="application/pdf,image/*" hidden onchange={upload} />
     </div>
   </section>
-
-  {#if isCanon}
-    <section class="card card-pad">
-      <h2>Chất lượng in mặc định</h2>
-      <p class="muted small">Áp dụng cho các lệnh in mới. Windows/điện thoại có thể gửi độ phân giải riêng; ESP vẫn nhận cả 300 và 600 dpi.</p>
-      <div class="row wrap" style="margin-top:14px;gap:12px;align-items:center">
-        <select aria-label="Độ phân giải mặc định" bind:value={preferredDpi} style="padding:10px;border-radius:9px">
-          <option value={300}>300 dpi – In nhanh</option>
-          <option value={600}>600 dpi – In sắc nét</option>
-        </select>
-        <button class="btn primary" onclick={saveDpi} disabled={savingDpi || !device.online}>
-          {savingDpi ? 'Đang lưu…' : 'Lưu độ phân giải'}
-        </button>
-      </div>
-      <p class="muted small" style="margin-top:10px">Cài đặt được giữ sau khi khởi động lại. Muốn Windows chuyển sang 600 dpi, đôi khi cần cập nhật hoặc thêm lại máy in mạng.</p>
-    </section>
-  {/if}
 
   {#if p && p.reasons.length}
     <section class="card card-pad alerts">

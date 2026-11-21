@@ -95,6 +95,7 @@ typedef struct {
     uint64_t order;             // document admission order, zero until submitted
     uint8_t *spool;
     size_t spool_size, spool_capacity;
+    bool web_print;             // document submitted through the web print dialog
     bool receiving;
     bool replying;              // retain the job until its IPP response is serialized
     bool printer_open;          // permits the hardware cancel hook while the device is in use
@@ -109,12 +110,17 @@ static uint64_t s_next_order = 1;
 static size_t s_spool_bytes;
 static time_t s_start;
 static int s_connections;
+static atomic_bool s_waiting_for_paper;
+#ifdef ESP_PLATFORM
+static unsigned s_refused_connections;
+#endif
 
 // ===========================================================================
 // HTTP connection
 
 struct airprint_http {
     int fd;
+    int listener_port;
     uint8_t buf[2048];
     size_t pos, len;
     // request
@@ -169,6 +175,11 @@ static int conn_fill(conn_t *c)
             break;
         n = recv(c->fd, c->buf, sizeof(c->buf), 0);
     }
+#ifdef ESP_PLATFORM
+    if (n > 0 && deadline)
+        LOGI("HTTP upload resumed after %.1f s idle on %s",
+             (now_us() - deadline) / 1000000.0 + ACTIVE_IPP_TIMEOUT_S, c->path);
+#endif
     if (n <= 0) {
 #ifdef ESP_PLATFORM
         // Zero means peer closed. A timeout or network error is negative.
@@ -232,13 +243,22 @@ static int body_read_unchecked(conn_t *c, uint8_t *out, size_t n)
         return 0;
     if (c->chunked && c->remaining == 0) {
         char line[64];
-        if (c->in_chunks && read_line(c, line, sizeof(line)) < 0)   // CRLF after chunk data
+        if (c->in_chunks && read_line(c, line, sizeof(line)) != 0) {
+            LOGW("HTTP missing chunk separator on %s", c->path);
             return -1;
-        if (read_line(c, line, sizeof(line)) < 0)
+        }
+        if (read_line(c, line, sizeof(line)) <= 0)
             return -1;
-        long size = strtol(line, NULL, 16);
+        char *end;
+        errno = 0;
+        long long size = strtoll(line, &end, 16);
+        if (!strchr("0123456789abcdefABCDEF", line[0]) ||
+                errno == ERANGE || size < 0 || (*end && *end != ';')) {
+            LOGW("HTTP invalid chunk size on %s", c->path);
+            return -1;
+        }
         c->in_chunks = true;
-        if (size <= 0) {
+        if (size == 0) {
             int trailer;
             while ((trailer = read_line(c, line, sizeof(line))) > 0)
                 ;
@@ -539,11 +559,6 @@ static const char **media_names(const char *names[MAX_PAPERS + 1])
 static void resolutions(ipp_out_t *o, const char *name)
 {
     const printer_driver_t *d = s_cfg->driver;
-    if (s_cfg->preferred_dpi && !strcmp(d->id, "canon-lbp2900")) {
-        int dpi = s_cfg->preferred_dpi(s_cfg->ctx);
-        ipp_out_res(o, name, dpi == 600 ? 600 : 300, dpi == 600 ? 600 : 300);
-        return;
-    }
     for (int i = 0; i < d->nresolutions; i++)
         ipp_out_res(o, i ? NULL : name, d->resolutions[i], d->resolutions[i]);
 }
@@ -555,6 +570,11 @@ static void get_status(airprint_status_t *st)
         s_cfg->get_status(s_cfg->ctx, st);
     else
         st->connected = true;
+    if (st->connected && atomic_load(&s_waiting_for_paper)) {
+        if (st->nreasons < (int)(sizeof(st->reasons) / sizeof(st->reasons[0])))
+            st->reasons[st->nreasons++] = "media-empty-error";
+        snprintf(st->message, sizeof(st->message), "Hết giấy. Nạp thêm giấy rồi bấm nút giấy trên Canon.");
+    }
 }
 
 // printer-state from the job table and the printer
@@ -772,14 +792,10 @@ static void add_printer_attrs(ipp_out_t *o, const conn_t *c, const filter_t *f)
         ipp_out_str(o, IPP_TAG_TEXT, "printer-organization", "");
     if (W("printer-organizational-unit"))
         ipp_out_str(o, IPP_TAG_TEXT, "printer-organizational-unit", "");
-    if (W("printer-resolution-default"))
-        ipp_out_res(o, "printer-resolution-default",
-                    (s_cfg->preferred_dpi && !strcmp(drv->id, "canon-lbp2900"))
-                        ? (s_cfg->preferred_dpi(s_cfg->ctx) == 600 ? 600 : 300)
-                        : drv->resolutions[drv->nresolutions - 1],
-                    (s_cfg->preferred_dpi && !strcmp(drv->id, "canon-lbp2900"))
-                        ? (s_cfg->preferred_dpi(s_cfg->ctx) == 600 ? 600 : 300)
-                        : drv->resolutions[drv->nresolutions - 1]);
+    if (W("printer-resolution-default")) {
+        int dpi = drv->resolutions[drv->nresolutions - 1];
+        ipp_out_res(o, "printer-resolution-default", dpi, dpi);
+    }
     if (W("printer-resolution-supported"))
         resolutions(o, "printer-resolution-supported");
     if (W("printer-state"))
@@ -1066,8 +1082,16 @@ typedef struct {
     printer_io_t io;
     void *drv_job;              // the driver's job, once the first page started
     int dpi;
+    int downsample_width, downsample_height, downsample_bpp;
+    uint8_t *downsample_row;
     int err;                    // first failure, an IPP status
 } pipe_t;
+
+static void pipe_paper_out(void *ctx, bool waiting)
+{
+    (void)ctx;
+    atomic_store(&s_waiting_for_paper, waiting);
+}
 
 static int pipe_write(void *ctx, const uint8_t *data, size_t len)
 {
@@ -1121,12 +1145,17 @@ static int pipe_page_begin(void *user, const raster_page_t *pg)
         p->err = IPP_DOCUMENT_FORMAT_ERROR;
         return 2;
     }
+    bool downsample = pg->dpi == 600 && !p->job->web_print && !strcmp(d->id, "canon-lbp2900");
+    int dpi = downsample ? 300 : pg->dpi;
     if (!p->drv_job) {
         int paper = printer_driver_paper_for(d, pg->height, pg->dpi);
-        p->io = (printer_io_t){.write = pipe_write, .read = pipe_read, .flush = pipe_flush, .sync = pipe_sync, .ctx = p};
+        p->io = (printer_io_t){.write = pipe_write, .read = pipe_read, .flush = pipe_flush, .sync = pipe_sync,
+                               .paper_out = pipe_paper_out, .ctx = p};
         p->dpi = pg->dpi;
         LOGI("job %d: %s %d dpi, %s", p->job->id, d->papers[paper].name, pg->dpi, pg->bytes_pp == 3 ? "color" : "gray");
-        p->drv_job = d->job_begin(d, &p->io, pg->dpi, paper);
+        if (downsample)
+            LOGI("job %d: reducing external IPP raster from 600 to 300 dpi", p->job->id);
+        p->drv_job = d->job_begin(d, &p->io, dpi, paper);
         if (!p->drv_job) {
             p->err = IPP_INTERNAL_ERROR;
             return 3;
@@ -1138,7 +1167,21 @@ static int pipe_page_begin(void *user, const raster_page_t *pg)
     }
     p->job->line = 0;
     p->job->height = pg->height;
-    if (d->page_begin(p->drv_job, pg->width, pg->height, pg->bytes_pp)) {
+    int width = pg->width, height = pg->height;
+    if (downsample) {
+        width = (width + 1) / 2;
+        height = (height + 1) / 2;
+        uint8_t *row = realloc(p->downsample_row, (size_t)width * pg->bytes_pp);
+        if (!row) {
+            p->err = IPP_INTERNAL_ERROR;
+            return 3;
+        }
+        p->downsample_row = row;
+        p->downsample_width = pg->width;
+        p->downsample_height = pg->height;
+        p->downsample_bpp = pg->bytes_pp;
+    }
+    if (d->page_begin(p->drv_job, width, height, pg->bytes_pp)) {
         p->err = IPP_DEVICE_ERROR;
         return 4;
     }
@@ -1163,11 +1206,33 @@ static int pipe_line_repeat(void *user, int y, const uint8_t *px, bool is_repeat
 #endif
     int64_t t0 = now_us();
     const printer_driver_t *d = s_cfg->driver;
+    int input_y = y;
+    if (p->downsample_row) {
+        // Box filter two rows at a time. Repeat the edge pixel for odd sizes.
+        int bpp = p->downsample_bpp;
+        int width = p->downsample_width;
+        for (int x = 0; x < width; x += 2) {
+            int right = x + 1 < width ? x + 1 : x;
+            for (int channel = 0; channel < bpp; channel++) {
+                int average = px ? (px[x * bpp + channel] + px[right * bpp + channel] + 1) / 2 : 255;
+                uint8_t *sample = &p->downsample_row[(x / 2) * bpp + channel];
+                *sample = y % 2 ? (*sample + average + 1) / 2 : average;
+            }
+        }
+        if (y % 2 == 0 && y + 1 < p->downsample_height) {
+            p->render_us += now_us() - t0;
+            p->job->line = input_y + 1;
+            return 0;
+        }
+        y /= 2;
+        px = p->downsample_row;
+        is_repeat = false;
+    }
     int result = d->page_line_repeat
         ? d->page_line_repeat(p->drv_job, y, px, is_repeat)
         : d->page_line(p->drv_job, y, px);
     p->render_us += now_us() - t0;
-    p->job->line = y + 1;
+    p->job->line = input_y + 1;
     if (result) {
         p->err = IPP_DEVICE_ERROR;
         return 4;
@@ -1282,6 +1347,7 @@ static int print_document(conn_t *c, job_t *j)
         link_ok = s_cfg->driver->job_end(p->drv_job) == 0;
         LOGI("job %d: printer finalization %.3f s", j->id, (now_us() - t_end) / 1e6);
     }
+    atomic_store(&s_waiting_for_paper, false);
     close_printer(j, link_ok);
 
     // A counted URF stream can finish decoding before the HTTP body ends.
@@ -1320,13 +1386,16 @@ static int print_document(conn_t *c, job_t *j)
          j->state == JOB_COMPLETED ? "completed" : j->state == JOB_CANCELED ? "canceled" : "aborted", j->impressions,
          (long long)j->bytes, r < 0 ? ": " : "", r < 0 ? raster_strerror(r) : "");
     pthread_mutex_unlock(&s_lock);
+    free(p->downsample_row);
     free(p);
     return status;
 }
 
 // Admission and the ordering decision are made under the same lock.
-static void admit_document(job_t *j)
+static void admit_document(const conn_t *c, job_t *j)
 {
+    j->web_print = !strcmp(c->path, "/ipp/web-print") &&
+                   (!s_cfg->web_port || c->listener_port == s_cfg->web_port);
     bool wait = s_active || next_document();
     j->order = s_next_order++;
     j->replying = true;
@@ -1528,9 +1597,9 @@ static void handle_ipp(conn_t *c)
     ipp_out_t body;     // operation results (job / printer groups)
     ipp_out_init(&body);
     const char *message = NULL;
+    airprint_status_t st;
 
     if (status == 0) {
-        airprint_status_t st;
         filter_t f;
         filter_init(&f, req);
         int job_id = ipp_attr_int(ipp_find(req, IPP_TAG_OPERATION, "job-id"), 0);
@@ -1563,7 +1632,7 @@ static void handle_ipp(conn_t *c)
             get_status(&st);
             if (!st.connected) {
                 status = IPP_NOT_ACCEPTING_JOBS;
-                message = "Printer not connected";
+                message = st.message[0] ? st.message : "Printer not connected";
                 break;
             }
             pthread_mutex_lock(&s_lock);
@@ -1577,7 +1646,7 @@ static void handle_ipp(conn_t *c)
             }
             snprintf(j->format, sizeof(j->format), "%s", fmt[0] ? fmt : "application/octet-stream");
             if (req->op == IPP_OP_PRINT_JOB) {
-                admit_document(j);
+                admit_document(c, j);
                 pthread_mutex_unlock(&s_lock);
                 status = submit_document(c, j, &body, &message);
             } else {
@@ -1604,7 +1673,7 @@ static void handle_ipp(conn_t *c)
             } else {
                 if (fmt[0])
                     snprintf(j->format, sizeof(j->format), "%s", fmt);
-                admit_document(j);
+                admit_document(c, j);
             }
             if (status && j) {
                 ipp_out_group(&body, IPP_TAG_JOB);
@@ -2020,6 +2089,9 @@ static void *listen_thread(void *arg)
         int fd = accept(ls, NULL, NULL);
         if (fd < 0)
             continue;
+        // Both listeners share the worker budget. Keep the heap check and
+        // worker allocation together so they cannot admit against the same RAM.
+        pthread_mutex_lock(&s_lock);
 #ifdef ESP_PLATFORM
         // A FreeRTOS pthread stack needs contiguous internal RAM. Refuse
         // optional control connections before they starve the active print
@@ -2030,45 +2102,48 @@ static void *listen_thread(void *arg)
 #else
         bool heap_low = false;
 #endif
-        pthread_mutex_lock(&s_lock);
-        bool full = heap_low || s_connections >= MAX_CONNECTIONS;
-        if (!full)
-            s_connections++;
-        pthread_mutex_unlock(&s_lock);
-        if (full) {
+        bool at_limit = s_connections >= MAX_CONNECTIONS;
+        if (heap_low || at_limit) {
+            int active = s_connections;
 #ifdef ESP_PLATFORM
-            static unsigned refused;
-            if ((++refused % 32) == 1)
-                LOGW("HTTP connection refused (active=%d max=%d; internal=%u largest=%u)",
-                     s_connections, MAX_CONNECTIONS, (unsigned)internal_free, (unsigned)internal_largest);
-#else
-            LOGW("too many connections (%d), refusing one", MAX_CONNECTIONS);
+            bool report = (++s_refused_connections % 32) == 1;
 #endif
+            pthread_mutex_unlock(&s_lock);
+#ifdef ESP_PLATFORM
+            if (report)
+                LOGW("HTTP connection refused (%s; port=%u active=%d max=%d; internal=%u largest=%u)",
+                     heap_low ? "low internal RAM" : "worker limit", (unsigned)port,
+                     active, MAX_CONNECTIONS, (unsigned)internal_free, (unsigned)internal_largest);
+#else
+            LOGW("too many connections (%d), refusing one", active);
+#endif
+            close(fd);
+            continue;
         }
-        conn_t *c = full ? NULL : calloc(1, sizeof(*c));
+        conn_t *c = calloc(1, sizeof(*c));
         if (!c) {
-            if (!full) {
-                pthread_mutex_lock(&s_lock);
-                s_connections--;
-                pthread_mutex_unlock(&s_lock);
-            }
+            pthread_mutex_unlock(&s_lock);
+            LOGW("HTTP connection allocation failed on port %u", (unsigned)port);
             close(fd);
             continue;
         }
         c->fd = fd;
+        c->listener_port = port;
         pthread_attr_t attr;
         pthread_attr_init(&attr);
         pthread_attr_setstacksize(&attr, CONN_STACK_SIZE);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         pthread_t th;
-        if (pthread_create(&th, &attr, conn_thread, c) != 0) {
+        int created = pthread_create(&th, &attr, conn_thread, c);
+        if (!created)
+            s_connections++;
+        pthread_mutex_unlock(&s_lock);
+        pthread_attr_destroy(&attr);
+        if (created) {
+            LOGW("HTTP worker creation failed on port %u: %d", (unsigned)port, created);
             close(fd);
             free(c);
-            pthread_mutex_lock(&s_lock);
-            s_connections--;
-            pthread_mutex_unlock(&s_lock);
         }
-        pthread_attr_destroy(&attr);
     }
     return NULL;
 }

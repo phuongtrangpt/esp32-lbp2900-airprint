@@ -24,8 +24,14 @@ static uint64_t now_ms(void)
 void capt_bind(capt_transport_t *t) { current = t; }
 void capt_deadline(capt_transport_t *t, unsigned ms) { t->deadline_ms = now_ms() + ms; }
 void capt_current_deadline(unsigned ms) { if (current) capt_deadline(current, ms); }
+void capt_paper_out(bool waiting)
+{
+    if (current && current->io.paper_out)
+        current->io.paper_out(current->io.ctx, waiting);
+}
 _Noreturn void capt_fail(const char *message)
 {
+    capt_paper_out(false);
     capt_log("ERROR: CAPT cmd=0x%04x tx=%u rx=%u: %s\n",current->command,(unsigned)current->used,(unsigned)current->rx_bytes,message);
     current->error = message;
     longjmp(current->guard, 1);

@@ -16,18 +16,18 @@ def attribute(tag, name, value):
     if isinstance(value, str): value = value.encode()
     return bytes([tag]) + struct.pack('>H', len(name)) + name + struct.pack('>H', len(value)) + value
 
-def ipp(port, op, document=b'', dpi=600):
+def ipp(port, op, document=b'', dpi=600, *, path='/ipp/print'):
     body = struct.pack('>BBHI', 2, 0, op, 7) + b'\x01'
     body += attribute(0x47, 'attributes-charset', 'utf-8')
     body += attribute(0x48, 'attributes-natural-language', 'en')
-    body += attribute(0x45, 'printer-uri', f'ipp://localhost:{port}/ipp/print')
+    body += attribute(0x45, 'printer-uri', f'ipp://localhost:{port}{path}')
     body += attribute(0x42, 'requesting-user-name', 'test')
     if op in (2, 4):
         body += attribute(0x49, 'document-format', 'image/urf')
         body += b'\x02' + attribute(0x32, 'printer-resolution', struct.pack('>IIB', dpi, dpi, 3))
     body += b'\x03' + document
     conn = http.client.HTTPConnection('127.0.0.1', port, timeout=90)
-    conn.request('POST', '/ipp/print', body, {'Content-Type': 'application/ipp'})
+    conn.request('POST', path, body, {'Content-Type': 'application/ipp'})
     response = conn.getresponse()
     data = response.read()
     assert response.status == 200, response.status

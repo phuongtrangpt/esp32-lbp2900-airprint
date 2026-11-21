@@ -45,7 +45,6 @@ typedef struct {
     const struct printer_driver *driver;
     // Preferred IPP resolution; 0 keeps the driver's existing default.
     // A client's explicit supported raster DPI is still accepted unchanged.
-    int (*preferred_dpi)(void *ctx);
 
     // platform hooks; all optional except job_write
     void (*get_status)(void *ctx, airprint_status_t *st);

@@ -578,6 +578,7 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 	const struct capt_status_s *status;
 
 	capt_log( "DEBUG: CAPT: out-of-paper recovery starting\n");
+	capt_paper_out(true);
 
 	/* 1. GetInputStatus — triggered by Bas1 & NEED_INPUT_STATUS; byte3=0x80 confirms paper-out */
 	capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
@@ -675,6 +676,7 @@ static void lbp3000_oop_recovery(struct printer_state_s *state)
 	capt_get_xstatus_only();
 
 	capt_log( "DEBUG: CAPT: out-of-paper recovery complete, counters reset to 0\n");
+	capt_paper_out(false);
 	/* After recovery, page counters are reset to 0.
 	 * Caller must track pages_printed_before_error to know where to resume. */
 }
@@ -732,6 +734,7 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 	 * not per-page here, per protocol §2.7 §3.1.1. */
 
 	unsigned no_paper_polls = 0;
+	unsigned idle_fault_polls = 0;
 	while (1) {
 		status = lbp2900_get_status(state->ops);
 
@@ -742,20 +745,12 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 			state->sent_job_cont = true;
 		}
 
-		/* Return as soon as the Printing counter reaches this page — the printer
-		 * has accepted the page into its engine and the next page's D0A9 multi-command
-		 * can be announced immediately (protocol §2.13, §2.18a, §4).
-		 * Waiting for page_out (Shipped) == page_decoding (Start) instead adds
-		 * unnecessary latency equal to the physical paper-delivery time per page. */
-		if (status->page_printing >= pipage)
-			return true;
-
 		/*
 		 * Out-of-paper detection (protocol §3.2, §9 notes 11-12):
 		 * Byte 1: NOTREADY (0x02) | OFFLINE (0x10) set during printing.
 		 * Confirm via GetExtendedStatus: PRINT_REJECTED (Cnt & 0x40) AND Pap == 0x00.
 		 */
-		if ((FLAG(status, CAPT_FL_NOTREADY) || FLAG(status, CAPT_FL_OFFLINE))
+		if ((FLAG(status, CAPT_FL_NOTREADY) || FLAG(status, CAPT_FL_OFFLINE) || FLAG(status, CAPT_FL_NOPAPER2))
 		    && !FLAG(status, CAPT_FL_PRINTING)
 		    && !FLAG(status, CAPT_FL_PROCESSING1)) {
 			/* Confirm with GetExtendedStatus — this populates xstat_cnt and xstat_pap */
@@ -789,6 +784,14 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 			}
 		}
 
+		/* The Printing counter permits pipelining, after checking for paper-out. */
+		bool media_fault = FLAG(status, CAPT_FL_NOPAPER2) || FLAG(status, CAPT_FL_NOTREADY) ||
+			FLAG(status, CAPT_FL_OFFLINE);
+		bool engine_busy = FLAG(status, CAPT_FL_PRINTING) || FLAG(status, CAPT_FL_PROCESSING1);
+		if (status->page_printing >= pipage &&
+		    (!media_fault || engine_busy || status->page_completed >= pipage))
+			return true;
+
 		/*
 		 * Never infer a paper jam from cached xstat_eng. GetBasicStatus is
 		 * only 10 bytes; decode_status() intentionally leaves the extended
@@ -816,16 +819,22 @@ static bool lbp2900_page_epilogue(struct printer_state_s *state, const struct pa
 			}
 		}
 
-		/* Legacy no-paper flags from extended status */
-		if (FLAG(status, CAPT_FL_NOPAPER2) || FLAG(status, CAPT_FL_NOTREADY)) {
+		/* Allow the controller to publish the definitive result after a feed retry. */
+		if (FLAG(status, CAPT_FL_NOPAPER2) || FLAG(status, CAPT_FL_NOTREADY) ||
+		    FLAG(status, CAPT_FL_OFFLINE)) {
 			/* Rate-limit repeated status logs while paper runs out. */
 			if ((no_paper_polls++ % 20) == 0)
 				capt_log("DEBUG: CAPT: no paper / not ready (waiting for extended status)\n");
 			if (FLAG(status, CAPT_FL_PRINTING) || FLAG(status, CAPT_FL_PROCESSING1)) {
-				usleep(100000);
-				continue;
+				idle_fault_polls = 0;
+			} else if (++idle_fault_polls >= 50) {
+				capt_log("WARNING: CAPT: paper-out unconfirmed page=%u Basic=%04x Flags=%04x Cnt=%02x Pap=%02x Eng=%04x Printed=%u\n",
+					pipage, status->status[0], status->status[1], status->xstat_cnt,
+					status->xstat_pap, status->xstat_eng, status->page_completed);
+				return false;
 			}
-			return false;
+		} else {
+			idle_fault_polls = 0;
 		}
 		usleep(100000);
 	}

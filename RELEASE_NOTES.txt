@@ -1,3 +1,5 @@
+v0.9.8 chuẩn cho Canon LBP2900. IPP in 300 dpi, trang in cho chọn 600 dpi. Đã thử chờ giấy, in tiếp và âm báo trên máy thật. Bấm Bật âm báo trên trang in.
+
 v0.9.7 thử nghiệm: Canon LBP2900 hỗ trợ 1 lệnh đang in và 2 lệnh chờ. Các lệnh tự in theo thứ tự gửi. Đã kiểm thử mô phỏng, cần thử thêm trên máy thật.
 v0.9.6: Sửa đóng phiên Canon CAPT: dùng chuỗi kết thúc Linux đầy đủ, chờ trang cuối/nhả giấy, kiểm tra phản hồi ReleaseUnit và ghi JobID. Khôi phục phiên cũ khi biết JobID; không đoán ID sau reboot. Kiểm thử nhiều lệnh liên tiếp trên cùng trạng thái thiết bị, nhả giấy trễ, từ chối release và phiên cũ bị kẹt. Nhắm lỗi ReserveUnit 0x8c sau lần in đầu; cần thử máy thật. Sau cập nhật, tắt/bật máy in một lần rồi thử 3 lệnh riêng.
 v0.9.5: Tối ưu đóng gói ảnh đen trắng cho Canon 2900 và HP P1006; loại phép chia theo từng pixel ở Canon, ghi theo byte. Giải mã raster có đường đọc nhanh. Chuyển bộ đệm đầu vào và mô tả IPP sang ưu tiên PSRAM để giảm áp lực RAM nội bộ. Đối chiếu ảnh từng byte, giữ chất lượng/lề/khổ giấy. Tốc độ thực tế cần đo trên thiết bị.

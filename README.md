@@ -81,7 +81,7 @@ Trang /hp-firmware vẫn dùng được khi cần file riêng.
 
 ### Nạp offline Windows, không cài ứng dụng
 
-[Tải ZIP v0.9.7](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.9.7.zip).
+[Tải ZIP v0.9.8](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.9.8.zip).
 Giải nén toàn bộ vào thư mục có quyền ghi, chạy **START.cmd**, mở bằng Chrome/Edge.
 Chọn đúng HP/Canon, cắm UART/COM, chọn cổng và nạp theo tiến trình. Không cần Python,
 Arduino IDE hay Internet cho trang nạp; **bản HP đã có sẵn dữ liệu máy in**.

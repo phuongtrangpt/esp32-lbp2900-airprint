@@ -1,5 +1,5 @@
 // Just enough IPP (RFC 8010/8011) to print from the browser: requests are
-// built here and POSTed to /ipp/print, the device's own printer URI.
+// built here and POSTed to the device’s IPP routes.
 
 export const OP = {
   PRINT_JOB: 0x0002,
@@ -129,9 +129,11 @@ function user(): string {
   return 'Web browser';
 }
 
+export const WEB_PRINT_PATH = "/ipp/web-print";
+
 export function printJobRequest(jobName: string, format: string): Uint8Array {
   return encodeRequest(OP.PRINT_JOB, [
-    ['printer-uri', { tag: TAG.URI, value: printerUri() }],
+    ['printer-uri', { tag: TAG.URI, value: `ipp://${location.host}${WEB_PRINT_PATH}` }],
     ['requesting-user-name', { tag: TAG.NAME, value: user() }],
     ['job-name', { tag: TAG.NAME, value: jobName.slice(0, 60) }],
     ['document-format', { tag: TAG.MIMETYPE, value: format }],

@@ -183,13 +183,8 @@ esp_err_t print_job_test_page(bool dry_run, int dpi, print_stats_t *stats)
     test_out_t out = {.dry_run = dry_run};
     printer_io_t io = {.write = test_write, .read = dry_run ? NULL : test_read, .flush = dry_run ? NULL : test_flush, .sync = dry_run ? NULL : test_sync, .progress = test_progress, .ctx = &out};
     err = d->test_page(d, &io, dpi, label) == 0 ? ESP_OK : ESP_FAIL;
-    if (!dry_run) {
-        if (err != ESP_OK && usb_printer_connected())
-            ESP_LOGW(TAG, "job aborted, resetting printer");
-        usb_printer_job_end();
-        if (err != ESP_OK && usb_printer_connected())
-            usb_printer_soft_reset();
-    }
+    if (!dry_run)
+        usb_printer_job_end(err == ESP_OK);
     stats->bytes = out.bytes;
     stats->crc32 = out.crc;
     stats->ms = (uint32_t)((esp_timer_get_time() - t0) / 1000);

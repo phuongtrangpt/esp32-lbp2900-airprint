@@ -2,7 +2,7 @@
 // time (phones limit the canvas size), compressed to URF and sent to the
 // device as an IPP Print-Job, which streams them straight to the printer.
 
-import { decodeResponse, printJobRequest, statusOk, statusText } from './ipp';
+import { decodeResponse, printJobRequest, statusOk, statusText, WEB_PRINT_PATH } from './ipp';
 import { paperPixels, place, type Fit, type Orientation, type PaperId } from './layout';
 import type { Source } from './source';
 import { UrfLineEncoder, urfFileHeader, urfPageHeader } from './urf';
@@ -82,7 +82,7 @@ export function sendJob(
 ): Promise<SendResult> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/ipp/print');
+    xhr.open('POST', WEB_PRINT_PATH);
     xhr.setRequestHeader('Content-Type', 'application/ipp');
     xhr.responseType = 'arraybuffer';
     xhr.upload.onprogress = (e) => e.lengthComputable && upload(e.loaded / e.total);

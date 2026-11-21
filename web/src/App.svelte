@@ -10,15 +10,87 @@
   import ScannerView from './views/ScannerView.svelte';
   import FilesView from './views/FilesView.svelte';
   import ProcessView from './views/ProcessView.svelte';
-  import { connect, device } from './lib/device.svelte';
+  import { connect, device, onState } from './lib/device.svelte';
   import { loadFiles } from './lib/files.svelte';
   import { loadWork } from './lib/process.svelte';
   import { initScanSync } from './lib/scan.svelte';
-  import { ui } from './lib/ui.svelte';
+  import { ui, toast } from './lib/ui.svelte';
 
   const ROUTES = ['printer', 'scanner', 'files', 'process'] as const;
   type Route = (typeof ROUTES)[number];
   const TITLES: Record<Route, string> = { printer: 'Trang in', scanner: 'Quét tài liệu', files: 'Tệp của bạn', process: 'Xử lý tài liệu' };
+
+  let audioEnabled = $state(false);
+  let audioPending = $state(false);
+  let audio: AudioContext | null = null;
+  let nextSound = 0;
+  const audioSupported = typeof AudioContext !== 'undefined';
+
+  function chime(repeats: number) {
+    const ctx = audio;
+    if (!audioEnabled || !ctx || ctx.state !== 'running') return;
+    let start = Math.max(ctx.currentTime + 0.015, nextSound);
+    for (let i = 0; i < repeats; i++) {
+      for (const [frequency, delay] of [[880, 0], [660, 0.16]]) {
+        const at = start + delay;
+        const note = ctx.createOscillator();
+        const level = ctx.createGain();
+        note.frequency.value = frequency;
+        level.gain.setValueAtTime(0, at);
+        level.gain.linearRampToValueAtTime(0.14, at + 0.015);
+        level.gain.exponentialRampToValueAtTime(0.001, at + 0.20);
+        note.connect(level).connect(ctx.destination);
+        note.onended = () => { note.disconnect(); level.disconnect(); };
+        note.start(at);
+        note.stop(at + 0.21);
+      }
+      start += 0.55;
+    }
+    nextSound = start;
+  }
+
+  function closeAudio() {
+    const ctx = audio;
+    audio = null;
+    nextSound = 0;
+    if (ctx) void ctx.close().catch(() => {});
+  }
+
+  async function toggleAudio() {
+    if (audioEnabled && audio?.state === 'running') {
+      audioEnabled = false;
+      closeAudio();
+      return;
+    }
+    audioPending = true;
+    try {
+      const ctx = audio ??= new AudioContext();
+      await ctx.resume();
+      if (audio !== ctx) return;
+      audioEnabled = ctx.state === 'running';
+      if (device.printer?.reasons.includes('media-empty-error')) chime(3);
+    } catch {
+      audioEnabled = false;
+      closeAudio();
+      toast('Không bật được âm báo trên trình duyệt này.', 'error');
+    } finally {
+      audioPending = false;
+    }
+  }
+
+  onMount(() => {
+    const unsubscribe = onState(({ printer: before }) => {
+      const after = device.printer;
+      if (!before || !after) return;
+      if (after.reasons.includes('media-empty-error') && !before.reasons.includes('media-empty-error'))
+        chime(3);
+      for (const job of after.jobs) {
+        if (job.state === 'completed' && !before.jobs.some(old => old.id === job.id && old.state === 'completed'))
+          chime(1);
+      }
+    });
+    return () => { unsubscribe(); closeAudio(); };
+  });
 
   let firmware = $state('Đang đọc…');
   onMount(() => {
@@ -55,13 +127,18 @@
 </script>
 
 <div class="app" class:home={narrow && !current}>
-  <Sidebar {firmware} current={current ?? ''} home={narrow && !current} />
+  <Sidebar {firmware} {audioSupported} {audioEnabled} {audioPending} {toggleAudio} current={current ?? ''} home={narrow && !current} />
   {#if current}
     <main>
       {#if narrow}
         <header class="topbar">
           <a class="icon-btn" href="#/" aria-label="Back to the menu"><ArrowLeft size={20} /></a>
           <h1>{TITLES[current]}</h1>
+          {#if current === 'printer' && audioSupported}
+            <button class="btn" type="button" onclick={toggleAudio} disabled={audioPending}>
+              {audioEnabled ? 'Tắt âm báo' : 'Bật âm báo'}
+            </button>
+          {/if}
         </header>
       {/if}
       <div class="content">

@@ -6,6 +6,8 @@ typedef struct {
     unsigned pages, printed, video, offline, bytes, fail_read, bad_cmd;
     unsigned begin_pages, black_end, start_print, last_page_width;
     unsigned delivery_wait;
+    unsigned paper_out_page, paper_out_phase, paper_refill_polls, paper_pauses, paper_resumes;
+    unsigned paper_out_confirmation_delay;
     unsigned strict_session, reserved, job_id, next_job_id, session_end, drain_seen, cleanup_step, released_jobs, refuse_release;
     unsigned input_scale;
     unsigned row, height, left, top, crop_width, force_full, paper_code, paper_width, paper_height;
@@ -73,9 +75,26 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
             if (cmd==CAPT_GO_OFFLINE && f->cleanup_step==2 && le(p)==f->job_id) f->cleanup_step=3;
         }
     }
-    if(cmd==CAPT_GO_OFFLINE) f->offline=1;
-    if(cmd==CAPT_GO_ONLINE) f->offline=0;
-    if(cmd==CAPT_START_PRINT) { assert(n==6 && le(p)==f->pages); f->printed=le(p); f->start_print++; }
+    if(cmd==CAPT_GO_OFFLINE) {
+        f->offline=1;
+        if (f->paper_out_phase == 2) f->paper_refill_polls = 3;
+    }
+    if(cmd==CAPT_GO_ONLINE) {
+        f->offline=0;
+        if (f->paper_out_phase == 1) {
+            f->pages=f->printed=0;
+            f->paper_out_phase=2;
+        } else if (f->paper_out_phase == 2 && !f->paper_refill_polls) {
+            f->paper_out_phase=0;
+            f->paper_out_page=0;
+        }
+    }
+    if(cmd==CAPT_START_PRINT) {
+        assert(n==6 && le(p)==f->pages);
+        f->printed=le(p); f->start_print++;
+        if (f->paper_out_page && f->printed==f->paper_out_page)
+            f->paper_out_phase=1;
+    }
     size_t payload=2;
     // Real LBP2900 customer log: 56 wire bytes, including the 4-byte header.
     if(cmd==CAPT_GET_PRINTER_INFO) payload=52;
@@ -103,6 +122,19 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
     if(cmd==CAPT_GET_BASIC_STATUS || cmd==CAPT_GET_EXTENDED_STATUS) {
         s[0]=f->offline?0x10:0; s[1]=1; s[4]=(f->force_full && f->video>1 && f->printed<f->pages)?0:15;
         if(payload>=40) { put(s+14,f->pages); put(s+16,f->printed); put(s+18,f->printed); put(s+20,f->printed); }
+        if (f->paper_out_phase==1) {
+            s[0] |= CAPT_FL_NOTREADY;
+            if (payload>=40) {
+                if (f->paper_out_confirmation_delay)
+                    f->paper_out_confirmation_delay--;
+                else
+                    s[CAPT_XSTAT_CNT]=CAPT_CNT_PRINT_REJECTED;
+                put(s+20,f->printed-1);
+            }
+        } else if (f->paper_out_phase==2 && f->offline) {
+            if (f->paper_refill_polls) f->paper_refill_polls--;
+            if (!f->paper_refill_polls) s[1] |= CAPT_FL_NEED_INPUT_STATUS >> 8;
+        }
     }
     if (cmd==CAPT_GET_EXTENDED_STATUS && f->strict_session && f->session_end && f->delivery_wait) {
         s[8]=CAPT_AUX_PAPER_DELIVERY;
@@ -121,4 +153,10 @@ static int read_device(void *ctx, uint8_t *buf, size_t n, unsigned timeout)
     if(n>f->len-f->pos) n=f->len-f->pos;
     memcpy(buf,f->reply+f->pos,n); f->pos+=n; return n;
 }
-static printer_io_t io(fake_t *f) { return (printer_io_t){.ctx=f,.write=write_device,.read=read_device,.flush=flush_device}; }
+static void paper_out(void *ctx, bool waiting)
+{
+    fake_t *f=ctx;
+    if (waiting) f->paper_pauses++;
+    else if (f->paper_pauses > f->paper_resumes) f->paper_resumes++;
+}
+static printer_io_t io(fake_t *f) { return (printer_io_t){.ctx=f,.write=write_device,.read=read_device,.flush=flush_device,.paper_out=paper_out}; }

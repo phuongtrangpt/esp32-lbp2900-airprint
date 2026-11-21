@@ -1,6 +1,4 @@
 #include "network_settings.h"
-#include "nvs.h"
-#include "cJSON.h"
 #include "cloud_update.h"
 #include "wifi.h"
 #include "debug.h"
@@ -47,96 +45,6 @@ static int s_device_id_cur;
 static void (*s_on_job_state)(bool);
 static esp_timer_handle_t s_cancel_timer;
 static volatile bool s_job_running;
-// Canon default print quality, persisted independently of Wi-Fi setup.
-static volatile int s_preferred_dpi = 300;
-
-static int print_preferred_dpi(void *ctx)
-{
-    (void)ctx;
-    return s_preferred_dpi;
-}
-
-static void print_quality_load(void)
-{
-    nvs_handle_t h;
-    uint16_t saved = 300;
-    if (nvs_open("print_dpi", NVS_READONLY, &h) == ESP_OK) {
-        if (nvs_get_u16(h, "default", &saved) != ESP_OK)
-            saved = 300;
-        nvs_close(h);
-    }
-    s_preferred_dpi = saved == 600 ? 600 : 300;
-    ESP_LOGI(TAG, "print quality: preferred %d dpi", s_preferred_dpi);
-}
-
-static bool print_quality_http(airprint_http_t *h, const char *method, const char *path)
-{
-    if (strcmp(path, "/api/print-quality") && strcmp(path, "/quality"))
-        return false;
-    if (!strcmp(path, "/quality") && !strcmp(method, "GET")) {
-        static const char html[] =
-            "<!doctype html><html lang='vi'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>"
-            "<title>Canon LBP2900 - Chat luong in</title><body style='font:16px system-ui;max-width:520px;margin:48px auto;padding:16px'>"
-            "<h2>Canon LBP2900 - Chat luong in</h2><p>Chon mac dinh cho Word, Excel, AirPrint va web.</p>"
-            "<select id='dpi' style='padding:12px;width:100%'><option value='300'>300 dpi - In nhanh</option><option value='600'>600 dpi - In sac net</option></select>"
-            "<p><button id='save' style='padding:12px 24px'>Luu cau hinh</button></p><p id='msg'></p><a href='/'>Quay lai trang in</a>"
-            "<script>fetch('/api/print-quality').then(r=>r.json()).then(x=>document.querySelector('#dpi').value=x.dpi);"
-            "document.querySelector('#save').onclick=async()=>{let r=await fetch('/api/print-quality',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dpi:+document.querySelector('#dpi').value})});"
-            "document.querySelector('#msg').textContent=r.ok?'Da luu. Neu Windows van dung DPI cu, hay cai lai hang doi may in.':'Luu that bai';};</script></body></html>";
-        airprint_http_send(h, "200 OK", "text/html; charset=utf-8", html, sizeof(html) - 1);
-        return true;
-    }
-    if (strcmp(path, "/api/print-quality")) {
-        airprint_http_send(h, "405 Method Not Allowed", "text/plain", "Method not allowed", 18);
-        return true;
-    }
-    if (!strcmp(method, "GET")) {
-        char result[80];
-        int n = snprintf(result, sizeof(result), "{\"dpi\":%d}", s_preferred_dpi);
-        airprint_http_send_ex(h, "200 OK", "application/json", "Cache-Control: no-store\r\n", result, n);
-        return true;
-    }
-    if (strcmp(method, "POST")) {
-        airprint_http_send(h, "405 Method Not Allowed", "text/plain", "Method not allowed", 18);
-        return true;
-    }
-    if (strcmp(print_job_driver()->id, "canon-lbp2900")) {
-        airprint_http_send(h, "409 Conflict", "text/plain", "Only for Canon LBP2900", 22);
-        return true;
-    }
-    char buf[96];
-    int n = airprint_http_read_body(h, buf, sizeof(buf) - 1);
-    if (n <= 0 || n >= sizeof(buf) - 1) {
-        airprint_http_send(h, "400 Bad Request", "text/plain", "Bad request", 11);
-        return true;
-    }
-    buf[n] = 0;
-    cJSON *j = cJSON_Parse(buf);
-    cJSON *v = j ? cJSON_GetObjectItemCaseSensitive(j, "dpi") : NULL;
-    int dpi = (v && cJSON_IsNumber(v)) ? v->valueint : 0;
-    if (j) cJSON_Delete(j);
-    if (dpi != 300 && dpi != 600) {
-        airprint_http_send(h, "400 Bad Request", "text/plain", "DPI must be 300 or 600", 22);
-        return true;
-    }
-    nvs_handle_t nh;
-    esp_err_t e = nvs_open("print_dpi", NVS_READWRITE, &nh);
-    if (e == ESP_OK) {
-        e = nvs_set_u16(nh, "default", (uint16_t)dpi);
-        if (e == ESP_OK) e = nvs_commit(nh);
-        nvs_close(nh);
-    }
-    if (e != ESP_OK) {
-        airprint_http_send(h, "500 Internal Server Error", "text/plain", "Save failed", 11);
-        return true;
-    }
-    s_preferred_dpi = dpi;
-    ESP_LOGI(TAG, "print quality updated: preferred %d dpi", dpi);
-    airprint_http_send(h, "200 OK", "application/json", "{\"saved\":true}", 14);
-    return true;
-}
-
-
 // The shared buffer takes all the PSRAM but this much, left for everything
 // else (encoder strips, raster buffers, ...)
 #define PSRAM_RESERVE (512 * 1024)
@@ -165,6 +73,16 @@ static void add_reason(airprint_status_t *st, const char *reason)
 
 static void get_status(void *ctx, airprint_status_t *st)
 {
+    if (usb_printer_recovering()) {
+        add_reason(st, "other-error");
+        snprintf(st->message, sizeof(st->message), "Đang tự kết nối lại máy in Canon.");
+        return;
+    }
+    if (usb_printer_needs_reconnect()) {
+        add_reason(st, "other-error");
+        snprintf(st->message, sizeof(st->message), "Rút và cắm lại cáp USB giữa ESP và máy in.");
+        return;
+    }
     st->connected = usb_printer_connected() && print_job_supported();
     if (!st->connected)
         return;
@@ -194,6 +112,10 @@ static void get_status(void *ctx, airprint_status_t *st)
 
 static int job_open(void *ctx)
 {
+    // A queued document can become active while the USB client reconnects.
+    TickType_t start = xTaskGetTickCount();
+    while (usb_printer_recovering() && xTaskGetTickCount() - start < pdMS_TO_TICKS(7500))
+        vTaskDelay(pdMS_TO_TICKS(50));
     debug_memory("IPP job begin");
     if (!print_job_supported()) { ESP_LOGE(TAG,"no supported USB printer attached"); return -1; }
     esp_err_t err = usb_printer_job_begin();
@@ -226,15 +148,11 @@ static int job_sync(void *ctx, const char *what)
 
 static void job_close(void *ctx, bool ok)
 {
-    usb_printer_job_end();      // sends the job's last bytes: a cancel may still need the timer
+    usb_printer_job_end(ok);      // sends the job's last bytes: a cancel may still need the timer
     esp_timer_stop(s_cancel_timer);
     s_job_running = false;
     ESP_LOGI(TAG,"IPP job ended: %s",ok?"completed":"failed/canceled");
     debug_memory("IPP job end");
-    if (!ok && usb_printer_connected()) {
-        ESP_LOGW(TAG, "job failed, resetting printer");
-        usb_printer_soft_reset();
-    }
 }
 
 static void cancel_timeout(void *arg)
@@ -341,7 +259,7 @@ static bool web_http(airprint_http_t *h, const char *method, const char *path)
 static bool dev_http(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
     if (strcmp(path, "/dev/last-job.prn") != 0)
-        return print_quality_http(h,method,path) || wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+        return wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
     size_t len;
     const uint8_t *data = sbuf_read_begin(SBUF_PRINT, &len);
     if (!data)
@@ -415,7 +333,7 @@ static void scan_sleep(void *ctx, int ms)
 
 static bool http_handler(void *ctx, airprint_http_t *h, const char *method, const char *path)
 {
-    return print_quality_http(h,method,path) || wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
+    return wifi_setup_http(h,method,path) || cloud_update_http(h,method,path) || network_settings_http(h,method,path) || debug_http(h, method, path) || hp_firmware_http(h, method, path) || web_http(h, method, path);
 }
 
 // Most of the PSRAM, for scans (and the dev mode print capture)
@@ -567,7 +485,6 @@ esp_err_t airprint_esp_start(const char *hostname, void (*on_job_state)(bool pri
     const esp_timer_create_args_t targs = {.callback = cancel_timeout, .name = "ipp_cancel"};
     esp_timer_create(&targs, &s_cancel_timer);
 
-    print_quality_load();
     const printer_driver_t *drv = print_job_driver();
     ESP_LOGI(TAG, "printer driver: %s (%s)", drv->id, drv->make_model);
     snprintf(s_hostname, sizeof(s_hostname), "%s", hostname);
@@ -576,7 +493,6 @@ esp_err_t airprint_esp_start(const char *hostname, void (*on_job_state)(bool pri
         .uuid = s_uuid,
         .port = IPP_PORT,
         .web_port = WEB_PORT,
-        .preferred_dpi = print_preferred_dpi,
         .get_status = get_status,
         .job_open = job_open,
         .job_write = job_write,

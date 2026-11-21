@@ -54,7 +54,7 @@ def pwg_page(dpi, dense=False):
 
 
 def send_job(port, data, *, chunked=False, cut=None, slow=False,
-             finish_chunks=True, during_upload=None):
+             finish_chunks=True, during_upload=None, chunk_end=b'0\r\n\r\n'):
     with socket.create_connection(('127.0.0.1', port), timeout=30) as sock:
         framing = ('Transfer-Encoding: chunked' if chunked else
                    f'Content-Length: {len(data)}')
@@ -73,7 +73,7 @@ def send_job(port, data, *, chunked=False, cut=None, slow=False,
             if slow and pos % 65536 == 0:
                 time.sleep(0.03)
         if chunked and cut is None:
-            sock.sendall(b'0\r\n' + (b'\r\n' if finish_chunks else b''))
+            sock.sendall(chunk_end if finish_chunks else b'0\r\n')
         # EOF on input while keeping the receive side open for the exact status.
         if cut is not None or not finish_chunks:
             sock.shutdown(socket.SHUT_WR)
@@ -302,6 +302,13 @@ def main():
                                  'image/pwg-raster')
             assert send_job(port, pwg600, chunked=True) == 0
             check_job(port, 'completed', 1)
+            # A complete raster cannot turn an invalid HTTP chunk into EOF.
+            assert send_job(port, pwg600, chunked=True,
+                            chunk_end=b'0garbage\r\n\r\n') == 0x0411
+            check_job(port, 'aborted', 1)
+            assert send_job(port, pwg600, chunked=True,
+                            chunk_end=b'extra\r\n0\r\n\r\n') == 0x0411
+            check_job(port, 'aborted', 1)
             assert send_job(port, pwg600, chunked=True, finish_chunks=False) == 0x0411
             check_job(port, 'aborted', 1)
 

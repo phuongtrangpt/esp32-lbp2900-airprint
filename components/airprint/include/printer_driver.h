@@ -33,6 +33,8 @@ typedef struct {
     int (*sync)(void *ctx, const char *what);
     // optional: called every 64 lines of a test page (yield, log progress)
     void (*progress)(void *ctx, int line, int lines);
+    // optional: a confirmed paper-out pause and its completion
+    void (*paper_out)(void *ctx, bool waiting);
     void *ctx;
 } printer_io_t;
 

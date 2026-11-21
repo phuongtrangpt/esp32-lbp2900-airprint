@@ -109,6 +109,9 @@ static uint64_t s_next_order = 1;
 static size_t s_spool_bytes;
 static time_t s_start;
 static int s_connections;
+#ifdef ESP_PLATFORM
+static unsigned s_refused_connections;
+#endif
 
 // ===========================================================================
 // HTTP connection
@@ -169,6 +172,11 @@ static int conn_fill(conn_t *c)
             break;
         n = recv(c->fd, c->buf, sizeof(c->buf), 0);
     }
+#ifdef ESP_PLATFORM
+    if (n > 0 && deadline)
+        LOGI("HTTP upload resumed after %.1f s idle on %s",
+             (now_us() - deadline) / 1000000.0 + ACTIVE_IPP_TIMEOUT_S, c->path);
+#endif
     if (n <= 0) {
 #ifdef ESP_PLATFORM
         // Zero means peer closed. A timeout or network error is negative.
@@ -232,13 +240,22 @@ static int body_read_unchecked(conn_t *c, uint8_t *out, size_t n)
         return 0;
     if (c->chunked && c->remaining == 0) {
         char line[64];
-        if (c->in_chunks && read_line(c, line, sizeof(line)) < 0)   // CRLF after chunk data
+        if (c->in_chunks && read_line(c, line, sizeof(line)) != 0) {
+            LOGW("HTTP missing chunk separator on %s", c->path);
             return -1;
-        if (read_line(c, line, sizeof(line)) < 0)
+        }
+        if (read_line(c, line, sizeof(line)) <= 0)
             return -1;
-        long size = strtol(line, NULL, 16);
+        char *end;
+        errno = 0;
+        long long size = strtoll(line, &end, 16);
+        if (!strchr("0123456789abcdefABCDEF", line[0]) ||
+                errno == ERANGE || size < 0 || (*end && *end != ';')) {
+            LOGW("HTTP invalid chunk size on %s", c->path);
+            return -1;
+        }
         c->in_chunks = true;
-        if (size <= 0) {
+        if (size == 0) {
             int trailer;
             while ((trailer = read_line(c, line, sizeof(line))) > 0)
                 ;
@@ -2020,6 +2037,9 @@ static void *listen_thread(void *arg)
         int fd = accept(ls, NULL, NULL);
         if (fd < 0)
             continue;
+        // Both listeners share the worker budget. Keep the heap check and
+        // worker allocation together so they cannot admit against the same RAM.
+        pthread_mutex_lock(&s_lock);
 #ifdef ESP_PLATFORM
         // A FreeRTOS pthread stack needs contiguous internal RAM. Refuse
         // optional control connections before they starve the active print
@@ -2030,28 +2050,28 @@ static void *listen_thread(void *arg)
 #else
         bool heap_low = false;
 #endif
-        pthread_mutex_lock(&s_lock);
-        bool full = heap_low || s_connections >= MAX_CONNECTIONS;
-        if (!full)
-            s_connections++;
-        pthread_mutex_unlock(&s_lock);
-        if (full) {
+        bool at_limit = s_connections >= MAX_CONNECTIONS;
+        if (heap_low || at_limit) {
+            int active = s_connections;
 #ifdef ESP_PLATFORM
-            static unsigned refused;
-            if ((++refused % 32) == 1)
-                LOGW("HTTP connection refused (active=%d max=%d; internal=%u largest=%u)",
-                     s_connections, MAX_CONNECTIONS, (unsigned)internal_free, (unsigned)internal_largest);
-#else
-            LOGW("too many connections (%d), refusing one", MAX_CONNECTIONS);
+            bool report = (++s_refused_connections % 32) == 1;
 #endif
+            pthread_mutex_unlock(&s_lock);
+#ifdef ESP_PLATFORM
+            if (report)
+                LOGW("HTTP connection refused (%s; port=%u active=%d max=%d; internal=%u largest=%u)",
+                     heap_low ? "low internal RAM" : "worker limit", (unsigned)port,
+                     active, MAX_CONNECTIONS, (unsigned)internal_free, (unsigned)internal_largest);
+#else
+            LOGW("too many connections (%d), refusing one", active);
+#endif
+            close(fd);
+            continue;
         }
-        conn_t *c = full ? NULL : calloc(1, sizeof(*c));
+        conn_t *c = calloc(1, sizeof(*c));
         if (!c) {
-            if (!full) {
-                pthread_mutex_lock(&s_lock);
-                s_connections--;
-                pthread_mutex_unlock(&s_lock);
-            }
+            pthread_mutex_unlock(&s_lock);
+            LOGW("HTTP connection allocation failed on port %u", (unsigned)port);
             close(fd);
             continue;
         }
@@ -2061,14 +2081,16 @@ static void *listen_thread(void *arg)
         pthread_attr_setstacksize(&attr, CONN_STACK_SIZE);
         pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
         pthread_t th;
-        if (pthread_create(&th, &attr, conn_thread, c) != 0) {
+        int created = pthread_create(&th, &attr, conn_thread, c);
+        if (!created)
+            s_connections++;
+        pthread_mutex_unlock(&s_lock);
+        pthread_attr_destroy(&attr);
+        if (created) {
+            LOGW("HTTP worker creation failed on port %u: %d", (unsigned)port, created);
             close(fd);
             free(c);
-            pthread_mutex_lock(&s_lock);
-            s_connections--;
-            pthread_mutex_unlock(&s_lock);
         }
-        pthread_attr_destroy(&attr);
     }
     return NULL;
 }

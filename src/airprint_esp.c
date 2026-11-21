@@ -233,7 +233,9 @@ static void job_close(void *ctx, bool ok)
     debug_memory("IPP job end");
     if (!ok && usb_printer_connected()) {
         ESP_LOGW(TAG, "job failed, resetting printer");
-        usb_printer_soft_reset();
+        esp_err_t err = usb_printer_soft_reset();
+        if (err != ESP_OK)
+            ESP_LOGW(TAG, "printer soft reset failed: %s", esp_err_to_name(err));
     }
 }
 

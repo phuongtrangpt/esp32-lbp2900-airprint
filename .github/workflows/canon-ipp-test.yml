@@ -1,0 +1,46 @@
+name: Canon LBP2900 IPP test firmware
+on:
+  push:
+    branches: [review/ipp-transport-diagnostics]
+permissions:
+  contents: write
+jobs:
+  canon:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache/restore@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Run IPP transport regression
+        run: |
+          make -C host -j4 airprint_host
+          python tools/test_capt_ipp_transport.py
+      - name: Build and package Canon firmware
+        run: |
+          python -m pip install platformio==6.2.0 esptool==4.9.0
+          pio run -e canon
+          python tools/package_firmware.py --env canon --out firmware/canon
+          python tools/prepare_web_installer.py --source firmware/canon --dest firmware/test-usb
+          git archive --format=tar.gz -o firmware/test-usb/source-code.tar.gz HEAD
+          cd firmware/test-usb
+          zip -r ../../LBP2900-IPP-TEST.zip .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LBP2900-IPP-TEST
+          path: LBP2900-IPP-TEST.zip
+      - name: Publish Canon USB test package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "lbp2900-ipp-test-${GITHUB_SHA:0:8}" LBP2900-IPP-TEST.zip \
+            --target "$GITHUB_SHA" --prerelease --latest=false \
+            --title 'Canon LBP2900 IPP test firmware' \
+            --notes 'Bản thử cho ESP32-S3 N16R8. Nạp USB. Sửa việc duyệt phiên HTTP đồng thời và kiểm tra dấu kết thúc HTTP. Cần thử in trực tiếp từ Windows trên máy thật.'

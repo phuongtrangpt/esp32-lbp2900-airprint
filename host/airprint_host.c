@@ -29,6 +29,7 @@ static fake_t s_capt;
 static bool s_is_capt;
 static FILE *s_out;
 static int s_job;
+static int s_open_delay_us;
 
 static void get_status(void *ctx, airprint_status_t *st)
 {
@@ -48,6 +49,9 @@ static int job_open(void *ctx)
 {
     if (scan_service_active())
         return -1;      // the device is scanning
+    if (s_open_delay_us)
+        usleep(s_open_delay_us);
+    assert(!s_out);  // overlapping jobs must never share the printer
     memset(&s_capt, 0, sizeof(s_capt));
     char path[64];
     snprintf(path, sizeof(path), "out/job-%d.prn", ++s_job);
@@ -180,6 +184,8 @@ int main(int argc, char **argv)
     s_is_capt = !strcmp(cfg.driver->id, "canon-lbp2900");
     cfg.make_model = cfg.driver->make_model;
     if (s_is_capt) { cfg.name="LBP2900 simulator"; cfg.device_id="MFG:Canon;MDL:LBP2900;CMD:CAPT;"; }
+    if (getenv("AIRPRINT_HOST_OPEN_DELAY_US"))
+        s_open_delay_us = atoi(getenv("AIRPRINT_HOST_OPEN_DELAY_US"));
     if (getenv("AIRPRINT_HOST_SLOW_US"))
         s_slow_us = atoi(getenv("AIRPRINT_HOST_SLOW_US"));
     unsigned kbps = getenv("FAKE_SCANNER_KBPS") ? (unsigned)atoi(getenv("FAKE_SCANNER_KBPS")) : 800;

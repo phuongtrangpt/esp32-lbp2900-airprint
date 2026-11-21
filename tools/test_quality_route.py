@@ -28,6 +28,7 @@ print("PASS: Quality HTTP GET/POST route, persistent NVS, IPP attributes, and we
 # Regression: a long-running print job must never inherit the short idle
 # browser timeout; CAPT raster conversion can take multiple seconds/page.
 assert "#define ACTIVE_IPP_TIMEOUT_S 120" in ipp
-assert "setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &active_tv" in ipp
+assert "ACTIVE_IPP_TIMEOUT_S - ACTIVE_IPP_SLICE_S" in ipp
+assert "set_recv_timeout(c, ACTIVE_IPP_SLICE_S)" in ipp
 assert 'raster stream truncated:' in ipp
 print("PASS: active IPP upload has long receive timeout and truncation diagnostics")

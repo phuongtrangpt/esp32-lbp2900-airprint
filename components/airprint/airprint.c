@@ -12,6 +12,7 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,10 +56,11 @@
 #endif
 #ifdef ESP_PLATFORM
 #define IDLE_TIMEOUT_S 4
-#define ACTIVE_IPP_TIMEOUT_S 120
 #else
 #define IDLE_TIMEOUT_S 15
 #endif
+#define ACTIVE_IPP_TIMEOUT_S 120
+#define ACTIVE_IPP_SLICE_S 1
 #define MAX_JOBS 10
 #define MULTIPLE_OP_TIMEOUT_S 60
 
@@ -84,7 +86,8 @@ typedef struct {
     int impressions;
     int64_t bytes;
     volatile int line, height;  // progress of the page being printed (read without the lock)
-    volatile bool cancel;
+    atomic_bool cancel;
+    bool printer_open;          // permits the hardware cancel hook while the device is in use
 } job_t;
 
 static const airprint_config_t *s_cfg;
@@ -115,16 +118,43 @@ struct airprint_http {
     int64_t remaining;          // Content-Length mode: bytes left; chunked: bytes left in chunk
     bool body_eof;
     bool body_failed;
+    job_t *receiving_job;       // only set while an admitted job owns this connection
     bool in_chunks;             // a chunk was read: CRLF precedes the next size line
     bool detached;              // the socket was handed over (airprint_http_detach)
 };
 typedef struct airprint_http conn_t;
+
+static int64_t now_us(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
+}
+
+static void set_recv_timeout(conn_t *c, int seconds)
+{
+    struct timeval timeout = {.tv_sec = seconds};
+    setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+}
 
 static int conn_fill(conn_t *c)
 {
     if (c->pos < c->len)
         return 0;
     ssize_t n = recv(c->fd, c->buf, sizeof(c->buf), 0);
+    // Active print sockets check cancellation on short idle intervals.
+    // The fast path still needs only one recv and no clock read.
+    int64_t deadline = 0;
+    while (c->receiving_job && n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        if (c->receiving_job->cancel)
+            return -1;
+        int64_t now = now_us();
+        if (!deadline)
+            deadline = now + (int64_t)(ACTIVE_IPP_TIMEOUT_S - ACTIVE_IPP_SLICE_S) * 1000000;
+        if (now >= deadline)
+            break;
+        n = recv(c->fd, c->buf, sizeof(c->buf), 0);
+    }
     if (n <= 0) {
 #ifdef ESP_PLATFORM
         // Zero means peer closed. A timeout or network error is negative.
@@ -247,13 +277,6 @@ static int body_read_exact(void *ctx, uint8_t *buf, size_t n)
         got += (size_t)k;
     }
     return (int)n;
-}
-
-static int64_t now_us(void)
-{
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
 
 typedef struct {
@@ -925,6 +948,7 @@ static job_t *job_create(const ipp_request_t *req)
 {
     job_t *j = &s_jobs[(s_next_id - 1) % MAX_JOBS];
     memset(j, 0, sizeof(*j));
+    atomic_init(&j->cancel, false);
     j->id = s_next_id++;
     j->state = JOB_PENDING;
     j->created = time(NULL);
@@ -1075,19 +1099,39 @@ static int pipe_page_end(void *user, const raster_page_t *pg)
     return 0;
 }
 
-// Prints the document in the request body. Returns an IPP status.
-static int print_document(conn_t *c, job_t *j)
+// Under s_lock, claim the only document slot before releasing the
+// mutex to open the printer. Multiple Send-Document requests can race here.
+static void job_start(job_t *j)
 {
-    if (s_cfg->job_open && s_cfg->job_open(s_cfg->ctx) != 0) {
-        pthread_mutex_lock(&s_lock);
-        j->reason = "printer-stopped";
-        job_finish(j, JOB_ABORTED);
-        pthread_mutex_unlock(&s_lock);
-        return IPP_BUSY;
-    }
-    pthread_mutex_lock(&s_lock);
     j->state = JOB_PROCESSING;
     j->processing = time(NULL);
+}
+
+static void close_printer(job_t *j, bool link_ok)
+{
+    pthread_mutex_lock(&s_lock);
+    j->printer_open = false;
+    pthread_mutex_unlock(&s_lock);
+    if (s_cfg->job_close)
+        s_cfg->job_close(s_cfg->ctx, link_ok);
+    if (s_cfg->job_state)
+        s_cfg->job_state(s_cfg->ctx, false);
+}
+
+// Prints the document for a claimed job. Returns an IPP status.
+static int print_document(conn_t *c, job_t *j)
+{
+    bool opened = !j->cancel && (!s_cfg->job_open || s_cfg->job_open(s_cfg->ctx) == 0);
+    pthread_mutex_lock(&s_lock);
+    if (!opened) {
+        bool canceled = j->cancel;
+        if (!canceled)
+            j->reason = "printer-stopped";
+        job_finish(j, canceled ? JOB_CANCELED : JOB_ABORTED);
+        pthread_mutex_unlock(&s_lock);
+        return canceled ? IPP_OK : IPP_BUSY;
+    }
+    j->printer_open = true;
     pthread_mutex_unlock(&s_lock);
     if (s_cfg->job_state)
         s_cfg->job_state(s_cfg->ctx, true);
@@ -1095,22 +1139,22 @@ static int print_document(conn_t *c, job_t *j)
 
     pipe_t *p = calloc(1, sizeof(*p));
     if (!p) {
-        if (s_cfg->job_close)
-            s_cfg->job_close(s_cfg->ctx, false);
-        if (s_cfg->job_state)
-            s_cfg->job_state(s_cfg->ctx, false);
+        close_printer(j, false);
         pthread_mutex_lock(&s_lock);
-        job_finish(j, JOB_ABORTED);
+        bool canceled = j->cancel;
+        job_finish(j, canceled ? JOB_CANCELED : JOB_ABORTED);
         pthread_mutex_unlock(&s_lock);
-        return IPP_INTERNAL_ERROR;
+        return canceled ? IPP_OK : IPP_INTERNAL_ERROR;
     }
     p->job = j;
     doc_reader_t rd = {c, j, 0};
     raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
     int64_t t_start = now_us();
-    int r = raster_decode(doc_read, &rd, &cb, p);
-    if (r == RASTER_ERR_IO) {
+    c->receiving_job = j;
+    set_recv_timeout(c, ACTIVE_IPP_SLICE_S);
+    int r = j->cancel ? 0 : raster_decode(doc_read, &rd, &cb, p);
+    if (r == RASTER_ERR_IO && !j->cancel) {
         LOGW("job %d: raster stream truncated: recv=%lld bytes, pending HTTP body=%lld, "
              "eof=%d, chunked=%d, remaining buffered=%u",
              j->id, (long long)j->bytes, (long long)c->remaining,
@@ -1141,10 +1185,7 @@ static int print_document(conn_t *c, job_t *j)
         link_ok = s_cfg->driver->job_end(p->drv_job) == 0;
         LOGI("job %d: printer finalization %.3f s", j->id, (now_us() - t_end) / 1e6);
     }
-    if (s_cfg->job_close)
-        s_cfg->job_close(s_cfg->ctx, link_ok);
-    if (s_cfg->job_state)
-        s_cfg->job_state(s_cfg->ctx, false);
+    close_printer(j, link_ok);
 
     // A counted URF stream can finish decoding before the HTTP body ends.
     // Confirm its transport completed before publishing a successful job.
@@ -1154,6 +1195,8 @@ static int print_document(conn_t *c, job_t *j)
             r = RASTER_ERR_IO;
     }
 
+    c->receiving_job = NULL;
+    set_recv_timeout(c, IDLE_TIMEOUT_S);
     int status = IPP_OK;
     pthread_mutex_lock(&s_lock);
     if (j->cancel) {
@@ -1314,6 +1357,8 @@ static void handle_ipp(conn_t *c)
             }
             j = job_create(req);
             snprintf(j->format, sizeof(j->format), "%s", fmt[0] ? fmt : "application/octet-stream");
+            if (req->op == IPP_OP_PRINT_JOB)
+                job_start(j);
             pthread_mutex_unlock(&s_lock);
             if (req->op == IPP_OP_PRINT_JOB)
                 status = print_document(c, j);
@@ -1325,6 +1370,7 @@ static void handle_ipp(conn_t *c)
 
         case IPP_OP_SEND_DOCUMENT:
             pthread_mutex_lock(&s_lock);
+            expire_pending();
             j = job_find(job_id);
             if (!ipp_find(req, IPP_TAG_OPERATION, "last-document")) {
                 status = IPP_BAD_REQUEST;
@@ -1337,8 +1383,10 @@ static void handle_ipp(conn_t *c)
                 message = "Job does not accept documents";
             } else if (!format_supported(fmt)) {
                 status = IPP_DOCUMENT_FORMAT_NOT_SUPPORTED;
-            } else if (fmt[0]) {
-                snprintf(j->format, sizeof(j->format), "%s", fmt);
+            } else {
+                if (fmt[0])
+                    snprintf(j->format, sizeof(j->format), "%s", fmt);
+                job_start(j);
             }
             pthread_mutex_unlock(&s_lock);
             if (status == IPP_OK)
@@ -1370,10 +1418,18 @@ static void handle_ipp(conn_t *c)
             } else if (j && job_done(j)) {
                 status = req->op == IPP_OP_CANCEL_JOB ? IPP_NOT_POSSIBLE : IPP_OK;
             } else if (j) {
+                if (req->op == IPP_OP_CANCEL_MY_JOBS) {
+                    char user[sizeof(j->user)];
+                    ipp_attr_str(ipp_find(req, IPP_TAG_OPERATION, "requesting-user-name"), user, sizeof(user));
+                    if (!user[0] || strcmp(j->user, user)) {
+                        pthread_mutex_unlock(&s_lock);
+                        break;
+                    }
+                }
                 j->cancel = true;
                 if (j->state == JOB_PENDING)
                     job_finish(j, JOB_CANCELED);
-                else if (s_cfg->job_cancel)
+                else if (j->printer_open && s_cfg->job_cancel)
                     s_cfg->job_cancel(s_cfg->ctx);
                 LOGI("job %d: cancel requested", j->id);
             }
@@ -1631,8 +1687,7 @@ static void handle_get(conn_t *c)
 static void *conn_thread(void *arg)
 {
     conn_t *c = arg;
-    struct timeval tv = {.tv_sec = IDLE_TIMEOUT_S};
-    setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    set_recv_timeout(c, IDLE_TIMEOUT_S);
     int one = 1;
     setsockopt(c->fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
 #ifdef SO_NOSIGPIPE
@@ -1696,16 +1751,6 @@ static void *conn_thread(void *arg)
             send_all(c->fd, "HTTP/1.1 100 Continue\r\n\r\n", 25);
 
         bool ipp_path = !strcmp(c->path, "/") || !strncmp(c->path, "/ipp", 4);
-#ifdef ESP_PLATFORM
-        // The short timeout is only for an idle connection waiting for its
-        // first request. IPP uploads can pause while the ESP decodes a full
-        // raster page and the printer drains CAPT bands; do not time them out
-        // like idle browsers. Keep a bounded but generous active-job timeout.
-        if (!strcmp(c->method, "POST") && ipp_path) {
-            struct timeval active_tv = {.tv_sec = ACTIVE_IPP_TIMEOUT_S};
-            setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &active_tv, sizeof(active_tv));
-        }
-#endif
         if (!strcmp(c->method, "POST") && (ipp_path || !s_cfg->http_handler)) {
             handle_ipp(c);
         } else if (!strcmp(c->method, "POST") || !strcmp(c->method, "DELETE")) {

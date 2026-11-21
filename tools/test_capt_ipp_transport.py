@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Exercise real raster and HTTP framing through the native CAPT simulator."""
+from concurrent.futures import ThreadPoolExecutor
 import http.client
 import json
 import os
@@ -7,16 +8,24 @@ import socket
 import struct
 import subprocess
 import time
+from threading import Barrier
 
 from test_capt_ipp import ROOT, attribute, ipp, white_urf
 
 
-def ipp_payload(port, document, document_format='image/urf'):
-    body = struct.pack('>BBHI', 2, 0, 2, 91) + b'\x01'
+def ipp_payload(port, document=b'', document_format='image/urf', *, op=2,
+                user='test', job_id=None):
+    body = struct.pack('>BBHI', 2, 0, op, 91) + b'\x01'
     body += attribute(0x47, 'attributes-charset', 'utf-8')
     body += attribute(0x48, 'attributes-natural-language', 'en')
     body += attribute(0x45, 'printer-uri', f'ipp://localhost:{port}/ipp/print')
-    body += attribute(0x49, 'document-format', document_format)
+    body += attribute(0x42, 'requesting-user-name', user)
+    if op in (2, 5, 6):
+        body += attribute(0x49, 'document-format', document_format)
+    if job_id is not None:
+        body += attribute(0x21, 'job-id', struct.pack('>I', job_id))
+    if op == 6:
+        body += attribute(0x22, 'last-document', b'\x01')
     body += b'\x03'
     return body + document
 
@@ -66,11 +75,15 @@ def send_job(port, data, *, chunked=False, cut=None, slow=False,
         # EOF on input while keeping the receive side open for the exact status.
         if cut is not None or not finish_chunks:
             sock.shutdown(socket.SHUT_WR)
-        response = http.client.HTTPResponse(sock)
-        response.begin()
-        payload = response.read()
-        assert response.status == 200 and payload[:2] == b'\x02\x00', payload
-        return struct.unpack('>H', payload[2:4])[0]
+        return read_ipp_status(sock)
+
+
+def read_ipp_status(sock):
+    response = http.client.HTTPResponse(sock)
+    response.begin()
+    payload = response.read()
+    assert response.status == 200 and payload[:2] == b'\x02\x00', payload
+    return struct.unpack('>H', payload[2:4])[0]
 
 
 def latest_job(port):
@@ -104,11 +117,56 @@ def cancel_during_upload(port, urf):
     assert status == 0, hex(status)
 
 
+def concurrent_submissions(port, urf, *, send_document):
+    owner = 'workstation'
+    job_id = None
+    if send_document:
+        assert send_job(port, ipp_payload(port, op=5, user=owner)) == 0
+        job_id = latest_job(port)['id']
+    barrier = Barrier(3, timeout=5)
+
+    def submit(user):
+        data = ipp_payload(port, urf, op=6 if send_document else 2,
+                           user=owner if send_document else user, job_id=job_id)
+        barrier.wait()
+        return send_job(port, data)
+
+    with ThreadPoolExecutor(max_workers=3) as clients:
+        statuses = list(clients.map(submit, ('workstation', 'phone', 'tablet')))
+    assert sorted(statuses) == [0] + [0x0404 if send_document else 0x0507] * 2, statuses
+    check_job(port, 'completed', 1)
+
+
+def cancel_stalled_upload(port, pwg, urf):
+    with socket.create_connection(('127.0.0.1', port), timeout=5) as sock:
+        # Publish the IPP attributes and first page, then leave the sender
+        # connected with no more data to emulate a stalled client.
+        header = (f'POST /ipp/print HTTP/1.1\r\nHost: localhost\r\n'
+                  f'Content-Type: application/ipp\r\nContent-Length: {len(pwg)}\r\n'
+                  'Connection: close\r\n\r\n').encode()
+        sock.sendall(header + pwg[:65536])
+        deadline = time.monotonic() + 5
+        while True:
+            job = latest_job(port)
+            if job['state'] == 'processing' and job['pages'] == 1:
+                break
+            assert time.monotonic() < deadline, job
+            time.sleep(0.02)
+        assert send_job(port, ipp_payload(port, op=0x0039, user='phone')) == 0
+        assert latest_job(port)['state'] == 'processing'
+        assert send_job(port, ipp_payload(port, op=8, job_id=job['id'])) == 0
+        assert read_ipp_status(sock) == 0
+        check_job(port, 'canceled', 1)
+        assert send_job(port, ipp_payload(port, urf, user='phone')) == 0
+        check_job(port, 'completed', 1)
+
+
 def main():
     with socket.socket() as sock:
         sock.bind(('127.0.0.1', 0))
         port = sock.getsockname()[1]
-    env = dict(os.environ, PRINTER_DRIVER='canon-lbp2900', ASAN_OPTIONS='detect_leaks=0')
+    env = dict(os.environ, PRINTER_DRIVER='canon-lbp2900', ASAN_OPTIONS='detect_leaks=0',
+               AIRPRINT_HOST_OPEN_DELAY_US='300000')
     (ROOT / 'host/out').mkdir(exist_ok=True)
     with (ROOT / 'host/out/capt-ipp-transport.log').open('w') as log:
         server = subprocess.Popen([str(ROOT / 'host/airprint_host'), str(port)],
@@ -125,14 +183,13 @@ def main():
             else:
                 raise RuntimeError('simulated CAPT server not listening')
 
-            # 1 MiB upload crosses 512 KiB and is fragmented in ~4 KiB blocks.
-            # The trailing bytes exercise HTTP body draining after raster parsing.
             white = pwg_page(300)
             dense = pwg_page(300, dense=True)
             pwg = ipp_payload(port, b'RaS2' + white + dense + white + dense,
                               'image/pwg-raster')
             assert len(pwg) > 2 * 1024 * 1024
-            assert send_job(port, pwg, slow=True) == 0
+            # Pausing for more than one receive slice must not abort an admitted job.
+            assert send_job(port, pwg, slow=True, during_upload=lambda: time.sleep(2)) == 0
             check_job(port, 'completed', 4)
 
             assert send_job(port, pwg, cut=512 * 1024) == 0x0411
@@ -161,6 +218,10 @@ def main():
             assert send_job(port, ipp_payload(port, fewer_pages)) == 0x0411
             check_job(port, 'aborted', 1)
 
+            concurrent_submissions(port, urf, send_document=False)
+            concurrent_submissions(port, urf, send_document=True)
+            cancel_stalled_upload(port, pwg, urf)
+
             assert send_job(port, pwg, during_upload=lambda: cancel_during_upload(port, urf)) == 0
             check_job(port, 'canceled', 1)
 
@@ -168,7 +229,7 @@ def main():
             assert status == 0, f'next job failed after disconnect: {status:#06x}'
             check_job(port, 'completed', 2)
             print('PASS: >2 MiB PWG at 300 dpi, chunked PWG at 600 dpi, '
-                  'truncation, busy/cancel and next-job recovery')
+                  'truncation, 3 concurrent senders, duplicate Send-Document, stalled cancellation and recovery')
         finally:
             server.terminate()
             try:

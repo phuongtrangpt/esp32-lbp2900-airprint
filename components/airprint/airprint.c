@@ -1071,7 +1071,9 @@ static int print_document(conn_t *c, job_t *j)
          j->id, p->read_us / 1e6, p->flush_us / 1e6);
 
     bool canceled = j->cancel;
-    bool ok = r > 0 && !canceled;
+    // A positive decoder return may also be a callback error code.
+    // Never claim success for a zero-page or explicitly rejected document.
+    bool ok = r > 0 && j->impressions > 0 && !p->err && !canceled;
     bool link_ok = true;
     if (p->drv_job) {
         // the driver finishes the job whatever happened (cancel, bad data,
@@ -1093,7 +1095,10 @@ static int print_document(conn_t *c, job_t *j)
     } else if (ok) {
         job_finish(j, JOB_COMPLETED);
     } else {
-        if (r == 0) {
+        if (p->err) {
+            j->reason = "document-unprintable-error";
+            status = p->err;
+        } else if (r == 0 || j->impressions == 0) {
             j->reason = "document-format-error";
             status = IPP_DOCUMENT_FORMAT_ERROR;
         } else if (r < 0) {
@@ -1105,9 +1110,6 @@ static int print_document(conn_t *c, job_t *j)
                 status = IPP_DOCUMENT_FORMAT_NOT_SUPPORTED;  // not URF/PWG at all (autodetect failed)
             else
                 status = IPP_DOCUMENT_FORMAT_ERROR;
-        } else if (p->err) {
-            j->reason = "document-unprintable-error";
-            status = p->err;
         } else {
             j->reason = "printer-stopped";
             status = IPP_DEVICE_ERROR;

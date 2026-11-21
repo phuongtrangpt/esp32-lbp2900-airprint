@@ -24,3 +24,10 @@ assert "preferred_dpi" in ipp
 assert "printer-resolution-default" in ipp and "printer-resolution-supported" in ipp
 assert "print-quality" in web and "Lưu độ phân giải" in web
 print("PASS: Quality HTTP GET/POST route, persistent NVS, IPP attributes, and web settings UI")
+
+# Regression: a long-running print job must never inherit the short idle
+# browser timeout; CAPT raster conversion can take multiple seconds/page.
+assert "#define ACTIVE_IPP_TIMEOUT_S 120" in ipp
+assert "setsockopt(c->fd, SOL_SOCKET, SO_RCVTIMEO, &active_tv" in ipp
+assert 'raster stream truncated:' in ipp
+print("PASS: active IPP upload has long receive timeout and truncation diagnostics")

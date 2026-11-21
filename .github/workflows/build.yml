@@ -108,6 +108,8 @@ jobs:
           node --test tests/*.test.ts
           node tests/diagnostics.mjs
           npm run build
+      - name: Stage pinned Canon LBP6030 USB prerelease
+        run: python tools/prepare_lbp6030_web.py
       - name: Build USB installer and offline Windows package
         run: |
           npm --prefix installer ci

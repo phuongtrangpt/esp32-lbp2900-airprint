@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile,stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-for (const profile of ['hp','hp_p1008','canon','pixma','standard']) {
+for (const profile of ['hp','hp_p1008','canon','lbp6030','pixma','standard']) {
 const root=new URL(`../public/firmware/${profile}/`,import.meta.url);
 const available=await stat(new URL('web-manifest.json',root)).then(()=>true,()=>false);
 test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`,{skip:!available},async()=>{
@@ -10,9 +10,14 @@ test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`
  if(profile==='hp_p1008')assert.equal(manifest.hpBootstrapEmbedded,true);
  assert.equal(manifest.builds.length,1);const build=manifest.builds[0];
  assert.equal(build.chipFamily,'ESP32-S3');assert.equal(build.serialType,'uart');
- const ota=JSON.parse(await readFile(new URL('ota-manifest.json',root),'utf8'));
- assert.equal(ota.profile,profile);assert.equal(ota.version,manifest.version);assert.equal(ota.file,'firmware.bin');
- const app=await readFile(new URL(ota.file,root));assert.equal(ota.size,app.length);assert.equal(ota.sha256,createHash('sha256').update(app).digest('hex'));
+ if(profile==='lbp6030'){
+  assert.equal(manifest.usbOnly,true);
+  await assert.rejects(stat(new URL('ota-manifest.json',root)),{code:'ENOENT'});
+ }else{
+  const ota=JSON.parse(await readFile(new URL('ota-manifest.json',root),'utf8'));
+  assert.equal(ota.profile,profile);assert.equal(ota.version,manifest.version);assert.equal(ota.file,'firmware.bin');
+  const app=await readFile(new URL(ota.file,root));assert.equal(ota.size,app.length);assert.equal(ota.sha256,createHash('sha256').update(app).digest('hex'));
+ }
  assert.deepEqual(build.parts.map(p=>p.offset),[0,0xf000,0x20000]);
  for(const part of build.parts){
   assert.match(part.path,/^[\w.-]+$/);

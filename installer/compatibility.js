@@ -1,10 +1,10 @@
 import {profiles,excluded,underResearch,lookupModel} from './compatibility-data.js';
 const select=document.querySelector('#printer-model');
 const note=document.querySelector('#compatibility-note');
-const feedback=document.querySelector('#p1008-feedback');
+const feedback=document.querySelectorAll('[data-feedback-profile]');
 function update(){
  note.textContent=profiles[select.value]?.note||'';
- feedback.hidden=select.value!=='hp_p1008';
+ for(const panel of feedback)panel.hidden=panel.dataset.feedbackProfile!==select.value;
 }
 select.addEventListener('change',update);queueMicrotask(update);
 const list=document.querySelector('#known-models');

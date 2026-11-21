@@ -12,7 +12,7 @@ window.addEventListener('installer-state',({detail})=>{
 });
 const model=document.querySelector("#printer-model");
 const requested=new URLSearchParams(location.search).get("model");
-model.value=["hp","hp_p1008","canon","pixma","standard"].includes(requested)?requested:"hp";
+model.value=["hp","hp_p1008","canon","lbp6030","pixma","standard"].includes(requested)?requested:"hp";
 model.addEventListener("change",ready);
 async function ready() {
   installer.style.display="none";
@@ -44,4 +44,17 @@ async function ready() {
 ready();
 
 const refresh=document.querySelector('#refresh-release');
-if(refresh)refresh.addEventListener('click',async()=>{refresh.disabled=true;document.querySelector('#refresh-status').textContent='Đang kiểm tra phiên bản…';const manifest=await ready();document.querySelector('#refresh-status').textContent=manifest?`Phiên bản trên web: ${manifest.version}. Dùng /update trên ESP để cập nhật qua Wi-Fi, hoặc nạp lại bằng USB.`:'Chưa kiểm tra được phiên bản. Hãy kiểm tra kết nối rồi thử lại.';refresh.disabled=false;});
+if(refresh)refresh.addEventListener('click',async()=>{
+  const status=document.querySelector('#refresh-status');
+  refresh.disabled=true;
+  status.textContent='Đang kiểm tra phiên bản…';
+  const manifest=await ready();
+  if(!manifest){
+    status.textContent='Chưa kiểm tra được phiên bản. Hãy kiểm tra kết nối rồi thử lại.';
+  }else if(manifest.usbOnly){
+    status.textContent=`Phiên bản thử nghiệm trên web: ${manifest.version}. Nạp qua USB.`;
+  }else{
+    status.textContent=`Phiên bản trên web: ${manifest.version}. Dùng /update trên ESP để cập nhật qua Wi-Fi, hoặc nạp lại bằng USB.`;
+  }
+  refresh.disabled=false;
+});

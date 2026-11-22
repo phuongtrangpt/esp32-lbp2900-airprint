@@ -32,6 +32,7 @@ enum printer_support {
 struct page_dims_s;
 
 struct printer_state_s {
+	bool reserved;
 	const struct printer_ops_s *ops;
 	unsigned ipage;
 	unsigned iband;

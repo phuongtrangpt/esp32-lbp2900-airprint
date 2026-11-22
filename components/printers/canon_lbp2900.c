@@ -255,20 +255,50 @@ static int page_end(void *ctx)
     clear_cached_page(j);
     return 0;
 }
-static int end(void *ctx)
+static int abort_session(job_t *j)
 {
-    job_t *j = ctx;
-    volatile int result = j->failed || j->page_open ? -1 : 0;
+    if (!j->state.reserved)
+        return j->started && j->failed ? -1 : 0;
+    j->link.cleaning_up = true;
+    if (setjmp(j->link.guard)) {
+        capt_restart_required(true);
+        return -1;
+    }
+    capt_deadline(&j->link, 6000);
+    j->state.ops->cancel_cleanup(&j->state);
+    capt_restart_required(false);
+    return 0;
+}
+
+static int finish(job_t *j, bool aborting)
+{
+    volatile int result = 0;
     capt_bind(&j->link);
-    if (setjmp(j->link.guard)) result = -1;
-    else if (j->started && !j->failed) {
+    if (aborting) {
+        result = abort_session(j);
+    } else if (setjmp(j->link.guard)) {
+        result = abort_session(j) == 0 ? 1 : -1;
+    } else if (j->started) {
         capt_deadline(&j->link, 120000);
-        if (j->page_open) j->state.ops->cancel_cleanup(&j->state);
-        else j->state.ops->job_epilogue(&j->state);
+        j->state.ops->job_epilogue(&j->state);
     }
     dispose(j);
     capt_bind(NULL);
     return result;
+}
+static int end(void *ctx)
+{
+    job_t *j = ctx;
+    if (j->failed || j->page_open) {
+        finish(j, true);
+        return -1;
+    }
+    return finish(j, false);
+}
+
+static int abort_job(void *ctx)
+{
+    return finish(ctx, true);
 }
 static int test_page(const printer_driver_t *d, const printer_io_t *io, int dpi, const char *label)
 {
@@ -313,5 +343,6 @@ const printer_driver_t canon_lbp2900_driver = {
     .papers=papers, .npapers=4, .margin_left=500, .margin_right=450, .margin_top=400, .margin_bottom=400,
     .job_begin=begin, .page_begin=page_begin, .page_line=page_line,
     .page_line_repeat=page_line_repeat, .page_end=page_end, .job_end=end,
+    .job_abort=abort_job,
     .job_stats=stats, .test_page=test_page
 };

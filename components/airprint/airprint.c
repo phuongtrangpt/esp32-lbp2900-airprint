@@ -111,6 +111,7 @@ static size_t s_spool_bytes;
 static time_t s_start;
 static int s_connections;
 static atomic_bool s_waiting_for_paper;
+static atomic_bool s_capt_restart_required;
 #ifdef ESP_PLATFORM
 static unsigned s_refused_connections;
 #endif
@@ -574,6 +575,11 @@ static void get_status(airprint_status_t *st)
         if (st->nreasons < (int)(sizeof(st->reasons) / sizeof(st->reasons[0])))
             st->reasons[st->nreasons++] = "media-empty-error";
         snprintf(st->message, sizeof(st->message), "Hết giấy. Nạp thêm giấy rồi bấm nút giấy trên Canon.");
+    } else if (st->connected && !strcmp(s_cfg->driver->id, "canon-lbp2900") &&
+               atomic_load(&s_capt_restart_required)) {
+        if (st->nreasons < (int)(sizeof(st->reasons) / sizeof(st->reasons[0])))
+            st->reasons[st->nreasons++] = "other-error";
+        snprintf(st->message, sizeof(st->message), "Máy in bị treo. Hãy tắt rồi bật lại máy Canon để tiếp tục.");
     }
 }
 
@@ -1093,6 +1099,18 @@ static void pipe_paper_out(void *ctx, bool waiting)
     atomic_store(&s_waiting_for_paper, waiting);
 }
 
+static bool pipe_canceled(void *ctx)
+{
+    pipe_t *p = ctx;
+    return p->job->cancel;
+}
+
+static void pipe_restart_required(void *ctx, bool required)
+{
+    (void)ctx;
+    atomic_store(&s_capt_restart_required, required);
+}
+
 static int pipe_write(void *ctx, const uint8_t *data, size_t len)
 {
     pipe_t *p = ctx;
@@ -1150,7 +1168,8 @@ static int pipe_page_begin(void *user, const raster_page_t *pg)
     if (!p->drv_job) {
         int paper = printer_driver_paper_for(d, pg->height, pg->dpi);
         p->io = (printer_io_t){.write = pipe_write, .read = pipe_read, .flush = pipe_flush, .sync = pipe_sync,
-                               .paper_out = pipe_paper_out, .ctx = p};
+                               .paper_out = pipe_paper_out, .canceled = pipe_canceled,
+                               .restart_required = pipe_restart_required, .ctx = p};
         p->dpi = pg->dpi;
         LOGI("job %d: %s %d dpi, %s", p->job->id, d->papers[paper].name, pg->dpi, pg->bytes_pp == 3 ? "color" : "gray");
         if (downsample)
@@ -1344,7 +1363,17 @@ static int print_document(conn_t *c, job_t *j)
     if (p->drv_job) {
         // Finalize or clean up the CAPT session even after cancellation/EOF.
         int64_t t_end = now_us();
-        link_ok = s_cfg->driver->job_end(p->drv_job) == 0;
+        const printer_driver_t *driver = s_cfg->driver;
+        if (driver->job_abort && (!decoded || j->cancel))
+            link_ok = driver->job_abort(p->drv_job) == 0;
+        else {
+            int result = driver->job_end(p->drv_job);
+            link_ok = result >= 0;
+            if (result > 0) {
+                decoded = false;
+                p->err = IPP_DEVICE_ERROR;
+            }
+        }
         LOGI("job %d: printer finalization %.3f s", j->id, (now_us() - t_end) / 1e6);
     }
     atomic_store(&s_waiting_for_paper, false);

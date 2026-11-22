@@ -81,7 +81,11 @@
   onMount(() => {
     const unsubscribe = onState(({ printer: before }) => {
       const after = device.printer;
-      if (!before || !after) return;
+      if (!after) return;
+      if (after.reasons.includes('other-error') && after.message.startsWith('Máy in bị treo.') &&
+          before?.message !== after.message)
+        toast(after.message, 'error');
+      if (!before) return;
       if (after.reasons.includes('media-empty-error') && !before.reasons.includes('media-empty-error'))
         chime(3);
       for (const job of after.jobs) {

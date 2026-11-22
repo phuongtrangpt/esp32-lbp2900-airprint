@@ -146,12 +146,12 @@ static int job_sync(void *ctx, const char *what)
     return print_job_sync(what);
 }
 
-static void job_close(void *ctx, bool ok)
+static void job_close(void *ctx, bool link_ok)
 {
-    usb_printer_job_end(ok);      // sends the job's last bytes: a cancel may still need the timer
+    usb_printer_job_end(link_ok); // sends the job's last bytes while the cancel timer is active
     esp_timer_stop(s_cancel_timer);
     s_job_running = false;
-    ESP_LOGI(TAG,"IPP job ended: %s",ok?"completed":"failed/canceled");
+    ESP_LOGI(TAG, "IPP printer link closed: %s", link_ok ? "released" : "USB reset attempted");
     debug_memory("IPP job end");
 }
 

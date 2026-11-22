@@ -35,6 +35,8 @@ typedef struct {
     void (*progress)(void *ctx, int line, int lines);
     // optional: a confirmed paper-out pause and its completion
     void (*paper_out)(void *ctx, bool waiting);
+    bool (*canceled)(void *ctx);
+    void (*restart_required)(void *ctx, bool required);
     void *ctx;
 } printer_io_t;
 
@@ -72,9 +74,11 @@ typedef struct printer_driver {
     int (*page_line_repeat)(void *job, int y, const uint8_t *px, bool is_repeat);
     int (*page_end)(void *job);
     // Finishes the job, also after an error or a cancel (ejects a partly
-    // printed page), and frees it. Returns 0, or < 0 if the printer link
-    // failed (the platform then resets the printer).
+    // printed page), and frees it. Returns 0 for success, > 0 for an
+    // unsuccessful job with a reusable link, or < 0 if the link needs reset.
     int (*job_end)(void *job);
+    // Optional abort that frees the job and reports whether the link is reusable.
+    int (*job_abort)(void *job);
     // optional: a line about the job for the log (render time, ...)
     void (*job_stats)(void *job, char *buf, size_t n);
 

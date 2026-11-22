@@ -1,0 +1,56 @@
+name: HP P1006 isolated test package
+on:
+  push:
+    branches: [fix/hp-p1006-only]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hp-p1006:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Verify Canon source and behavior are untouched
+        run: python tools/test_hp_p1006_scope.py --base 0e8f0fb9170f5530bee781f4dfbb721f3a2859f4
+      - name: Build HP P1006 only
+        run: |
+          python -m pip install platformio==6.2.0 esptool==4.9.0
+          pio run -e hp
+          python tools/package_firmware.py --env hp --out firmware/hp
+      - name: Test exact pixel expansion and both HP streams
+        run: |
+          make -C host hp_host hp_p1008_host hp_expand_host
+          ASAN_OPTIONS=detect_leaks=0 host/hp_expand_host
+          ASAN_OPTIONS=detect_leaks=0 host/hp_host
+          ASAN_OPTIONS=detect_leaks=0 host/hp_p1008_host
+      - name: Compare P1006 wire data against independent OpenPrinting reference
+        run: |
+          git init /tmp/foo2xqx-reference
+          git -C /tmp/foo2xqx-reference remote add origin https://github.com/OpenPrinting/foo2zjs.git
+          git -C /tmp/foo2xqx-reference fetch --depth 1 origin 80499ed5bf6caa2963ad337e37cfda78a80aab1e
+          git -C /tmp/foo2xqx-reference checkout --detach FETCH_HEAD
+          cc -O2 -o /tmp/foo2xqx-reference/foo2xqx-ref /tmp/foo2xqx-reference/foo2xqx.c /tmp/foo2xqx-reference/jbig.c /tmp/foo2xqx-reference/jbig_ar.c
+          ASAN_OPTIONS=detect_leaks=0 python tools/test_hp_reference.py /tmp/foo2xqx-reference/foo2xqx-ref
+      - name: Package matching HP source and USB flash script
+        run: |
+          cp tools/flash.py firmware/hp/flash.py
+          cp docs/HP-P1006-TEST1.md firmware/hp/HUONG-DAN-TEST.txt
+          git archive --format=tar.gz --prefix=source/ HEAD > firmware/hp/source-code.tar.gz
+          git rev-parse HEAD > firmware/hp/BUILD_COMMIT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HP-P1006-USB-TEST1
+          path: firmware/hp/
+          if-no-files-found: error

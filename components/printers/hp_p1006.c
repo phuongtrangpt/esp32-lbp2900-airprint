@@ -3,6 +3,9 @@
 // Experimental HP LaserJet P1006, 600 dpi monochrome, simplex A4 / Letter / A5 / A6.
 #include "printer_driver.h"
 #include "mono_raster.h"
+#include "hp_p1006_expand.h"
+#include <time.h>
+#include <stdio.h>
 #include "jbig.h"
 #include <stdlib.h>
 #include <string.h>
@@ -67,27 +70,37 @@ typedef struct {
     unsigned char *raw, *chunk, *expanded;
     size_t used;
     unsigned char bih[20];
-    bool first, header, failed, open;
+    bool first, header, failed, open, p1006;
+    uint64_t expand_us, encode_us;
 } hp_job;
 // P1006's native mode is 2 bits/pixel at 600 video pixels/inch. Keep
 // the 600-dpi one-bit image in PSRAM and expand just one JBIG stripe, including
 // its two predecessor rows, instead of allocating an 8+ MB two-bit page.
 #define HP_STRIPE_ROWS 128
 static _Thread_local hp_job *encoding_job;
+static uint64_t hp_now_us(void) {
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
+    return (uint64_t)t.tv_sec*1000000+(uint64_t)t.tv_nsec/1000;
+}
 unsigned char *hp_jbig_stripe(unsigned long y,unsigned long rows,unsigned long width,int layer,int plane)
 {
     hp_job *j=encoding_job;
     if (!j) return NULL;
     if (layer || plane || rows!=HP_STRIPE_ROWS || width!=(unsigned)j->wire_stride*8) hp_jbig_oom();
+    uint64_t started = j->p1006 ? hp_now_us() : 0;
     memset(j->expanded,0,(HP_STRIPE_ROWS+2)*j->wire_stride);
     for (int r=0;r<HP_STRIPE_ROWS+2;r++) {
         long sy=(long)y+r-2;
         if (sy<0 || sy>=j->height) continue;
         const unsigned char *in=j->raw+(size_t)sy*j->stride;
         unsigned char *out=j->expanded+(size_t)r*j->wire_stride;
-        for (int x=0;x<j->width;x++) if(in[x>>3] & (0x80>>(x&7)))
-            out[x>>2] |= 0xc0>>((x&3)*2); // white=00, black=11
+        if (j->p1006)
+            hp_p1006_expand_row(out,in,(unsigned)j->width);
+        else
+            for (int x=0;x<j->width;x++) if(in[x>>3] & (0x80>>(x&7)))
+                out[x>>2] |= 0xc0>>((x&3)*2); // P1008 retains its original path
     }
+    if (j->p1006) j->expand_us += hp_now_us()-started;
     return j->expanded+2*j->wire_stride;
 }
 static int put(hp_job *j, const void *p, size_t n) {
@@ -129,7 +142,7 @@ static const printer_paper_t papers[] = {
 static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, int paper) {
     if (!io || !io->write || dpi!=600 || paper<0 || paper>=d->npapers) return NULL;
     hp_job *j=calloc(1,sizeof(*j)); if (!j) return NULL;
-    j->io=*io; j->paper=paper;
+    j->io=*io; j->paper=paper; j->p1006=!strcmp(d->id,"hp-p1006");
     // foo2xqx's P1006 wrapper clips 96 dots (4.064 mm) at each edge.
     j->width=papers[paper].width*600/2540-192;
     j->height=papers[paper].height*600/2540-192;
@@ -186,9 +199,19 @@ static int page_end(void *ctx) {
     }
     jbg_enc_init(&enc,j->wire_stride*8,j->height,1,planes,encoded,j);
     jbg_enc_options(&enc,JBG_ILEAVE|JBG_SMID,JBG_DELAY_AT|JBG_LRLTWO|JBG_TPDON|JBG_TPBON|JBG_DPON,128,0,0);
-    jbg_enc_out(&enc); jbg_enc_free(&enc); oom=NULL; encoding_job=NULL; block(j); rec(j,4,0); j->open=false;
+    uint64_t encode_start=j->p1006 ? hp_now_us() : 0;
+    jbg_enc_out(&enc);
+    if (j->p1006) j->encode_us += hp_now_us()-encode_start;
+    jbg_enc_free(&enc); oom=NULL; encoding_job=NULL; block(j); rec(j,4,0); j->open=false;
     return j->failed ? -1:0;
 }
+#ifndef PRINTSERVER_PROFILE_HP_P1008
+static void stats(void *ctx,char *buf,size_t n) {
+    hp_job *j=ctx;
+    snprintf(buf,n,"HP P1006 expand=%.3f s JBIG+output=%.3f s (expansion included)",
+             j->expand_us/1e6,j->encode_us/1e6);
+}
+#endif
 static int end(void *ctx) {
     hp_job *j=ctx;
     if (j->open) j->failed=true;
@@ -230,5 +253,8 @@ const printer_driver_t hp_p1006_driver={
     .npapers=4,
 #endif
     .margin_left=407,.margin_right=407,.margin_top=407,.margin_bottom=407,
+#ifndef PRINTSERVER_PROFILE_HP_P1008
+    .job_stats=stats,
+#endif
     .job_begin=begin,.page_begin=page_begin,.page_line=line,.page_end=page_end,.job_end=end,.test_page=test
 };

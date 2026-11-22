@@ -84,3 +84,7 @@ airprint_esp_policy_host: airprint_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTE
 
 status_led_host: status_led_host.c ../src/status_led_pattern.h
 	$(CC) $(CFLAGS) status_led_host.c -o $@
+
+hp_expand_host: hp_expand_host.c ../components/printers/hp_p1006_expand.h
+	$(CC) $(CFLAGS) hp_expand_host.c -o $@
+hp_host hp_p1008_host: ../components/printers/hp_p1006_expand.h

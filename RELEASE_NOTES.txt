@@ -1,3 +1,7 @@
+v0.9.10 chính thức: ghi nhớ Bật/Tắt âm báo trên trình duyệt. Đèn RGB trên ESP nháy đỏ 5 lần, nghỉ 2 giây rồi lặp lại khi cần khởi động lại/kết nối lại máy in; không cần mở trang web. Kết nối lại thành công thì trở về trạng thái thường.
+
+Âm báo sau khi mở lại trang có thể cần chạm vào trang để trình duyệt cho phép phát tiếng. Đã lưu lựa chọn sẽ có thông báo rõ ràng.
+
 v0.9.9 chính thức: Canon LBP2900 giữ tối ưu SPEED và sửa cảnh báo treo còn lưu sau khi tắt/bật máy in. Làm mới trạng thái khi USB kết nối lại, chặn phiên cũ bật lại cảnh báo.
 
 Lưu ý: một số lệnh in qua IPP từ Windows có thể ngắt sớm ở 512 KB/1 MB; lỗi này đang được điều tra, chưa xác nhận đã khắc phục. Nếu gặp lỗi, tải nhật ký trước khi ngắt nguồn ESP. Đã kiểm thử mô phỏng CAPT, HTTP chunked, thiếu RAM và phục hồi.

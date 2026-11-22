@@ -121,6 +121,16 @@ static atomic_bool s_capt_restart_required;
 static pthread_mutex_t s_link_lock = PTHREAD_MUTEX_INITIALIZER;
 static unsigned s_link_generation;
 
+bool airprint_printer_restart_required(void)
+{
+    return atomic_load(&s_capt_restart_required);
+}
+
+void airprint_set_restart_required(bool required)
+{
+    atomic_store(&s_capt_restart_required, required);
+}
+
 void airprint_printer_reconnected(void)
 {
     pthread_mutex_lock(&s_link_lock);

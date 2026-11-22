@@ -9,9 +9,9 @@
   import { work } from '../lib/process.svelte';
   import { scanProgress } from '../lib/scan.svelte';
 
-  let { current, home, firmware = 'Đang đọc…', audioSupported, audioEnabled, audioPending, toggleAudio }:
+  let { current, home, firmware = 'Đang đọc…', audioSupported, audioEnabled, audioReady, audioPending, toggleAudio }:
     { current: string; home: boolean; firmware?: string; audioSupported: boolean;
-      audioEnabled: boolean; audioPending: boolean; toggleAudio: () => void } = $props();
+      audioEnabled: boolean; audioReady: boolean; audioPending: boolean; toggleAudio: () => void } = $props();
 
   const printerLine = $derived.by(() => {
     const p = device.printer;
@@ -98,9 +98,10 @@
   <a href="/network" style="display:block;padding:12px 18px;text-decoration:none">Cài đặt IP động / IP tĩnh ↗</a>
   <a href="/diagnostics" style="display:block;padding:12px 18px;text-decoration:none">Nhật ký / Tải log lỗi ↗</a>
   {#if audioSupported}
-    <button class="btn" type="button" onclick={toggleAudio} disabled={audioPending}>
+    <button class="btn" type="button" onclick={toggleAudio} disabled={audioPending && !audioEnabled}>
       {audioEnabled ? 'Tắt âm báo' : 'Bật âm báo'}
     </button>
+    {#if audioEnabled && !audioReady}<p class="muted small">Đã lưu âm báo · Chạm vào trang để kích hoạt tiếng.</p>{/if}
   {/if}
 
   <div class="foot">

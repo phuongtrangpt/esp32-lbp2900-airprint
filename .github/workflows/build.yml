@@ -68,6 +68,8 @@ jobs:
         run: ASAN_OPTIONS=detect_leaks=0 host/mono_host
       - name: CAPT raster and error tests
         run: ASAN_OPTIONS=detect_leaks=0 host/capt_host
+      - name: On-board recovery LED pattern
+        run: ASAN_OPTIONS=detect_leaks=0 host/status_led_host
       - name: USB reconnect status regression
         run: ASAN_OPTIONS=detect_leaks=0 host/reconnect_host
       - name: CAPT watchdog scheduling and deadline regression

@@ -7,7 +7,7 @@ Thêm khổ A5 (148×210 mm), A6 (105×148 mm) vào driver, AirPrint/IPP và tra
 | Bản | Model / điều kiện | Trạng thái |
 |---|---|---|
 | hp | HP LaserJet P1006 | Bản riêng, có file HP nhúng |
-| canon | Canon LBP2900 | CAPT · Chính thức 0.9.9 |
+| canon | Canon LBP2900 | CAPT · Chính thức 0.9.10 |
 | pixma | 23 dòng Canon PIXMA trong danh sách trên web | Driver có sẵn; bản ghép mới chưa thử giấy thật |
 | standard | HP 1320, P2015, P2055 là ứng viên; USB phải khai báo PCL5 hoặc PostScript | Thử nghiệm, in một mặt đen trắng |
 
@@ -81,7 +81,7 @@ Trang /hp-firmware vẫn dùng được khi cần file riêng.
 
 ### Nạp offline Windows, không cài ứng dụng
 
-[Tải ZIP v0.9.9](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.9.9.zip).
+[Tải ZIP v0.9.10](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.9.10.zip).
 Giải nén toàn bộ vào thư mục có quyền ghi, chạy **START.cmd**, mở bằng Chrome/Edge.
 Chọn đúng HP/Canon, cắm UART/COM, chọn cổng và nạp theo tiến trình. Không cần Python,
 Arduino IDE hay Internet cho trang nạp; **bản HP đã có sẵn dữ liệu máy in**.
@@ -273,3 +273,20 @@ và thông báo bản quyền tương ứng khi phân phối firmware. Dự án 
 Canon LBP2900 giữ tối ưu SPEED, xóa cảnh báo treo cũ khi USB kết nối lại và bỏ qua cập nhật trạng thái từ phiên in cũ. Bản chính thức này thay thế 0.9.8 trên web, OTA và gói offline.
 
 Lỗi đang điều tra: một số lệnh IPP Windows bị kết thúc sớm ở 512 KB/1 MB; chưa xác nhận đã khắc phục. Xem docs/IPP-WINDOWS-CHUNK-INVESTIGATION.md.
+
+## Âm báo và đèn trạng thái (0.9.10)
+
+Bật/Tắt âm báo được lưu trong trình duyệt cho địa chỉ trang ESP đang dùng. Khi
+mở lại trang, nếu trình duyệt yêu cầu thao tác để cho phép phát tiếng, trang sẽ
+hiện “Đã lưu âm báo · Chạm vào trang để kích hoạt tiếng.” Đổi IP/tên miền hoặc
+trình duyệt sẽ dùng vùng lưu tùy chọn khác. ESP không có loa/buzzer được cấu hình.
+
+Đèn RGB điều khiển được trên board (mặc định GPIO48, không phải đèn nguồn):
+- Xanh đứng: sẵn sàng; xanh nháy: đang in.
+- Đỏ nháy nhanh: lỗi tạm thời của trang kiểm tra.
+- Đỏ nháy 5 lần (mỗi nhịp sáng 150 ms), nghỉ 2 giây rồi lặp: giao thức không
+  phục hồi được hoặc USB cần kết nối lại. Hoạt động không cần trình duyệt.
+  Kiểm tra máy in, tắt/bật hoặc nối lại USB. Khi nhận lại máy in, mẫu lỗi dừng.
+
+Lỗi in ngắt sớm 512 KB/1 MB vẫn đang điều tra; mẫu 5 nháy chỉ phản ánh trạng
+thái cần phục hồi, không được bật cho mọi lệnh in bị cắt dữ liệu.

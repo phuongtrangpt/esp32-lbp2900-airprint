@@ -1,3 +1,7 @@
+## 0.9.10
+
+Lưu tùy chọn âm báo trên trình duyệt, khôi phục qua thao tác người dùng khi cần. Đèn RGB cảnh báo 5 nháy đỏ / nghỉ 2 giây từ trạng thái firmware, ưu tiên hơn nhận diện và in. Kiểm thử 20 chu kỳ LED, lưu/tải lại âm báo, lỗi quyền phát và kết nối lại. Cần kiểm tra đèn trên board thật.
+
 ## 0.9.9 chính thức
 
 Thay thế bản 0.9.8: giữ nền SPEED từ gói 0146673 và sửa trạng thái lỗi sau kết nối lại USB. Kiểm thử mô phỏng không thay thế kiểm chứng máy thật. Lỗi IPP ngắt sớm ở 512 KB/1 MB vẫn đang điều tra; xem docs/IPP-WINDOWS-CHUNK-INVESTIGATION.md.

@@ -50,12 +50,9 @@ static volatile bool s_showing_error;
 
 static void show_idle_state(void)
 {
-    if (s_showing_error)
-        return;
-    if (s_busy || s_airprint_busy)
-        status_led_set(LED_BUSY);
-    else
-        status_led_set(usb_printer_connected() ? LED_READY : LED_WAITING);
+    bool recovery = airprint_printer_restart_required() || usb_printer_needs_reconnect();
+    status_led_set(status_led_select(recovery, s_showing_error,
+                                    s_busy || s_airprint_busy, usb_printer_connected()));
 }
 
 static void on_printer(bool connected, const usb_printer_info_t *info)
@@ -80,7 +77,7 @@ static void print_task(void *arg)
 {
     bool dry_run = (bool)(intptr_t)arg;
     print_stats_t st;
-    status_led_set(LED_BUSY);
+    show_idle_state();
     debug_memory("test-page begin");
     esp_err_t err = print_job_test_page(dry_run, print_job_default_dpi(), &st);
     if (dry_run)
@@ -197,6 +194,8 @@ static void button_task(void *arg)
     int user_same = 0;
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(10));
+        // Read atomic fault state even with no browser or status requests.
+        show_idle_state();
         if (debounce(is_down(CONFIG_PRINT_BUTTON_GPIO) || is_down(CONFIG_PRINT_BUTTON2_GPIO), &down, &same)) {
             if (down) {
                 pressed_at = xTaskGetTickCount();

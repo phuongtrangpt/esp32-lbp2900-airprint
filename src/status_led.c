@@ -1,6 +1,7 @@
 // WS2812 driver on the RMT peripheral plus a small task that animates the
 // current state.
 #include "status_led.h"
+#include <stdatomic.h>
 
 #include "driver/rmt_encoder.h"
 #include "driver/rmt_tx.h"
@@ -16,8 +17,8 @@ static const char *TAG = "led";
 
 static rmt_channel_handle_t s_chan;
 static rmt_encoder_handle_t s_enc;
-static volatile led_state_t s_state = LED_OFF;
-static volatile int s_identify;     // remaining identify flashes (x2: on + off)
+static _Atomic led_state_t s_state = LED_OFF;
+static atomic_int s_identify;     // remaining identify flashes (x2: on + off)
 static TaskHandle_t s_task;
 
 static void led_write(uint8_t r, uint8_t g, uint8_t b)
@@ -32,49 +33,26 @@ static void led_write(uint8_t r, uint8_t g, uint8_t b)
 
 static void led_task(void *arg)
 {
-    bool phase = false;
+    unsigned step = 0;
     led_state_t last = (led_state_t)-1;
     while (1) {
-        if (s_identify > 0) {
-            led_write(0, 0, (s_identify & 1) ? 0 : 255);
-            s_identify--;
-            last = (led_state_t)-1;     // redraw the state afterwards
+        led_state_t st = atomic_load(&s_state);
+        if (st == LED_RECOVERY_REQUIRED)
+            atomic_store(&s_identify, 0); // fault indication outranks Identify-Printer
+        else if (atomic_load(&s_identify) > 0) {
+            led_write(0, 0, (atomic_load(&s_identify) & 1) ? 0 : 255);
+            atomic_fetch_sub(&s_identify, 1);
+            last = (led_state_t)-1;
             ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(150));
             continue;
         }
-        led_state_t st = s_state;
         if (st != last)
-            phase = true;               // start every new state with the LED on
+            step = 0;
         last = st;
-        uint32_t period_ms = 500;
-        switch (st) {
-        case LED_WAITING:
-            led_write(255, 180, 0);
-            break;
-        case LED_READY:
-            led_write(0, 255, 0);
-            break;
-        case LED_BUSY:
-            period_ms = 250;
-            if (phase)
-                led_write(0, 255, 0);
-            else
-                led_write(0, 0, 0);
-            break;
-        case LED_ERROR:
-            period_ms = 100;
-            if (phase)
-                led_write(255, 0, 0);
-            else
-                led_write(0, 0, 0);
-            break;
-        default:
-            led_write(0, 0, 0);
-            break;
-        }
-        phase = !phase;
-        // wake early when the state changes
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(period_ms));
+        status_led_frame_t frame = status_led_frame(st, step);
+        led_write(frame.r, frame.g, frame.b);
+        step = frame.next;
+        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(frame.duration_ms));
     }
 }
 
@@ -104,16 +82,17 @@ esp_err_t status_led_init(void)
 
 void status_led_identify(void)
 {
-    s_identify = 10;
+    if (atomic_load(&s_state) == LED_RECOVERY_REQUIRED)
+        return;
+    atomic_store(&s_identify, 10);
     if (s_task)
         xTaskNotifyGive(s_task);
 }
 
 void status_led_set(led_state_t state)
 {
-    if (s_state == state)
+    if (atomic_exchange(&s_state, state) == state)
         return;
-    s_state = state;
     if (s_task)
         xTaskNotifyGive(s_task);
 }

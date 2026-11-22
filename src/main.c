@@ -27,6 +27,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "airprint_esp.h"
+#include "airprint.h"
 #include "debug.h"
 #include "local_config.h"
 #include "oled.h"
@@ -60,6 +61,7 @@ static void show_idle_state(void)
 static void on_printer(bool connected, const usb_printer_info_t *info)
 {
     if (connected) {
+        airprint_printer_reconnected();
         ESP_LOGI(TAG, "printer ready: %s %s", info->manufacturer, info->product);
         if (print_job_set_printer(info))
             airprint_esp_driver_changed();     // another model: announce it

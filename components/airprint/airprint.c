@@ -112,6 +112,18 @@ static time_t s_start;
 static int s_connections;
 static atomic_bool s_waiting_for_paper;
 static atomic_bool s_capt_restart_required;
+static pthread_mutex_t s_link_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned s_link_generation;
+
+void airprint_printer_reconnected(void)
+{
+    pthread_mutex_lock(&s_link_lock);
+    ++s_link_generation;
+    atomic_store(&s_capt_restart_required, false);
+    atomic_store(&s_waiting_for_paper, false);
+    pthread_mutex_unlock(&s_link_lock);
+}
+
 #ifdef ESP_PLATFORM
 static unsigned s_refused_connections;
 #endif
@@ -1087,6 +1099,7 @@ typedef struct {
     uint32_t bytes_out;         // printer data so far
     printer_io_t io;
     void *drv_job;              // the driver's job, once the first page started
+    unsigned link_generation;  // reject status callbacks from an unplugged session
     int dpi;
     int downsample_width, downsample_height, downsample_bpp;
     uint8_t *downsample_row;
@@ -1095,8 +1108,11 @@ typedef struct {
 
 static void pipe_paper_out(void *ctx, bool waiting)
 {
-    (void)ctx;
-    atomic_store(&s_waiting_for_paper, waiting);
+    pipe_t *p = ctx;
+    pthread_mutex_lock(&s_link_lock);
+    if (p->link_generation == s_link_generation)
+        atomic_store(&s_waiting_for_paper, waiting);
+    pthread_mutex_unlock(&s_link_lock);
 }
 
 static bool pipe_canceled(void *ctx)
@@ -1107,8 +1123,11 @@ static bool pipe_canceled(void *ctx)
 
 static void pipe_restart_required(void *ctx, bool required)
 {
-    (void)ctx;
-    atomic_store(&s_capt_restart_required, required);
+    pipe_t *p = ctx;
+    pthread_mutex_lock(&s_link_lock);
+    if (p->link_generation == s_link_generation)
+        atomic_store(&s_capt_restart_required, required);
+    pthread_mutex_unlock(&s_link_lock);
 }
 
 static int pipe_write(void *ctx, const uint8_t *data, size_t len)
@@ -1300,6 +1319,9 @@ static void close_printer(job_t *j, bool link_ok)
 // Prints the document for a claimed job. Returns an IPP status.
 static int print_document(conn_t *c, job_t *j)
 {
+    pthread_mutex_lock(&s_link_lock);
+    unsigned link_generation = s_link_generation;
+    pthread_mutex_unlock(&s_link_lock);
     bool opened = !j->cancel && (!s_cfg->job_open || s_cfg->job_open(s_cfg->ctx) == 0);
     pthread_mutex_lock(&s_lock);
     if (!opened) {
@@ -1326,6 +1348,7 @@ static int print_document(conn_t *c, job_t *j)
         return canceled ? IPP_OK : IPP_INTERNAL_ERROR;
     }
     p->job = j;
+    p->link_generation = link_generation;
     doc_reader_t rd = {.c = c, .job = j};
     raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
@@ -1376,7 +1399,7 @@ static int print_document(conn_t *c, job_t *j)
         }
         LOGI("job %d: printer finalization %.3f s", j->id, (now_us() - t_end) / 1e6);
     }
-    atomic_store(&s_waiting_for_paper, false);
+    pipe_paper_out(p, false);
     close_printer(j, link_ok);
 
     // A counted URF stream can finish decoding before the HTTP body ends.
@@ -1853,9 +1876,14 @@ static void get_status_cached(airprint_status_t *st)
     static pthread_mutex_t cache_lock = PTHREAD_MUTEX_INITIALIZER;
     static airprint_status_t cached;
     static time_t cached_at;
+    static unsigned cached_generation;
     time_t now = time(NULL);
     pthread_mutex_lock(&cache_lock);
-    if (!cached_at || now - cached_at >= STATUS_REFRESH_S || now < cached_at) {
+    pthread_mutex_lock(&s_link_lock);
+    unsigned generation = s_link_generation;
+    pthread_mutex_unlock(&s_link_lock);
+    if (!cached_at || cached_generation != generation || now - cached_at >= STATUS_REFRESH_S || now < cached_at) {
+        cached_generation = generation;
         get_status(&cached);
         cached_at = now;
     }

@@ -4,13 +4,7 @@
 
 #include "esp_err.h"
 
-typedef enum {
-    LED_OFF,
-    LED_WAITING,        // solid yellow: ready, no printer attached
-    LED_READY,          // solid green: printer attached
-    LED_BUSY,           // blinking green: printing
-    LED_ERROR,          // fast blinking red: last job failed
-} led_state_t;
+#include "status_led_pattern.h"
 
 esp_err_t status_led_init(void);
 void status_led_set(led_state_t state);

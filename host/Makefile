@@ -15,7 +15,7 @@ INC = -I../components/xqx/vendor -I../components/capt/include -I../components/ca
       -I../components/scanner/include -I../components/scanner -I../components/webui/include \
       -I../components/oled/include
 
-all: reconnect_host mono_host bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host memory_host standard_host network_config_host hp_bootstrap_host portal_dns_host
+all: status_led_host reconnect_host mono_host bjl_host airprint_host scan_host oled_host capt_host improv_host hp_host memory_host standard_host network_config_host hp_bootstrap_host portal_dns_host
 
 bjl_host: bjl_host.c $(BJL) $(PRINTERS) ../components/airprint/printer_driver.c ../components/canon_bjl/include/*.h \
           ../components/airprint/include/printer_driver.h
@@ -40,7 +40,7 @@ oled_host: oled_host.c $(OLED) ../components/oled/include/*.h ../components/airp
 	$(CC) $(CFLAGS) $(INC) oled_host.c $(OLED) -o $@
 
 clean:
-	rm -rf reconnect_host bjl_host airprint_host scan_host oled_host hp_p1008_host out *.prn *.png *.raw
+	rm -rf status_led_host reconnect_host bjl_host airprint_host scan_host oled_host hp_p1008_host out *.prn *.png *.raw
 
 capt_host: capt_reference/hiscoa-decompress.c capt_host.c capt_sim.h $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) capt_host.c capt_reference/hiscoa-decompress.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
@@ -75,9 +75,12 @@ capt_host hp_host hp_p1008_host airprint_host memory_host standard_host: ../comp
 mono_host: mono_host.c ../components/printers/mono_raster.h
 	$(CC) $(CFLAGS) mono_host.c -o $@
 
-reconnect_host: reconnect_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS)
+reconnect_host: reconnect_host.c capt_sim.h ../src/status_led_pattern.h $(BJL) $(AIRPRINT) $(PRINTERS)
 	$(CC) $(CFLAGS) $(INC) reconnect_host.c $(BJL) $(filter-out ../components/airprint/airprint.c,$(AIRPRINT)) $(PRINTERS) -lm -lpthread -o $@
 
 # Native sanitizer build with ESP HTTP limits and injected heap admission.
 airprint_esp_policy_host: airprint_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED)
 	$(CC) $(CFLAGS) -DAIRPRINT_ESP_POLICY_TEST $(INC) airprint_host.c $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED) -lm -lpthread -o $@
+
+status_led_host: status_led_host.c ../src/status_led_pattern.h
+	$(CC) $(CFLAGS) status_led_host.c -o $@

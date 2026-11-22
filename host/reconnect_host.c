@@ -1,5 +1,6 @@
 // Exercise the real status callbacks, including cleanup after USB reattach.
 #include <assert.h>
+#include "../src/status_led_pattern.h"
 #include "../components/airprint/airprint.c"
 #include "capt-command.h"
 #define CAPT_SIM_NO_RASTER_CHECK
@@ -37,6 +38,8 @@ static void real_session_recovery(const printer_driver_t *d)
     airprint_status_t st;
     get_status(&st);
     assert(strstr(st.message, "Máy in bị treo."));
+    assert(airprint_printer_restart_required());
+    assert(status_led_select(airprint_printer_restart_required(), false, false, true) == LED_RECOVERY_REQUIRED);
     pipe_t old = s.pipe;
     // Simulate the physical power cycle: printer protocol state starts afresh.
     memset(&s.printer, 0, sizeof(s.printer));
@@ -68,18 +71,24 @@ int main(void)
     pipe_restart_required(&old, true);
     get_status_cached(&st);
     assert(strstr(st.message, "Máy in bị treo."));
+    assert(airprint_printer_restart_required());
+    assert(status_led_select(airprint_printer_restart_required(), false, false, true) == LED_RECOVERY_REQUIRED);
     airprint_printer_reconnected();
     get_status_cached(&st);
     assert(!st.message[0] && !st.nreasons);
+    assert(!airprint_printer_restart_required());
     // Old cleanup must not restore either warning after the same printer returns.
     pipe_restart_required(&old, true);
     pipe_paper_out(&old, true);
     get_status(&st);
     assert(!st.message[0] && !st.nreasons);
+    assert(!airprint_printer_restart_required());
     pipe_t fresh = {.link_generation = s_link_generation};
     pipe_restart_required(&fresh, true);
     get_status(&st);
     assert(strstr(st.message, "Máy in bị treo."));
+    assert(airprint_printer_restart_required());
+    assert(status_led_select(airprint_printer_restart_required(), false, false, true) == LED_RECOVERY_REQUIRED);
     pipe_restart_required(&fresh, false);
     pipe_paper_out(&fresh, true);
     get_status(&st);
@@ -87,6 +96,7 @@ int main(void)
     airprint_printer_reconnected();
     get_status(&st);
     assert(!st.message[0] && !st.nreasons);
+    assert(!airprint_printer_restart_required());
     real_session_recovery(cfg.driver);
     puts("USB reconnect: clears cached warning, ignores stale cleanup, retains new faults");
     return 0;

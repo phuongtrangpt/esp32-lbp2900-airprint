@@ -72,6 +72,10 @@ int airprint_start(const airprint_config_t *cfg);
 // Call on every USB attach, including the same model after a power cycle.
 // Invalidates old session status callbacks and clears latched recovery warnings.
 void airprint_printer_reconnected(void);
+// Latched protocol recovery state, usable without HTTP/status polling.
+bool airprint_printer_restart_required(void);
+// For a local test-page job while it owns the USB printer.
+void airprint_set_restart_required(bool required);
 
 // --- responses from http_handler
 // A complete response; extra_headers are full "Name: value\r\n" lines or NULL.

@@ -1,4 +1,5 @@
 #include "print_job.h"
+#include "airprint.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -129,6 +130,12 @@ static int test_sync(void *ctx, const char *what)
     return print_job_sync(what);
 }
 
+static void test_restart_required(void *ctx, bool required)
+{
+    (void)ctx;
+    airprint_set_restart_required(required);
+}
+
 static void test_progress(void *ctx, int line, int lines)
 {
     vTaskDelay(1);      // let the idle task run (task watchdog)
@@ -181,7 +188,7 @@ esp_err_t print_job_test_page(bool dry_run, int dpi, print_stats_t *stats)
     ESP_LOGI(TAG, "%s: %s test page at %d dpi, free heap %lu", dry_run ? "dry run" : "printing", d->id, dpi,
              (unsigned long)esp_get_free_heap_size());
     test_out_t out = {.dry_run = dry_run};
-    printer_io_t io = {.write = test_write, .read = dry_run ? NULL : test_read, .flush = dry_run ? NULL : test_flush, .sync = dry_run ? NULL : test_sync, .progress = test_progress, .ctx = &out};
+    printer_io_t io = {.write = test_write, .read = dry_run ? NULL : test_read, .flush = dry_run ? NULL : test_flush, .sync = dry_run ? NULL : test_sync, .progress = test_progress, .restart_required = dry_run ? NULL : test_restart_required, .ctx = &out};
     err = d->test_page(d, &io, dpi, label) == 0 ? ESP_OK : ESP_FAIL;
     if (!dry_run)
         usb_printer_job_end(err == ESP_OK);

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { AudioAlerts } from './lib/audio-alerts';
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import Sidebar from './components/Sidebar.svelte';
   import Toasts from './components/Toasts.svelte';
@@ -22,12 +23,18 @@
 
   let audioEnabled = $state(false);
   let audioPending = $state(false);
-  let audio: AudioContext | null = null;
+  let audioReady = $state(false);
   let nextSound = 0;
   const audioSupported = typeof AudioContext !== 'undefined';
+  const alerts = new AudioAlerts(() => localStorage, () => new AudioContext(), state => {
+    audioEnabled = state.enabled;
+    audioReady = state.ready;
+    audioPending = state.pending;
+    if (!state.ready) nextSound = 0;
+  });
 
   function chime(repeats: number) {
-    const ctx = audio;
+    const ctx = alerts.context;
     if (!audioEnabled || !ctx || ctx.state !== 'running') return;
     let start = Math.max(ctx.currentTime + 0.015, nextSound);
     for (let i = 0; i < repeats; i++) {
@@ -49,34 +56,29 @@
     nextSound = start;
   }
 
-  function closeAudio() {
-    const ctx = audio;
-    audio = null;
-    nextSound = 0;
-    if (ctx) void ctx.close().catch(() => {});
-  }
-
   async function toggleAudio() {
-    if (audioEnabled && audio?.state === 'running') {
-      audioEnabled = false;
-      closeAudio();
+    if (audioEnabled) {
+      alerts.setEnabled(false);
       return;
     }
-    audioPending = true;
-    try {
-      const ctx = audio ??= new AudioContext();
-      await ctx.resume();
-      if (audio !== ctx) return;
-      audioEnabled = ctx.state === 'running';
+    alerts.setEnabled(true);
+    if (await alerts.activate()) {
       if (device.printer?.reasons.includes('media-empty-error')) chime(3);
-    } catch {
-      audioEnabled = false;
-      closeAudio();
-      toast('Không bật được âm báo trên trình duyệt này.', 'error');
-    } finally {
-      audioPending = false;
+    } else if (audioEnabled) {
+      toast('Đã lưu âm báo. Chạm vào trang để trình duyệt cho phép phát tiếng.', 'error');
     }
   }
+
+  onMount(() => {
+    const unlock = () => { if (audioSupported && audioEnabled && !audioReady) void alerts.activate(); };
+    document.addEventListener('pointerdown', unlock, { capture: true, passive: true });
+    document.addEventListener('keydown', unlock, true);
+    return () => {
+      document.removeEventListener('pointerdown', unlock, true);
+      document.removeEventListener('keydown', unlock, true);
+      alerts.dispose();
+    };
+  });
 
   onMount(() => {
     const unsubscribe = onState(({ printer: before }) => {
@@ -93,7 +95,7 @@
           chime(1);
       }
     });
-    return () => { unsubscribe(); closeAudio(); };
+    return unsubscribe;
   });
 
   let firmware = $state('Đang đọc…');
@@ -131,7 +133,7 @@
 </script>
 
 <div class="app" class:home={narrow && !current}>
-  <Sidebar {firmware} {audioSupported} {audioEnabled} {audioPending} {toggleAudio} current={current ?? ''} home={narrow && !current} />
+  <Sidebar {firmware} {audioSupported} {audioEnabled} {audioReady} {audioPending} {toggleAudio} current={current ?? ''} home={narrow && !current} />
   {#if current}
     <main>
       {#if narrow}
@@ -139,9 +141,12 @@
           <a class="icon-btn" href="#/" aria-label="Back to the menu"><ArrowLeft size={20} /></a>
           <h1>{TITLES[current]}</h1>
           {#if current === 'printer' && audioSupported}
-            <button class="btn" type="button" onclick={toggleAudio} disabled={audioPending}>
+            <button class="btn" type="button" onclick={toggleAudio} disabled={audioPending && !audioEnabled}>
               {audioEnabled ? 'Tắt âm báo' : 'Bật âm báo'}
             </button>
+            {#if audioEnabled && !audioReady}
+              <span class="audio-hint muted small">Đã lưu âm báo · Chạm vào trang để kích hoạt tiếng.</span>
+            {/if}
           {/if}
         </header>
       {/if}
@@ -198,6 +203,7 @@
     top: 0;
     z-index: 5;
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     padding: 8px 10px;
@@ -207,6 +213,7 @@
     -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--border);
   }
+  .audio-hint { flex-basis: 100%; }
   .topbar h1 {
     font-size: 1.1rem;
   }

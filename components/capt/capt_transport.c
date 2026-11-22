@@ -29,6 +29,11 @@ void capt_paper_out(bool waiting)
     if (current && current->io.paper_out)
         current->io.paper_out(current->io.ctx, waiting);
 }
+void capt_restart_required(bool required)
+{
+    if (current->io.restart_required)
+        current->io.restart_required(current->io.ctx, required);
+}
 _Noreturn void capt_fail(const char *message)
 {
     capt_paper_out(false);
@@ -65,6 +70,9 @@ static void read_exact(uint8_t *buf, size_t n)
 }
 static void send_buffer(void)
 {
+    // Finish an in-flight reply before switching to the abort sequence.
+    if (!current->cleaning_up && current->io.canceled && current->io.canceled(current->io.ctx))
+        capt_fail("CAPT job canceled");
     check();
     if (current->io.write(current->io.ctx, current->buffer, current->used) < 0 ||
         current->io.flush(current->io.ctx) < 0) capt_fail("CAPT USB write failed");

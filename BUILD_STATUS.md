@@ -1,3 +1,7 @@
+## 0.9.9 chính thức
+
+Thay thế bản 0.9.8: giữ nền SPEED từ gói 0146673 và sửa trạng thái lỗi sau kết nối lại USB. Kiểm thử mô phỏng không thay thế kiểm chứng máy thật. Lỗi IPP ngắt sớm ở 512 KB/1 MB vẫn đang điều tra; xem docs/IPP-WINDOWS-CHUNK-INVESTIGATION.md.
+
 ## 0.8.0-vietphuong · vietphuong esp
 
 Brand and support: https://www.facebook.com/leviethoaiphuong.

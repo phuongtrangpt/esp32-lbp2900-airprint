@@ -76,11 +76,51 @@ static void consecutive_jobs(void)
     for(int y=0;y<7016;y++)assert(!d->page_line(recovered,y,NULL));
     assert(!d->page_end(recovered));assert(!d->job_end(recovered));
     assert(f.job_id==44 && f.released_jobs==5 && !f.reserved);
+    assert(!f.discard_before_abort);
     f.refuse_release=1;
     void *j=d->job_begin(d,&link,600,0);assert(j);
     assert(!d->page_begin(j,4961,7016,1));
     for(int y=0;y<7016;y++)assert(!d->page_line(j,y,NULL));
     assert(!d->page_end(j));assert(d->job_end(j)<0);
+}
+
+static void abort_recovery(void)
+{
+    const printer_driver_t *d = &canon_lbp2900_driver;
+    fake_t f = {.strict_session = 1, .next_job_id = 80};
+    printer_io_t link = io(&f);
+    void *j = d->job_begin(d, &link, 300, 0);
+    assert(j && !d->page_begin(j, 2480, 3508, 1));
+    f.canceled = true;
+    assert(!d->job_abort(j));
+    assert(!f.reserved && f.aborts == 1 && !f.restart_needed);
+    f.canceled = false;
+
+    f.refuse_release = 1;
+    j = d->job_begin(d, &link, 300, 0);
+    assert(j && !d->page_begin(j, 2480, 3508, 1));
+    assert(d->job_abort(j) < 0 && f.restart_needed);
+    j = d->job_begin(d, &link, 300, 0);
+    assert(j && d->page_begin(j, 2480, 3508, 1) < 0);
+    assert(d->job_abort(j) < 0 && f.restart_needed);
+
+    // The same simulated printer accepts recovery again, without a USB reset.
+    f.refuse_release = 0;
+    for (int i = 0; i < 3; i++) {
+        j = d->job_begin(d, &link, 300, 0);
+        assert(j && !d->page_begin(j, 2480, 3508, 1));
+        assert(!f.restart_needed);
+        for (int y = 0; y < 3508; y++) assert(!d->page_line(j, y, NULL));
+        assert(!d->page_end(j) && !d->job_end(j));
+    }
+    assert(!f.reserved);
+    j = d->job_begin(d, &link, 300, 0);
+    assert(j && !d->page_begin(j, 2480, 3508, 1));
+    for (int y = 0; y < 3508; y++) assert(!d->page_line(j, y, NULL));
+    assert(!d->page_end(j));
+    f.reject_release_once = 1;
+    assert(d->job_end(j) > 0 && !f.reserved && !f.restart_needed);
+    puts("CAPT recovery: cancel, release rejection, restart warning, and three following jobs");
 }
 static void paper_refill(unsigned confirmation_delay)
 {
@@ -100,12 +140,32 @@ static void paper_refill(unsigned confirmation_delay)
            confirmation_delay);
 }
 
+static void stalled_drain_recovery(void)
+{
+    const printer_driver_t *d = &canon_lbp2900_driver;
+    fake_t f = {.strict_session = 1, .next_job_id = 100};
+    printer_io_t link = io(&f);
+    for (int attempt = 0; attempt < 2; attempt++) {
+        void *j = d->job_begin(d, &link, 300, 0);
+        assert(j && !d->page_begin(j, 2480, 3508, 1));
+        for (int y = 0; y < 3508; y++) assert(!d->page_line(j, y, NULL));
+        assert(!d->page_end(j));
+        f.stall_drain = attempt == 0;
+        assert(d->job_end(j) == (attempt == 0 ? 1 : 0));
+        assert(!f.reserved && !f.restart_needed && f.aborts == 1);
+        assert(f.released_jobs == (unsigned)attempt + 1);
+    }
+    puts("CAPT stalled drain: recovered the reservation and printed the next job on the same connection");
+}
+
 int main(void)
 {
     assert(printer_driver_match(0x04a9,0x2676,"")==&canon_lbp2900_driver);
     for (int dpi=300; dpi<=600; dpi+=300) for(int paper=0;paper<4;paper++) for(int rgb=0;rgb<2;rgb++) lifecycle(paper,rgb,dpi);
     failures();
     consecutive_jobs();
+    abort_recovery();
+    stalled_drain_recovery();
     paper_refill(0);
     paper_refill(8);
     puts("CAPT sessions: 3 consecutive jobs on one device, incrementing IDs 41-43, delayed delivery and rejected ReleaseUnit passed");

@@ -1,3 +1,7 @@
+v0.9.9 chính thức: Canon LBP2900 giữ tối ưu SPEED và sửa cảnh báo treo còn lưu sau khi tắt/bật máy in. Làm mới trạng thái khi USB kết nối lại, chặn phiên cũ bật lại cảnh báo.
+
+Lưu ý: một số lệnh in qua IPP từ Windows có thể ngắt sớm ở 512 KB/1 MB; lỗi này đang được điều tra, chưa xác nhận đã khắc phục. Nếu gặp lỗi, tải nhật ký trước khi ngắt nguồn ESP. Đã kiểm thử mô phỏng CAPT, HTTP chunked, thiếu RAM và phục hồi.
+
 v0.9.8 chuẩn cho Canon LBP2900. IPP in 300 dpi, trang in cho chọn 600 dpi. Đã thử chờ giấy, in tiếp và âm báo trên máy thật. Bấm Bật âm báo trên trang in.
 
 v0.9.7 thử nghiệm: Canon LBP2900 hỗ trợ 1 lệnh đang in và 2 lệnh chờ. Các lệnh tự in theo thứ tự gửi. Đã kiểm thử mô phỏng, cần thử thêm trên máy thật.

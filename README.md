@@ -7,7 +7,7 @@ Thêm khổ A5 (148×210 mm), A6 (105×148 mm) vào driver, AirPrint/IPP và tra
 | Bản | Model / điều kiện | Trạng thái |
 |---|---|---|
 | hp | HP LaserJet P1006 | Bản riêng, có file HP nhúng |
-| canon | Canon LBP2900 | CAPT thử nghiệm |
+| canon | Canon LBP2900 | CAPT · Chính thức 0.9.9 |
 | pixma | 23 dòng Canon PIXMA trong danh sách trên web | Driver có sẵn; bản ghép mới chưa thử giấy thật |
 | standard | HP 1320, P2015, P2055 là ứng viên; USB phải khai báo PCL5 hoặc PostScript | Thử nghiệm, in một mặt đen trắng |
 
@@ -81,7 +81,7 @@ Trang /hp-firmware vẫn dùng được khi cần file riêng.
 
 ### Nạp offline Windows, không cài ứng dụng
 
-[Tải ZIP v0.9.8](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.9.8.zip).
+[Tải ZIP v0.9.9](https://phuongtrangpt.github.io/esp32-lbp2900-airprint/downloads/ESP32-PrintServer-Offline-v0.9.9.zip).
 Giải nén toàn bộ vào thư mục có quyền ghi, chạy **START.cmd**, mở bằng Chrome/Edge.
 Chọn đúng HP/Canon, cắm UART/COM, chọn cổng và nạp theo tiến trình. Không cần Python,
 Arduino IDE hay Internet cho trang nạp; **bản HP đã có sẵn dữ liệu máy in**.
@@ -267,3 +267,9 @@ Giữ nguyên bản quyền MIT của firmware gốc trong `LICENSE.upstream-MIT
 commit và thay đổi ghi trong `components/capt/UPSTREAM.md`. Phải cung cấp mã nguồn
 và thông báo bản quyền tương ứng khi phân phối firmware. Dự án cộng đồng, không
 được Canon bảo trợ hoặc chứng nhận.
+
+## Bản chính thức 0.9.9
+
+Canon LBP2900 giữ tối ưu SPEED, xóa cảnh báo treo cũ khi USB kết nối lại và bỏ qua cập nhật trạng thái từ phiên in cũ. Bản chính thức này thay thế 0.9.8 trên web, OTA và gói offline.
+
+Lỗi đang điều tra: một số lệnh IPP Windows bị kết thúc sớm ở 512 KB/1 MB; chưa xác nhận đã khắc phục. Xem docs/IPP-WINDOWS-CHUNK-INVESTIGATION.md.

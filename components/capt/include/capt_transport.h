@@ -13,11 +13,13 @@ typedef struct {
     uint16_t command;
     uint64_t deadline_ms, last_yield_ms;
     const char *error;
+    bool cleaning_up;
 } capt_transport_t;
 void capt_bind(capt_transport_t *t);
 void capt_deadline(capt_transport_t *t, unsigned timeout_ms);
 void capt_current_deadline(unsigned timeout_ms);
 void capt_paper_out(bool waiting);
+void capt_restart_required(bool required);
 _Noreturn void capt_fail(const char *message);
 
 // Portable protocol diagnostics; ESP routes these to the shared log ring.

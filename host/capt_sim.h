@@ -9,6 +9,9 @@ typedef struct {
     unsigned paper_out_page, paper_out_phase, paper_refill_polls, paper_pauses, paper_resumes;
     unsigned paper_out_confirmation_delay;
     unsigned strict_session, reserved, job_id, next_job_id, session_end, drain_seen, cleanup_step, released_jobs, refuse_release;
+    unsigned aborts, restart_needed, reject_release_once, stall_drain;
+    unsigned reservation_rejected, discard_before_abort;
+    bool canceled;
     unsigned input_scale;
     unsigned row, height, left, top, crop_width, force_full, paper_code, paper_width, paper_height;
 } fake_t;
@@ -17,6 +20,7 @@ static void put(uint8_t *p, unsigned v) { p[0]=v; p[1]=v>>8; }
 static int write_device(void *ctx, const uint8_t *data, size_t n)
 {
     fake_t *f=ctx;
+    if (f->fail_read && f->pos != f->len) return -1;
     assert(n>=4 && le(data+2)==n);
     unsigned cmd=le(data); const uint8_t *p=data+4;
     f->bytes+=n;
@@ -66,8 +70,12 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         if (cmd==CAPT_SET_JOB_INFO2) {
             unsigned flag=p[16];
             assert(le(p+18)==f->job_id);
-            if (flag==CAPT_JOBFLAG_END_LIN) { f->session_end=1; f->delivery_wait=2; }
+            if (flag==CAPT_JOBFLAG_END_LIN) { f->session_end=1; f->delivery_wait=f->stall_drain ? 0 : 2; }
+            if (flag==CAPT_JOBFLAG_ABORT) {
+                f->session_end=1; f->aborts++; f->stall_drain=0; f->reservation_rejected=0;
+            }
         }
+        if (cmd==CAPT_DISCARD_DATA && f->reservation_rejected) f->discard_before_abort++;
         if (f->session_end) {
             if (cmd==CAPT_GET_EXTENDED_STATUS) f->drain_seen=1;
             if (cmd==CAPT_CLEAR_ERROR && f->drain_seen) { assert(!f->delivery_wait); f->cleanup_step=1; }
@@ -107,7 +115,7 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
     if(cmd==CAPT_GET_PRINTER_INFO) { put(s+6,65280); put(s+8,64); }
     if(cmd==CAPT_RESERVE_UNIT) {
         if (f->strict_session) {
-            if (f->reserved) s[0]=0x8c;
+            if (f->reserved) { s[0]=0x8c; f->reservation_rejected=1; }
             else {
                 f->reserved=1; f->job_id=++f->next_job_id;
                 f->pages=f->printed=f->session_end=f->drain_seen=f->cleanup_step=0;
@@ -116,7 +124,8 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         } else put(s+2,1);
     }
     if(cmd==CAPT_RELEASE_UNIT && f->strict_session) {
-        if (f->refuse_release || !f->reserved || le(p)!=f->job_id || f->cleanup_step!=3) s[0]=0x8c;
+        if (f->reject_release_once) { f->reject_release_once=0; s[0]=0x88; }
+        else if (f->refuse_release || !f->reserved || le(p)!=f->job_id || f->cleanup_step!=3) s[0]=0x8c;
         else { f->reserved=0; f->released_jobs++; }
     }
     if(cmd==CAPT_GET_BASIC_STATUS || cmd==CAPT_GET_EXTENDED_STATUS) {
@@ -140,6 +149,8 @@ static int write_device(void *ctx, const uint8_t *data, size_t n)
         s[8]=CAPT_AUX_PAPER_DELIVERY;
         f->delivery_wait--;
     }
+    if (cmd==CAPT_GET_EXTENDED_STATUS && f->strict_session && f->session_end && f->stall_drain)
+        put(s+20,0);
     f->len=payload+4;
     return 0;
 }
@@ -159,4 +170,6 @@ static void paper_out(void *ctx, bool waiting)
     if (waiting) f->paper_pauses++;
     else if (f->paper_pauses > f->paper_resumes) f->paper_resumes++;
 }
-static printer_io_t io(fake_t *f) { return (printer_io_t){.ctx=f,.write=write_device,.read=read_device,.flush=flush_device,.paper_out=paper_out}; }
+static bool canceled(void *ctx) { return ((fake_t *)ctx)->canceled; }
+static void restart_required(void *ctx, bool required) { ((fake_t *)ctx)->restart_needed=required; }
+static printer_io_t io(fake_t *f) { return (printer_io_t){.ctx=f,.write=write_device,.read=read_device,.flush=flush_device,.paper_out=paper_out,.canceled=canceled,.restart_required=restart_required}; }

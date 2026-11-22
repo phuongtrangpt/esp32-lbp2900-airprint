@@ -50,15 +50,21 @@
 #define CONN_STACK_SIZE (12 * 1024)     // the print pipeline runs on this stack
 #define LISTEN_STACK_SIZE (4 * 1024)
 #else
+#ifdef AIRPRINT_ESP_POLICY_TEST
+#define MAX_CONNECTIONS 3
+#else
 #define MAX_CONNECTIONS 8
+#endif
 #define CONN_STACK_SIZE (512 * 1024)    // host build runs with sanitizers
 #define LISTEN_STACK_SIZE (256 * 1024)
 #endif
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(AIRPRINT_ESP_POLICY_TEST)
 #define IDLE_TIMEOUT_S 4
 #else
 #define IDLE_TIMEOUT_S 15
 #endif
+#define HTTP_MIN_INTERNAL_FREE (36 * 1024)
+#define HTTP_MIN_INTERNAL_LARGEST (14 * 1024)
 #define ACTIVE_IPP_TIMEOUT_S 120
 #define ACTIVE_IPP_SLICE_S 1
 #define MAX_JOBS 10
@@ -2088,7 +2094,7 @@ static void *conn_thread(void *arg)
         }
         if (hl < 0)
             break;
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(AIRPRINT_ESP_POLICY_TEST)
         // A long-lived idle HTTP/1.1 keep-alive occupies an entire FreeRTOS
         // pthread stack. Close after each request on the microcontroller;
         // IPP clients may open a fresh connection for their next request.
@@ -2158,7 +2164,19 @@ static void *listen_thread(void *arg)
         // pipeline, Wi-Fi, or USB tasks.
         size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
         size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        bool heap_low = internal_free < (36 * 1024) || internal_largest < (14 * 1024);
+        bool heap_low = internal_free < HTTP_MIN_INTERNAL_FREE || internal_largest < HTTP_MIN_INTERNAL_LARGEST;
+#elif defined(AIRPRINT_ESP_POLICY_TEST)
+        // Native-only fault injection. The production firmware never reads
+        // environment variables or files to determine its heap budget.
+        size_t internal_free = 72495, internal_largest = 31744;
+        const char *heap_path = getenv("AIRPRINT_TEST_HEAP_FILE");
+        FILE *heap = heap_path ? fopen(heap_path, "r") : NULL;
+        if (heap) {
+            if (fscanf(heap, "%zu %zu", &internal_free, &internal_largest) != 2)
+                internal_free = internal_largest = 0;
+            fclose(heap);
+        }
+        bool heap_low = internal_free < HTTP_MIN_INTERNAL_FREE || internal_largest < HTTP_MIN_INTERNAL_LARGEST;
 #else
         bool heap_low = false;
 #endif
@@ -2167,9 +2185,11 @@ static void *listen_thread(void *arg)
             int active = s_connections;
 #ifdef ESP_PLATFORM
             bool report = (++s_refused_connections % 32) == 1;
+#elif defined(AIRPRINT_ESP_POLICY_TEST)
+            bool report = true;
 #endif
             pthread_mutex_unlock(&s_lock);
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(AIRPRINT_ESP_POLICY_TEST)
             if (report)
                 LOGW("HTTP connection refused (%s; port=%u active=%d max=%d; internal=%u largest=%u)",
                      heap_low ? "low internal RAM" : "worker limit", (unsigned)port,

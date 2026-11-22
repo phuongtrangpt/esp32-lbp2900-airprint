@@ -77,3 +77,7 @@ mono_host: mono_host.c ../components/printers/mono_raster.h
 
 reconnect_host: reconnect_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS)
 	$(CC) $(CFLAGS) $(INC) reconnect_host.c $(BJL) $(filter-out ../components/airprint/airprint.c,$(AIRPRINT)) $(PRINTERS) -lm -lpthread -o $@
+
+# Native sanitizer build with ESP HTTP limits and injected heap admission.
+airprint_esp_policy_host: airprint_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED)
+	$(CC) $(CFLAGS) -DAIRPRINT_ESP_POLICY_TEST $(INC) airprint_host.c $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED) -lm -lpthread -o $@

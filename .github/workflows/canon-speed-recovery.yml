@@ -35,6 +35,10 @@ jobs:
           TEST_CAPT_PAGES=100 python tools/test_capt_ipp.py
           python tools/test_capt_ipp_transport.py
           python tools/test_small_papers.py
+      - name: Repeat ESP HTTP admission policy tests
+        run: |
+          make -C host airprint_esp_policy_host
+          python tools/test_capt_esp_policy.py
       - name: Validate web and device pages
         run: |
           node tools/test_device_pages.mjs

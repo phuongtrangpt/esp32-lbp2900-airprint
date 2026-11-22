@@ -32,3 +32,36 @@ Windows defect follows from these tests. The refusal's causal connection to
 the failed uploads is not established by the current diagnostic.
 
 No firmware change or new device binary is claimed by this investigation.
+
+## ESP HTTP admission model
+
+Added a separate `host/airprint_esp_policy_host` sanitizer build. A native-only
+compile flag selects the same three-worker limit, four-second idle timeout and
+close-after-request behavior as ESP. The same named heap thresholds are used
+for real ESP heap measurements and injected native measurements.
+
+`python3 tools/test_capt_esp_policy.py` passed five independent server runs:
+- 15 complete chunked jobs, 60 pages; each input document is 5464088 bytes.
+- 512 KiB and 1 MiB chunks with a slowed simulated printer.
+- After starting the real print pipeline, set heap admission to physical log
+  snapshots: free=33323/largest=28672 and free=35211/largest=31744.
+- Also inject fragmentation: free=50000/largest=14335.
+- Verify control sockets really close without a response while the existing
+  print socket delivers the remaining document, final chunk and success reply.
+- Verify a fourth concurrent socket is refused; verify HTTP Connection: close
+  is sent even when the request asks for keep-alive.
+- Deliberate document truncation still returns IPP 0x0411 in each run.
+
+This reproduces the connection refusal but does not reproduce spontaneous
+truncation of the active print stream. The low-heap threshold alone is not
+sufficient to cause that failure in this model. It is not a validation of the
+ESP allocator, task stack consumption, Xtensa CPU, DMA, Wi-Fi radio, USB host or
+lwIP; those remain untested. No physical device was connected or flashed.
+The test-only build retains native sanitizer stack sizes, and injected heap
+numbers affect admission only: they do not impose a real process memory limit.
+No runtime dependency on environment variables or heap files is added to ESP.
+
+Repeated after sharing the production heap threshold constants: another five
+server runs / 15 complete jobs / 60 pages passed. Combined policy runs: ten
+independent processes, 30 complete jobs / 120 pages, plus ten deliberate
+truncation checks. No firmware binary was changed or delivered in this step.

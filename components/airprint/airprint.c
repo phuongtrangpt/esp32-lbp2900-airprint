@@ -50,15 +50,21 @@
 #define CONN_STACK_SIZE (12 * 1024)     // the print pipeline runs on this stack
 #define LISTEN_STACK_SIZE (4 * 1024)
 #else
+#ifdef AIRPRINT_ESP_POLICY_TEST
+#define MAX_CONNECTIONS 3
+#else
 #define MAX_CONNECTIONS 8
+#endif
 #define CONN_STACK_SIZE (512 * 1024)    // host build runs with sanitizers
 #define LISTEN_STACK_SIZE (256 * 1024)
 #endif
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(AIRPRINT_ESP_POLICY_TEST)
 #define IDLE_TIMEOUT_S 4
 #else
 #define IDLE_TIMEOUT_S 15
 #endif
+#define HTTP_MIN_INTERNAL_FREE (36 * 1024)
+#define HTTP_MIN_INTERNAL_LARGEST (14 * 1024)
 #define ACTIVE_IPP_TIMEOUT_S 120
 #define ACTIVE_IPP_SLICE_S 1
 #define MAX_JOBS 10
@@ -112,6 +118,18 @@ static time_t s_start;
 static int s_connections;
 static atomic_bool s_waiting_for_paper;
 static atomic_bool s_capt_restart_required;
+static pthread_mutex_t s_link_lock = PTHREAD_MUTEX_INITIALIZER;
+static unsigned s_link_generation;
+
+void airprint_printer_reconnected(void)
+{
+    pthread_mutex_lock(&s_link_lock);
+    ++s_link_generation;
+    atomic_store(&s_capt_restart_required, false);
+    atomic_store(&s_waiting_for_paper, false);
+    pthread_mutex_unlock(&s_link_lock);
+}
+
 #ifdef ESP_PLATFORM
 static unsigned s_refused_connections;
 #endif
@@ -1087,6 +1105,7 @@ typedef struct {
     uint32_t bytes_out;         // printer data so far
     printer_io_t io;
     void *drv_job;              // the driver's job, once the first page started
+    unsigned link_generation;  // reject status callbacks from an unplugged session
     int dpi;
     int downsample_width, downsample_height, downsample_bpp;
     uint8_t *downsample_row;
@@ -1095,8 +1114,11 @@ typedef struct {
 
 static void pipe_paper_out(void *ctx, bool waiting)
 {
-    (void)ctx;
-    atomic_store(&s_waiting_for_paper, waiting);
+    pipe_t *p = ctx;
+    pthread_mutex_lock(&s_link_lock);
+    if (p->link_generation == s_link_generation)
+        atomic_store(&s_waiting_for_paper, waiting);
+    pthread_mutex_unlock(&s_link_lock);
 }
 
 static bool pipe_canceled(void *ctx)
@@ -1107,8 +1129,11 @@ static bool pipe_canceled(void *ctx)
 
 static void pipe_restart_required(void *ctx, bool required)
 {
-    (void)ctx;
-    atomic_store(&s_capt_restart_required, required);
+    pipe_t *p = ctx;
+    pthread_mutex_lock(&s_link_lock);
+    if (p->link_generation == s_link_generation)
+        atomic_store(&s_capt_restart_required, required);
+    pthread_mutex_unlock(&s_link_lock);
 }
 
 static int pipe_write(void *ctx, const uint8_t *data, size_t len)
@@ -1326,6 +1351,11 @@ static int print_document(conn_t *c, job_t *j)
         return canceled ? IPP_OK : IPP_INTERNAL_ERROR;
     }
     p->job = j;
+    // job_open may wait for USB recovery. Capture the connection it actually
+    // acquired, rather than the disconnected generation before that wait.
+    pthread_mutex_lock(&s_link_lock);
+    p->link_generation = s_link_generation;
+    pthread_mutex_unlock(&s_link_lock);
     doc_reader_t rd = {.c = c, .job = j};
     raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
@@ -1336,6 +1366,8 @@ static int print_document(conn_t *c, job_t *j)
     }
     int r = j->cancel ? 0 : raster_decode(doc_read, &rd, &cb, p);
     if (c && r == RASTER_ERR_IO && !j->cancel) {
+        if (c->chunked && c->body_eof && !c->body_failed)
+            LOGW("job %d: IPP upload sent its final HTTP chunk before the raster was complete", j->id);
         LOGW("job %d: raster stream truncated: recv=%lld bytes, pending HTTP body=%lld, "
              "eof=%d, chunked=%d, remaining buffered=%u",
              j->id, (long long)j->bytes, (long long)c->remaining,
@@ -1376,7 +1408,7 @@ static int print_document(conn_t *c, job_t *j)
         }
         LOGI("job %d: printer finalization %.3f s", j->id, (now_us() - t_end) / 1e6);
     }
-    atomic_store(&s_waiting_for_paper, false);
+    pipe_paper_out(p, false);
     close_printer(j, link_ok);
 
     // A counted URF stream can finish decoding before the HTTP body ends.
@@ -1853,9 +1885,14 @@ static void get_status_cached(airprint_status_t *st)
     static pthread_mutex_t cache_lock = PTHREAD_MUTEX_INITIALIZER;
     static airprint_status_t cached;
     static time_t cached_at;
+    static unsigned cached_generation;
     time_t now = time(NULL);
     pthread_mutex_lock(&cache_lock);
-    if (!cached_at || now - cached_at >= STATUS_REFRESH_S || now < cached_at) {
+    pthread_mutex_lock(&s_link_lock);
+    unsigned generation = s_link_generation;
+    pthread_mutex_unlock(&s_link_lock);
+    if (!cached_at || cached_generation != generation || now - cached_at >= STATUS_REFRESH_S || now < cached_at) {
+        cached_generation = generation;
         get_status(&cached);
         cached_at = now;
     }
@@ -2057,7 +2094,7 @@ static void *conn_thread(void *arg)
         }
         if (hl < 0)
             break;
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(AIRPRINT_ESP_POLICY_TEST)
         // A long-lived idle HTTP/1.1 keep-alive occupies an entire FreeRTOS
         // pthread stack. Close after each request on the microcontroller;
         // IPP clients may open a fresh connection for their next request.
@@ -2127,7 +2164,19 @@ static void *listen_thread(void *arg)
         // pipeline, Wi-Fi, or USB tasks.
         size_t internal_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
         size_t internal_largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        bool heap_low = internal_free < (36 * 1024) || internal_largest < (14 * 1024);
+        bool heap_low = internal_free < HTTP_MIN_INTERNAL_FREE || internal_largest < HTTP_MIN_INTERNAL_LARGEST;
+#elif defined(AIRPRINT_ESP_POLICY_TEST)
+        // Native-only fault injection. The production firmware never reads
+        // environment variables or files to determine its heap budget.
+        size_t internal_free = 72495, internal_largest = 31744;
+        const char *heap_path = getenv("AIRPRINT_TEST_HEAP_FILE");
+        FILE *heap = heap_path ? fopen(heap_path, "r") : NULL;
+        if (heap) {
+            if (fscanf(heap, "%zu %zu", &internal_free, &internal_largest) != 2)
+                internal_free = internal_largest = 0;
+            fclose(heap);
+        }
+        bool heap_low = internal_free < HTTP_MIN_INTERNAL_FREE || internal_largest < HTTP_MIN_INTERNAL_LARGEST;
 #else
         bool heap_low = false;
 #endif
@@ -2136,9 +2185,11 @@ static void *listen_thread(void *arg)
             int active = s_connections;
 #ifdef ESP_PLATFORM
             bool report = (++s_refused_connections % 32) == 1;
+#elif defined(AIRPRINT_ESP_POLICY_TEST)
+            bool report = true;
 #endif
             pthread_mutex_unlock(&s_lock);
-#ifdef ESP_PLATFORM
+#if defined(ESP_PLATFORM) || defined(AIRPRINT_ESP_POLICY_TEST)
             if (report)
                 LOGW("HTTP connection refused (%s; port=%u active=%d max=%d; internal=%u largest=%u)",
                      heap_low ? "low internal RAM" : "worker limit", (unsigned)port,

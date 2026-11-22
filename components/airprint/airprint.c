@@ -1319,9 +1319,6 @@ static void close_printer(job_t *j, bool link_ok)
 // Prints the document for a claimed job. Returns an IPP status.
 static int print_document(conn_t *c, job_t *j)
 {
-    pthread_mutex_lock(&s_link_lock);
-    unsigned link_generation = s_link_generation;
-    pthread_mutex_unlock(&s_link_lock);
     bool opened = !j->cancel && (!s_cfg->job_open || s_cfg->job_open(s_cfg->ctx) == 0);
     pthread_mutex_lock(&s_lock);
     if (!opened) {
@@ -1348,7 +1345,11 @@ static int print_document(conn_t *c, job_t *j)
         return canceled ? IPP_OK : IPP_INTERNAL_ERROR;
     }
     p->job = j;
-    p->link_generation = link_generation;
+    // job_open may wait for USB recovery. Capture the connection it actually
+    // acquired, rather than the disconnected generation before that wait.
+    pthread_mutex_lock(&s_link_lock);
+    p->link_generation = s_link_generation;
+    pthread_mutex_unlock(&s_link_lock);
     doc_reader_t rd = {.c = c, .job = j};
     raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};

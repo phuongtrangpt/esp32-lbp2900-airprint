@@ -18,6 +18,10 @@ Validation in the development container:
 - make -C host all: passed (existing vendor warnings).
 - ASAN_OPTIONS=detect_leaks=0 host/reconnect_host: passed, including immediate
   cache refresh, stale cleanup callbacks and new-session fault reporting.
+  Also exercised a real simulated CAPT ReleaseUnit failure, physical restart
+  and three consecutive successful jobs on the fresh connection.
+- Capture the generation after job_open, which may wait for USB recovery; a
+  queued job must report faults against the connection it actually acquired.
 - ASAN_OPTIONS=detect_leaks=0 host/capt_host: passed.
 - python3 tools/test_capt_ipp.py: passed.
 - python3 tools/test_capt_scheduler.py: passed.

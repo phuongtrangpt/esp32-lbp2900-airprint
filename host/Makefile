@@ -75,5 +75,5 @@ capt_host hp_host hp_p1008_host airprint_host memory_host standard_host: ../comp
 mono_host: mono_host.c ../components/printers/mono_raster.h
 	$(CC) $(CFLAGS) mono_host.c -o $@
 
-reconnect_host: reconnect_host.c $(BJL) $(AIRPRINT) $(PRINTERS)
+reconnect_host: reconnect_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS)
 	$(CC) $(CFLAGS) $(INC) reconnect_host.c $(BJL) $(filter-out ../components/airprint/airprint.c,$(AIRPRINT)) $(PRINTERS) -lm -lpthread -o $@

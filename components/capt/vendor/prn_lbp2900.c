@@ -237,9 +237,9 @@ static bool capt_abort_session(void)
  * ReserveUnit with error recovery (all job prologues).
  *
  * ReserveUnit reply byte 0: if bit 0x80 is set the printer is in an error
- * state (e.g. a stale job from a previous run).  Perform the canonical clear
- * sequence (GoOffline → DiscardData → ClearMisPrint → ClearError → GoOnline)
- * and retry once.  Returns the job ID extracted from buf[2:3].
+ * state (e.g. a stale job from a previous run). Release the known reservation
+ * before falling back to the generic clear and retry. Returns the job ID
+ * extracted from buf[2:3].
  */
 static uint16_t capt_reserve_unit(struct printer_state_s *state)
 {
@@ -252,25 +252,23 @@ static uint16_t capt_reserve_unit(struct printer_state_s *state)
 		capt_log( "DEBUG: CAPT: ReserveUnit error flag 0x%02x — clearing and retrying\n",
 			buf[0]);
 
-		/* Go offline first if not already offline */
-		const struct capt_status_s *status = lbp2900_get_status(state->ops);
-		if (!FLAG(status, CAPT_FL_OFFLINE)) {
-			capt_sendrecv(CAPT_GO_OFFLINE, lbp3000_job_init, ARRAY_SIZE(lbp3000_job_init), NULL, 0);
-			for (int i = 0; i < 50; i++) {
-				status = lbp2900_get_status(state->ops);
-				if (FLAG(status, CAPT_FL_OFFLINE))
-					break;
-				usleep(100000);
+		/* With a known job, use its ID before issuing a jobless offline
+		 * command. Reconnecting USB can leave that reservation in Canon. */
+		if (!job || !capt_abort_session()) {
+			const struct capt_status_s *status = lbp2900_get_status(state->ops);
+			if (!FLAG(status, CAPT_FL_OFFLINE)) {
+				capt_sendrecv(CAPT_GO_OFFLINE, lbp3000_job_init, ARRAY_SIZE(lbp3000_job_init), NULL, 0);
+				for (int i = 0; i < 50; i++) {
+					status = lbp2900_get_status(state->ops);
+					if (FLAG(status, CAPT_FL_OFFLINE))
+						break;
+					usleep(100000);
+				}
 			}
+			capt_sendrecv(CAPT_DISCARD_DATA, NULL, 0, NULL, 0);
+			capt_sendrecv(CAPT_CLEAR_MIS_PRINT, NULL, 0, NULL, 0);
+			capt_sendrecv(CAPT_CLEAR_ERROR, NULL, 0, NULL, 0);
 		}
-		capt_sendrecv(CAPT_DISCARD_DATA, NULL, 0, NULL, 0);
-		capt_sendrecv(CAPT_CLEAR_MIS_PRINT, NULL, 0, NULL, 0);
-		capt_sendrecv(CAPT_CLEAR_ERROR, NULL, 0, NULL, 0);
-        /* A failed reservation may be a stale known job. Clear/online alone
-         * does not release its ownership. Do not guess an ID after a reboot. */
-        if (job) {
-            (void)capt_abort_session(); // the following ReserveUnit validates recovery
-        }
 		capt_sendrecv(CAPT_GO_ONLINE, magicbuf_linux_online, ARRAY_SIZE(magicbuf_linux_online), NULL, 0);
 		lbp2900_wait_ready(state->ops);
 
@@ -864,11 +862,22 @@ static void lbp2900_job_epilogue(struct printer_state_s *state)
      * info/lbp3000-protocol.md sections 2.7, 2.8 and 3.1.2. */
     capt_get_xstatus_only();
     send_job_start(CAPT_JOBFLAG_END_LIN);
-    unsigned polls = 0;
+    unsigned polls = 0, idle_polls = 0, completed = 0;
     for (;;) {
         capt_sendrecv(CAPT_GET_INPUT_STATUS, NULL, 0, NULL, 0);
         const struct capt_status_s *status = capt_get_xstatus_only();
-        if (status->page_completed >= final_page && !(status->aux & CAPT_AUX_PAPER_DELIVERY)) break;
+        bool delivering = status->aux & CAPT_AUX_PAPER_DELIVERY;
+        if (status->page_completed >= final_page && !delivering) break;
+        if (delivering || status->page_completed != completed) {
+            idle_polls = 0;
+            completed = status->page_completed;
+        } else if (++idle_polls >= 150) {
+            // No sheet delivery or counter progress for at least 15 seconds.
+            // The driver's error handler aborts the known job and verifies ReleaseUnit.
+            capt_log("WARNING: CAPT: stalled drain job=%u printed=%u target=%u\n",
+                     job, completed, final_page);
+            capt_fail("CAPT page count stopped progressing");
+        }
         if ((++polls % 50) == 0)
             capt_log("INFO: CAPT: draining job=%u printed=%u target=%u aux=0x%02x\n",
                      job, status->page_completed, final_page, status->aux);

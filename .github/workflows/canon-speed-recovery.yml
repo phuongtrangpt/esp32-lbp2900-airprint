@@ -1,0 +1,53 @@
+name: Canon SPEED recovery test package
+on:
+  push:
+    branches: [fix/speed0146673-reconnect]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  canon-speed:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Build Canon SPEED firmware
+        run: |
+          python -m pip install platformio==6.2.0 esptool==4.9.0
+          pio run -e canon
+          python tools/package_firmware.py --env canon --out firmware/canon
+      - name: Build portable tests
+        run: make -C host all
+      - name: Test CAPT recovery, USB reconnect, IPP and transport
+        run: |
+          ASAN_OPTIONS=detect_leaks=0 host/reconnect_host
+          ASAN_OPTIONS=detect_leaks=0 host/capt_host
+          python tools/test_capt_scheduler.py
+          TEST_CAPT_PAGES=100 python tools/test_capt_ipp.py
+          python tools/test_capt_ipp_transport.py
+          python tools/test_small_papers.py
+      - name: Validate web and device pages
+        run: |
+          node tools/test_device_pages.mjs
+          npm --prefix web run check
+          npm --prefix web test
+      - name: Package matching source and flash script
+        run: |
+          cp tools/flash.py firmware/canon/flash.py
+          cp docs/CAPT-RECONNECT-FIX.md firmware/canon/CAPT-RECONNECT-FIX.md
+          git archive --format=tar.gz --prefix=source/ HEAD > firmware/canon/source-code.tar.gz
+          git rev-parse HEAD > firmware/canon/BUILD_COMMIT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LBP2900-SPEED-USB-RECONNECT-FIX1
+          path: firmware/canon/
+          if-no-files-found: error

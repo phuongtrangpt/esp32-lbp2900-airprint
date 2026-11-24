@@ -1,0 +1,46 @@
+name: HP RAW handshake test package
+on:
+  push:
+    branches: [fix/hp-raw-handshake]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  hp:
+    runs-on: ubuntu-24.04
+    env:
+      FIRMWARE_UPDATE_BASE_URL: ${{ vars.FIRMWARE_UPDATE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Verify Canon and IPP are untouched
+        run: git diff --exit-code 3a9b72b4bbcb6d18a941660ccf9ab162d539ab4a -- components src/usb_printer.c src/airprint_esp.c src/main.c src/wifi.c src/setup_portal.c platformio.ini
+      - name: Compare old and new forwarding with a status-waiting client
+        run: python tools/test_hp_raw_handshake.py
+      - name: Build HP only
+        run: |
+          python -m pip install platformio==6.2.0 esptool==4.9.0
+          pio run -e hp
+          python tools/package_firmware.py --env hp --out firmware/hp
+      - name: Package USB script and matching source
+        run: |
+          cp tools/flash.py firmware/hp/flash.py
+          cp docs/HP-RAW-HANDSHAKE.md firmware/hp/HUONG-DAN.txt
+          git archive --format=tar.gz --prefix=source/ HEAD > firmware/hp/source-code.tar.gz
+          git rev-parse HEAD > firmware/hp/BUILD_COMMIT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HP-P1006-RAWFIX2
+          path: firmware/hp/
+          if-no-files-found: error

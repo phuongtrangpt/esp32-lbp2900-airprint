@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -20,6 +21,7 @@
 
 #define RAW_PORT 9100
 #define RAW_IDLE_SECONDS 30
+#define RAW_REPLY_POLL_MS 50
 #define RAW_PREAMBLE_SECONDS 60
 #define RAW_BUFFER_SIZE 4096
 
@@ -43,13 +45,22 @@ static esp_err_t timed_usb_flush(int64_t *elapsed_us)
     return result;
 }
 
-static esp_err_t relay_reply(int fd)
+static esp_err_t relay_reply(int fd, bool pre_xqx)
 {
     uint8_t reply[512];
     int count = usb_printer_raw_poll_reply(reply, sizeof(reply));
     if (count < 0) {
         ESP_LOGW(TAG, "RAW printer reply unavailable");
         return ESP_FAIL;
+    }
+    // Before XQX these are printer status replies, not document payload.
+    // A bounded prefix helps identify the HP monitor handshake failure.
+    if (pre_xqx && count > 0) {
+        char hex[97];
+        int shown = count < 32 ? count : 32;
+        for (int i = 0; i < shown; i++)
+            snprintf(hex + 3*i, sizeof(hex) - 3*i, "%02x ", reply[i]);
+        ESP_LOGI(TAG, "RAW handshake USB reply (%d/%d bytes): %s", shown, count, hex);
     }
     for (int sent = 0; sent < count;) {
         ssize_t n = send(fd, reply + sent, (size_t)(count - sent), 0);
@@ -76,9 +87,13 @@ static void forward_job(int fd, uint8_t *buffer)
     if (count <= 0)
         return;
 
-    timeout.tv_sec = 1;
+    // HP's port monitor can wait for a USB status reply before sending XQX.
+    // Poll that reply promptly instead of adding two one-second TCP waits.
+    timeout.tv_sec = 0;
+    timeout.tv_usec = RAW_REPLY_POLL_MS * 1000;
+    struct timeval send_timeout = {.tv_sec = 1};
     if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0 ||
-        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout)) != 0) {
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &send_timeout, sizeof(send_timeout)) != 0) {
         ESP_LOGW(TAG, "Cannot set RAW polling timeout: errno=%d", errno);
         return;
     }
@@ -101,12 +116,16 @@ static void forward_job(int fd, uint8_t *buffer)
     int64_t tcp_us = 0, usb_us = 0;
     int64_t page_tcp_us = 0, page_usb_us = 0;
     TickType_t job_start = xTaskGetTickCount();
+    bool query_timeout = false;
     ESP_LOGI(TAG, "RAW job started, first read %d bytes", (int)count);
     for (;;) {
         if (xqx.state == XQX_PREAMBLE &&
             (TickType_t)(xTaskGetTickCount() - job_start) >= pdMS_TO_TICKS(RAW_PREAMBLE_SECONDS * 1000)) {
             ESP_LOGW(TAG, "RAW timed out waiting for XQX start after %zu bytes", sent);
             result = ESP_ERR_TIMEOUT;
+            // A control-only PJL session has not started a print document.
+            // Do not soft-reset HP merely because its monitor kept polling.
+            query_timeout = true; // UEL shares the XQX escape prefix; a prefix is not a document.
             break;
         }
         int64_t write_start = esp_timer_get_time();
@@ -140,7 +159,7 @@ static void forward_job(int fd, uint8_t *buffer)
                 }
                 drained = true;
             }
-            result = relay_reply(fd);
+            result = relay_reply(fd, xqx.state == XQX_PREAMBLE);
             if (result != ESP_OK)
                 break;
             if ((TickType_t)(xTaskGetTickCount() - idle_start) >= pdMS_TO_TICKS(RAW_IDLE_SECONDS * 1000)) {
@@ -157,6 +176,7 @@ static void forward_job(int fd, uint8_t *buffer)
                 break;
             }
             ESP_LOGW(TAG, "RAW upload stopped after %zu bytes: errno=%d", sent, errno);
+            query_timeout = errno == ETIMEDOUT && xqx.state == XQX_PREAMBLE;
             result = ESP_FAIL;
             break;
         }
@@ -165,7 +185,9 @@ static void forward_job(int fd, uint8_t *buffer)
             break;
         }
     }
-    usb_printer_job_end(result == ESP_OK);
+    if (query_timeout)
+        ESP_LOGI(TAG, "RAW pre-XQX session expired; releasing without printer reset");
+    usb_printer_job_end(result == ESP_OK || query_timeout);
     status_led_set_raw_printing(false);
     ESP_LOGI(TAG, "RAW USB output %s, %zu bytes submitted: %s",
              result == ESP_OK ? "flushed" : "aborted", sent, esp_err_to_name(result));

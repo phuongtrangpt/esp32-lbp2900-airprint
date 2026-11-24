@@ -8,5 +8,8 @@
 
 esp_err_t status_led_init(void);
 void status_led_set(led_state_t state);
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+void status_led_set_raw_printing(bool printing);
+#endif
 // Flashes blue a few times (IPP Identify-Printer), then resumes the state.
 void status_led_identify(void);

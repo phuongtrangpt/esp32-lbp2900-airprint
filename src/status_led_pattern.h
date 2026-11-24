@@ -24,6 +24,14 @@ static inline led_state_t status_led_select(bool recovery, bool error, bool busy
            connected ? LED_READY : LED_WAITING;
 }
 
+// The HP P1006's large RGB indicator stays dark except during jobs or faults.
+static inline led_state_t status_led_print_only_state(led_state_t state, bool raw_printing)
+{
+    if (state == LED_RECOVERY_REQUIRED || state == LED_ERROR)
+        return state;
+    return state == LED_BUSY || raw_printing ? LED_BUSY : LED_OFF;
+}
+
 static inline status_led_frame_t status_led_frame(led_state_t state, unsigned step)
 {
     status_led_frame_t frame = {.duration_ms = 500};

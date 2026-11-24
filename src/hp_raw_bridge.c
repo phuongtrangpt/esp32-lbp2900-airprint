@@ -14,6 +14,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "lwip/sockets.h"
+#include "status_led.h"
 #include "usb_printer.h"
 #include "wifi.h"
 
@@ -93,6 +94,8 @@ static void forward_job(int fd, uint8_t *buffer)
         return;
     }
 
+    status_led_set_raw_printing(true);
+
     size_t sent = 0;
     hp_raw_xqx_t xqx = {0};
     int64_t tcp_us = 0, usb_us = 0;
@@ -163,6 +166,7 @@ static void forward_job(int fd, uint8_t *buffer)
         }
     }
     usb_printer_job_end(result == ESP_OK);
+    status_led_set_raw_printing(false);
     ESP_LOGI(TAG, "RAW USB output %s, %zu bytes submitted: %s",
              result == ESP_OK ? "flushed" : "aborted", sent, esp_err_to_name(result));
     ESP_LOGI(TAG, "RAW timing: TCP recv %lld ms, USB write/flush %lld ms",

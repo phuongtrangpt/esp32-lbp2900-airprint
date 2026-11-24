@@ -20,6 +20,9 @@ static rmt_encoder_handle_t s_enc;
 static _Atomic led_state_t s_state = LED_OFF;
 static atomic_int s_identify;     // remaining identify flashes (x2: on + off)
 static TaskHandle_t s_task;
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+static atomic_bool s_raw_printing;
+#endif
 
 static void led_write(uint8_t r, uint8_t g, uint8_t b)
 {
@@ -37,6 +40,9 @@ static void led_task(void *arg)
     led_state_t last = (led_state_t)-1;
     while (1) {
         led_state_t st = atomic_load(&s_state);
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+        st = status_led_print_only_state(st, atomic_load(&s_raw_printing));
+#endif
         if (st == LED_RECOVERY_REQUIRED)
             atomic_store(&s_identify, 0); // fault indication outranks Identify-Printer
         else if (atomic_load(&s_identify) > 0) {
@@ -82,12 +88,22 @@ esp_err_t status_led_init(void)
 
 void status_led_identify(void)
 {
+#ifndef PRINTSERVER_HP_RAW_BRIDGE
     if (atomic_load(&s_state) == LED_RECOVERY_REQUIRED)
         return;
     atomic_store(&s_identify, 10);
     if (s_task)
         xTaskNotifyGive(s_task);
+#endif
 }
+
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+void status_led_set_raw_printing(bool printing)
+{
+    if (atomic_exchange(&s_raw_printing, printing) != printing && s_task)
+        xTaskNotifyGive(s_task);
+}
+#endif
 
 void status_led_set(led_state_t state)
 {

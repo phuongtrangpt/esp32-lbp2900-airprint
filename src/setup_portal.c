@@ -16,8 +16,115 @@
 #include <string.h>
 #include <unistd.h>
 static const char page[] =
-    "<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>vietphuong esp · Thiết lập</title><style>*{box-sizing:border-box}html{color-scheme:dark}body{font:15px/1.6 system-ui;max-width:760px;margin:0 auto;padding:32px 18px 24px;background:#080f1d;color:#ecf3ff}body:before{content:\"\";position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 90% 0, #16395166,transparent 60%);z-index:-1}header{padding:20px 4px 26px}h1{font-size:34px;line-height:1.2;letter-spacing:-1px;margin:12px 0}h2{font-size:19px;margin:0 0 8px}p{color:#a9bad1;margin:8px 0 18px}.eyebrow{color:#65e3cc;font-size:12px;font-weight:750;letter-spacing:2px}.card{padding:24px;margin:0 0 18px;background:linear-gradient(145deg,#17253a,#101c2d);border:1px solid #2c405a;border-radius:22px;box-shadow:0 16px 35px #0003}.step{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:10px;background:#63e6cb22;color:#70efdb;font-size:13px;margin-right:8px}input,select,button{box-sizing:border-box;width:100%;min-height:48px;padding:12px 14px;border-radius:12px;border:1px solid #354c68;background:#0c1728;color:#eff6ff;font:inherit}input:focus,select:focus{outline:2px solid #63e6cb;border-color:transparent}label{display:block;margin:16px 0 0;color:#c5d4e7}label input,label select{margin-top:7px}button{background:#6ce6cc;color:#071c22;border-color:transparent;font-weight:750;cursor:pointer;margin:16px 0 8px}button:hover{filter:brightness(1.08)}button:disabled{opacity:.55;cursor:wait}#scan{background:#20364d;color:#8ff2e0;border:1px solid #395c72}a{color:#82ebd7;text-underline-offset:4px}#status:empty,#result:empty{display:none}#status{padding:16px;border:1px solid #345870;background:#112b3d;border-radius:14px;color:#d5e8ff}#result{padding:24px;background:#11372e;border:1px solid #53c9a5;border-radius:18px;margin:18px 0}#result a{display:block;font-size:25px;font-weight:800;overflow-wrap:anywhere}#result p{color:#d9f3e9;margin:12px 0 0}footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:20px 4px;color:#8fa3be;font-size:12px}details summary{cursor:pointer;color:#cad8eb}.hint{font-size:13px}#fields{padding:0 12px 15px;border-left:2px solid #6ce6cc;margin-top:14px}[hidden]{display:none!important}@media(max-width:480px){body{padding:14px 12px}.card{padding:18px}h1{font-size:28px}#result a{font-size:21px}}</style><header><span class=eyebrow>VIETPHUONG ESP / KẾT NỐI KHÔNG DÂY</span><h1>Máy in cũ. Trải nghiệm mới.</h1><p>Cài Wi-Fi nhà và địa chỉ IP cho máy in.</p><p><a href='https://www.facebook.com/leviethoaiphuong' target=_blank rel=noopener>Facebook · Hỗ trợ Việt Phương</a> · <a href='/'>Trang in</a></p></header><form id=form><section class=card><h2><span class=step>01</span>Kết nối Wi-Fi nhà bạn</h2><p class=hint>Chỉ tìm Wi-Fi 2.4 GHz · Mạng mạnh nhất ở đầu danh sách.</p><p id=info></p><button id=scan type=button>Tìm mạng Wi-Fi 2.4 GHz</button><select id=networks aria-label='Mạng tìm thấy'><option>Chọn mạng hoặc nhập tên bên dưới</option></select><label>Tên Wi-Fi<input id=ssid required maxlength=32 autocomplete=off></label><label>Mật khẩu Wi-Fi<input id=password type=password maxlength=63 autocomplete=new-password></label></section><section class=card><h2><span class=step>02</span>Địa chỉ máy in</h2><p class=hint>Chọn tự động để thiết lập nhanh, hoặc IP tĩnh để giữ địa chỉ lâu dài.</p><label>Địa chỉ IP<select id=mode><option value=dhcp>Tự động (DHCP)</option><option value=static>IP tĩnh</option></select></label><div id=fields hidden><label>IP<input id=ip placeholder=192.168.1.240></label><label>Subnet mask<input id=mask value=255.255.255.0></label><label>Gateway<input id=gateway placeholder=192.168.1.1></label><label>DNS<input id=dns value=1.1.1.1></label></div><button id=save>Kết nối và lưu</button></section></form><p id=status role=status></p><div id=result></div><p>Chọn IP chưa bị thiết bị khác dùng. Không biết thông số mạng thì chọn DHCP; có thể đổi IP sau tại /network.</p><details class=card><summary>Bàn giao thiết bị cho khách</summary><p>Xóa Wi-Fi và IP đã thử, giữ firmware HP. Giữ BOOT 5 giây rồi bấm nút bên dưới.</p><button id=handover type=button>Bàn giao · xóa Wi-Fi đã lưu</button></details><footer><span>© Việt Phương · vietphuong esp</span><span id=firmware>Đang đọc phiên bản…</span><a href='https://www.facebook.com/leviethoaiphuong' target=_blank rel=noopener>Facebook hỗ trợ ↗</a></footer><script>const $=id=>document.getElementById(id),keys=['mode','ip','mask','gateway','dns'];let waiting=false,scanning=false;$('mode').onchange=()=>{const fixed=$('mode').value==='static';$('fields').hidden=!fixed;for(const k of keys.slice(1)){$(k).required=fixed;$(k).disabled=!fixed}};$('mode').onchange();$('networks').onchange=()=>{$('ssid').value=$('networks').value};$('scan').onclick=async()=>{if(scanning||waiting)return;scanning=true;$('scan').disabled=true;$('scan').textContent='Đang tìm Wi-Fi 2.4 GHz…';try{const r=await fetch('/api/setup/scan',{cache:'no-store'}),j=await r.json();if(!r.ok)throw Error(j.message);const seen=new Set(),networks=j.networks.filter(n=>n.ssid&&(!n.channel||n.channel<=14)).sort((a,b)=>b.rssi-a.rssi).filter(n=>{if(seen.has(n.ssid))return false;seen.add(n.ssid);return true});$('networks').replaceChildren();const placeholder=document.createElement('option');placeholder.value='';placeholder.textContent=networks.length?'Chọn Wi-Fi nhà bạn ('+networks.length+' mạng)':'Không thấy mạng · Nhập tên bên dưới';$('networks').append(placeholder);for(const n of networks){const o=document.createElement('option');o.value=n.ssid;o.textContent=n.ssid+' ('+n.rssi+' dBm)'+(n.rssi>=-60?' · Sóng mạnh':'');$('networks').append(o)}if(!networks.length)$('status').textContent='Không tìm thấy mạng 2.4 GHz. Bật Wi-Fi 2.4 GHz trên router hoặc nhập tên mạng ẩn.'}catch(e){$('status').textContent=e.message}finally{scanning=false;$('scan').disabled=waiting;$('scan').textContent='Quét lại Wi-Fi 2.4 GHz'}};\n"
-    "$('form').onsubmit=async e=>{e.preventDefault();$('save').disabled=true;$('scan').disabled=true;$('result').replaceChildren();try{const data=Object.fromEntries(['ssid','password',...keys].map(k=>[k,$(k).value]));const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}),j=await r.json();if(!r.ok)throw Error(j.message);waiting=true;$('status').textContent=j.message}catch(e){$('status').textContent=e.message;$('save').disabled=false;$('scan').disabled=false}};async function poll(){try{const r=await fetch('/api/setup/status',{cache:'no-store'}),j=await r.json();$('firmware').textContent='Firmware '+(j.firmware||'—');$('info').textContent='Wi-Fi thiết lập: '+j.ap_name;if(waiting){if(j.error){waiting=false;$('save').disabled=false;$('scan').disabled=false;$('status').textContent='Chưa kết nối/lưu được. Kiểm tra mật khẩu và IP rồi thử lại.'}else if(j.connected&&!j.pending){waiting=false;$('password').value='';$('status').textContent='Đã kết nối và lưu. Chuyển điện thoại về Wi-Fi nhà, rồi mở địa chỉ bên dưới. Wi-Fi thiết lập sẽ tắt sau ít giây.';const a=document.createElement('a');a.href='http://'+j.ip+'/';a.textContent=a.href;const title=document.createElement('strong');title.textContent='Đã kết nối thành công';const note=document.createElement('p');note.textContent='QUAN TRỌNG: Hãy ghi lại hoặc chụp màn hình IP '+j.ip+' để mở trang in lần sau. Chuyển điện thoại về Wi-Fi nhà rồi mở địa chỉ trên. Nếu dùng DHCP, IP có thể thay đổi; chọn IP tĩnh khi cần giữ nguyên.';$('result').replaceChildren(a,title,note)}}}catch(e){if(waiting)$('status').textContent='Đang chờ ESP. Nếu Wi-Fi thiết lập đã tắt, kết nối lại Wi-Fi nhà.'}}setInterval(poll,2000);poll();$('scan').onclick();$('handover').onclick=async()=>{if(!confirm('Xóa Wi-Fi/IP đã lưu để bàn giao cho khách?'))return;try{const r=await fetch('/api/setup/handover',{method:'POST'}),j=await r.json();$('status').textContent=j.message}catch(e){$('status').textContent=e.message}};</script></html>";
+    "<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>vietphuong esp · Thiết lập</title><style>*{box-sizing:border-box}html{color-scheme:dark}body{font:15px/1.6 system-ui;max-width:760px;margin:0 auto;padding:32px 18px 24px;background:#080f1d;color:#ecf3ff}body:before{content:\"\";position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 90% 0, #16395166,transparent 60%);z-index:-1}header{padding:20px 4px 26px}h1{font-size:34px;line-height:1.2;letter-spacing:-1px;margin:12px 0}h2{font-size:19px;margin:0 0 8px}p{color:#a9bad1;margin:8px 0 18px}.eyebrow{color:#65e3cc;font-size:12px;font-weight:750;letter-spacing:2px}.card{padding:24px;margin:0 0 18px;background:linear-gradient(145deg,#17253a,#101c2d);border:1px solid #2c405a;border-radius:22px;box-shadow:0 16px 35px #0003}.step{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:10px;background:#63e6cb22;color:#70efdb;font-size:13px;margin-right:8px}input,select,button{box-sizing:border-box;width:100%;min-height:48px;padding:12px 14px;border-radius:12px;border:1px solid #354c68;background:#0c1728;color:#eff6ff;font:inherit}input:focus,select:focus{outline:2px solid #63e6cb;border-color:transparent}label{display:block;margin:16px 0 0;color:#c5d4e7}label input,label select{margin-top:7px}button{background:#6ce6cc;color:#071c22;border-color:transparent;font-weight:750;cursor:pointer;margin:16px 0 8px}button:hover{filter:brightness(1.08)}button:disabled{opacity:.55;cursor:wait}#scan{background:#20364d;color:#8ff2e0;border:1px solid #395c72}a{color:#82ebd7;text-underline-offset:4px}#status:empty,#result:empty{display:none}#status{padding:16px;border:1px solid #345870;background:#112b3d;border-radius:14px;color:#d5e8ff}#result{padding:24px;background:#11372e;border:1px solid #53c9a5;border-radius:18px;margin:18px 0}#result a{display:block;font-size:25px;font-weight:800;overflow-wrap:anywhere}#result p{color:#d9f3e9;margin:12px 0 0}footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:20px 4px;color:#8fa3be;font-size:12px}details summary{cursor:pointer;color:#cad8eb}.hint{font-size:13px}[hidden]{display:none!important}@media(max-width:480px){body{padding:14px 12px}.card{padding:18px}h1{font-size:28px}#result a{font-size:21px}}</style><header><span class=eyebrow>VIETPHUONG ESP / KẾT NỐI KHÔNG DÂY</span><h1>Máy in cũ. Trải nghiệm mới.</h1><p>Kết nối Wi-Fi lần đầu hoặc đổi tên mạng và mật khẩu.</p><p><a href='https://www.facebook.com/leviethoaiphuong' target=_blank rel=noopener>Facebook · Hỗ trợ Việt Phương</a> · <a href='/'>Trang in</a></p></header><form id=form><section class=card><h2><span class=step>01</span>Kết nối Wi-Fi nhà bạn</h2><p class=hint>Chỉ tìm Wi-Fi 2.4 GHz · Mạng mạnh nhất ở đầu danh sách.</p><p id=info>Đang đọc trạng thái Wi-Fi…</p><p class=hint>Nếu Wi-Fi cũ đã đổi tên hoặc mật khẩu, giữ BOOT 5 giây, kết nối vào Wi-Fi <strong>vietphuong esp-XXXX</strong> của ESP, rồi mở <strong>http://192.168.4.1/setup</strong>.</p><button id=scan type=button disabled>Tìm mạng Wi-Fi 2.4 GHz</button><select id=networks aria-label='Mạng tìm thấy'><option>Chọn mạng hoặc nhập tên bên dưới</option></select><label>Tên Wi-Fi<input id=ssid required maxlength=32 autocomplete=off></label><label>Mật khẩu Wi-Fi<input id=password type=password maxlength=63 autocomplete=new-password></label></section><button id=save disabled>Kết nối Wi-Fi</button></form><p id=status role=status></p><div id=result></div><p>ESP tự nhận IP từ router khi kết nối Wi-Fi. Sau khi kết nối, anh có thể mở mục <strong>Địa chỉ IP</strong> trên trang in để giữ địa chỉ đó làm IP tĩnh.</p><details class=card><summary>Bàn giao thiết bị cho khách</summary><p>Xóa Wi-Fi và IP đã thử, giữ firmware HP. Giữ BOOT 5 giây rồi bấm nút bên dưới.</p><button id=handover type=button>Bàn giao · xóa Wi-Fi đã lưu</button></details><footer><span>© Việt Phương · vietphuong esp</span><span id=firmware>Đang đọc phiên bản…</span><a href='https://www.facebook.com/leviethoaiphuong' target=_blank rel=noopener>Facebook hỗ trợ ↗</a></footer>\n"
+    "<script>\n"
+    "const $=id=>document.getElementById(id);\n"
+    "let waiting=false, submitting=false, scanning=false, ap=false, scanned=false;\n"
+    "function buttons(){\n"
+    "  $('scan').disabled=!ap||waiting||submitting||scanning;\n"
+    "  $('save').disabled=!ap||waiting||submitting||scanning;\n"
+    "}\n"
+    "$('networks').onchange=()=>{$('ssid').value=$('networks').value};\n"
+    "$('scan').onclick=async()=>{\n"
+    "  if(!ap||scanning||submitting||waiting)return;\n"
+    "  scanning=true;\n"
+    "  buttons();\n"
+    "  $('status').textContent='Đang tìm Wi-Fi 2.4 GHz…';\n"
+    "  try{\n"
+    "    const r=await fetch('/api/setup/scan',{cache:'no-store'});\n"
+    "    const j=await r.json();\n"
+    "    if(!r.ok)throw Error(j.message);\n"
+    "    const seen=new Set();\n"
+    "    const networks=j.networks.filter(n=>n.ssid&&(!n.channel||n.channel<=14))\n"
+    "      .sort((a,b)=>b.rssi-a.rssi).filter(n=>{\n"
+    "        if(seen.has(n.ssid))return false;\n"
+    "        seen.add(n.ssid);\n"
+    "        return true;\n"
+    "      });\n"
+    "    $('networks').replaceChildren();\n"
+    "    const placeholder=document.createElement('option');\n"
+    "    placeholder.value='';\n"
+    "    placeholder.textContent=networks.length?'Chọn Wi-Fi nhà bạn ('+networks.length+' mạng)':'Không thấy mạng · Nhập tên bên dưới';\n"
+    "    $('networks').append(placeholder);\n"
+    "    for(const n of networks){\n"
+    "      const option=document.createElement('option');\n"
+    "      option.value=n.ssid;\n"
+    "      option.textContent=n.ssid+' ('+n.rssi+' dBm)'+(n.rssi>=-60?' · Sóng mạnh':'');\n"
+    "      $('networks').append(option);\n"
+    "    }\n"
+    "    $('status').textContent=networks.length?'':'Không thấy mạng 2.4 GHz. Có thể nhập tên mạng thủ công.';\n"
+    "  }catch(e){$('status').textContent=e.message}\n"
+    "  finally{\n"
+    "    scanning=false;\n"
+    "    $('scan').textContent='Quét lại Wi-Fi 2.4 GHz';\n"
+    "    buttons();\n"
+    "  }\n"
+    "};\n"
+    "$('form').onsubmit=async e=>{\n"
+    "  e.preventDefault();\n"
+    "  if($('save').disabled)return;\n"
+    "  submitting=true;\n"
+    "  buttons();\n"
+    "  $('result').replaceChildren();\n"
+    "  try{\n"
+    "    const data={ssid:$('ssid').value,password:$('password').value,mode:'dhcp'};\n"
+    "    const r=await fetch('/api/setup',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});\n"
+    "    const j=await r.json();\n"
+    "    if(!r.ok)throw Error(j.message);\n"
+    "    waiting=true;\n"
+    "    $('status').textContent=j.message;\n"
+    "  }catch(e){\n"
+    "    $('status').textContent=e.message;\n"
+    "  }finally{\n"
+    "    submitting=false;\n"
+    "    buttons();\n"
+    "  }\n"
+    "};\n"
+    "async function poll(){\n"
+    "  try{\n"
+    "    const r=await fetch('/api/setup/status',{cache:'no-store'});\n"
+    "    const j=await r.json();\n"
+    "    $('firmware').textContent='Firmware '+(j.firmware||'—');\n"
+    "    ap=j.ap;\n"
+    "    buttons();\n"
+    "    $('info').textContent=ap?'Wi-Fi thiết lập: '+j.ap_name:'Giữ BOOT 5 giây khi ESP đang chạy để mở chức năng đổi Wi-Fi.';\n"
+    "    if(ap&&!scanned&&!waiting&&!submitting&&!j.pending){\n"
+    "      scanned=true;\n"
+    "      $('scan').onclick();\n"
+    "    }else if(!ap)scanned=false;\n"
+    "    if(!waiting)return;\n"
+    "    if(j.pending)return;\n"
+    "    if(j.error){\n"
+    "      waiting=false;\n"
+    "      $('status').textContent='Chưa kết nối/lưu được. Kiểm tra tên Wi-Fi hoặc mật khẩu rồi thử lại.';\n"
+    "    }else if(j.connected&&j.ip){\n"
+    "      waiting=false;\n"
+    "      $('password').value='';\n"
+    "      $('status').textContent='Đã kết nối và lưu Wi-Fi. Chuyển điện thoại về Wi-Fi nhà để mở trang in hoặc giữ IP này làm IP tĩnh.';\n"
+    "      const base='http://'+j.ip;\n"
+    "      const print=document.createElement('a');\n"
+    "      print.href=base+'/';\n"
+    "      print.textContent=print.href;\n"
+    "      const fixed=document.createElement('a');\n"
+    "      fixed.href=base+'/network';\n"
+    "      fixed.textContent='Chọn IP tĩnh cho '+j.ip;\n"
+    "      $('result').replaceChildren(print,fixed);\n"
+    "    }\n"
+    "    buttons();\n"
+    "  }catch(e){\n"
+    "    if(waiting)$('status').textContent='Đang chờ ESP. Nếu Wi-Fi thiết lập đã tắt, kết nối lại Wi-Fi nhà.';\n"
+    "  }\n"
+    "}\n"
+    "setInterval(poll,2000);\n"
+    "poll();\n"
+    "$('handover').onclick=async()=>{\n"
+    "  if(!confirm('Xóa Wi-Fi/IP đã lưu để bàn giao cho khách?'))return;\n"
+    "  try{\n"
+    "    const r=await fetch('/api/setup/handover',{method:'POST'});\n"
+    "    $('status').textContent=(await r.json()).message;\n"
+    "  }catch(e){$('status').textContent=e.message}\n"
+    "};\n"
+    "</script></html>\n";
 static void json(airprint_http_t *h, const char *status, cJSON *j) {
   char *s = cJSON_PrintUnformatted(j);
   if (s) {
@@ -85,23 +192,21 @@ bool wifi_setup_http(airprint_http_t *h, const char *method, const char *path) {
               "Giữ BOOT 5 giây để mở thiết lập; quét mạng khi máy đang rảnh.");
       return true;
     }
-    wifi_scan_config_t cfg = {0};
-    if (esp_wifi_scan_start(&cfg, true) != ESP_OK) {
-      message(
-          h, "503 Service Unavailable",
-          "Wi-Fi đang kết nối. Chờ một lát rồi quét lại, hoặc nhập tên mạng.");
-      return true;
-    }
     uint16_t n = 24;
     wifi_ap_record_t *aps = calloc(n, sizeof(*aps));
     if (!aps) {
-      esp_wifi_clear_ap_list();
-      message(h, "503 Service Unavailable", "Không đủ RAM.");
+      message(h, "503 Service Unavailable", "Không đủ RAM để quét Wi-Fi.");
+      return true;
+    }
+    if (wifi_scan_networks(aps, &n) != ESP_OK) {
+      free(aps);
+      message(h, "503 Service Unavailable",
+              "Chưa quét được Wi-Fi. Chờ một lát rồi quét lại, hoặc nhập tên mạng.");
       return true;
     }
     cJSON *j = cJSON_CreateObject(),
           *arr = cJSON_AddArrayToObject(j, "networks");
-    if (esp_wifi_scan_get_ap_records(&n, aps) == ESP_OK) {
+    {
       /* Sort explicitly, then collapse roaming APs sharing an SSID. */
       for (int i = 1; i < n; i++) {
         wifi_ap_record_t ap = aps[i];

@@ -32,6 +32,7 @@ static QueueHandle_t s_setup_queue;
 static volatile bool s_ap, s_force_setup, s_handover;
 static portMUX_TYPE s_setup_lock = portMUX_INITIALIZER_UNLOCKED;
 static bool s_configuration_pending;
+static bool s_scanning;
 static volatile int s_setup_error;
 static volatile bool s_initial_credentials;
 static TickType_t s_offline_at, s_ap_close_at, s_handover_at;
@@ -80,7 +81,10 @@ static void on_event(void *arg, esp_event_base_t base, int32_t id, void *data) {
   } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
     const wifi_event_sta_disconnected_t *d = data;
     s_connected = false;
-    if (s_has_credentials) {
+    taskENTER_CRITICAL(&s_setup_lock);
+    bool scanning = s_scanning;
+    taskEXIT_CRITICAL(&s_setup_lock);
+    if (s_has_credentials && !scanning) {
       if (s_retries++ % 10 == 0)
         ESP_LOGW(TAG, "disconnected (reason %d), retrying", d->reason);
       esp_wifi_connect();
@@ -154,31 +158,57 @@ static esp_err_t apply_credentials(const char *ssid, const char *password) {
   }
   return e;
 }
-static void scan_networks(void) {
-  if (s_pending) {
-    improv_serial_result(&s_improv, 4, NULL, 0);
-    return;
-  }
+esp_err_t wifi_scan_networks(wifi_ap_record_t *aps, uint16_t *count) {
+  taskENTER_CRITICAL(&s_setup_lock);
+  bool busy = s_scanning || s_configuration_pending;
+  if (!busy)
+    s_scanning = true;
+  taskEXIT_CRITICAL(&s_setup_lock);
+  if (busy)
+    return ESP_ERR_INVALID_STATE;
+
+  // Reconnecting to an old SSID can otherwise block scans indefinitely.
+  bool reconnecting = !s_connected && s_has_credentials;
+  if (reconnecting)
+    esp_wifi_disconnect();
   wifi_scan_config_t scan = {0};
-  if (esp_wifi_scan_start(&scan, true) == ESP_OK) {
-    uint16_t count = 16;
-    wifi_ap_record_t *aps = calloc(count, sizeof(*aps));
-    if (aps && esp_wifi_scan_get_ap_records(&count, aps) == ESP_OK) {
-      for (unsigned i = 0; i < count; i++) {
-        if (!aps[i].ssid[0])
-          continue;
-        char signal[12];
-        snprintf(signal, sizeof(signal), "%d", aps[i].rssi);
-        const char *strings[] = {(char *)aps[i].ssid, signal,
-                                 aps[i].authmode == WIFI_AUTH_OPEN ? "NO"
-                                                                   : "YES"};
-        improv_serial_result(&s_improv, 4, strings, 3);
-      }
-    }
-    free(aps);
+  esp_err_t err = esp_wifi_scan_start(&scan, true);
+  if (reconnecting && err == ESP_ERR_WIFI_STATE) {
+    vTaskDelay(pdMS_TO_TICKS(150));
+    err = esp_wifi_scan_start(&scan, true);
   }
+  if (err == ESP_OK) {
+    err = esp_wifi_scan_get_ap_records(count, aps);
+    if (err != ESP_OK)
+      esp_wifi_clear_ap_list();
+  }
+
+  taskENTER_CRITICAL(&s_setup_lock);
+  s_scanning = false;
+  taskEXIT_CRITICAL(&s_setup_lock);
+  if (!s_connected && s_has_credentials && !wifi_setup_pending())
+    esp_wifi_connect();
+  return err;
+}
+
+static void scan_networks(void) {
+  uint16_t count = 16;
+  wifi_ap_record_t *aps = calloc(count, sizeof(*aps));
+  if (aps && wifi_scan_networks(aps, &count) == ESP_OK)
+    for (unsigned i = 0; i < count; i++) {
+      if (!aps[i].ssid[0])
+        continue;
+      char signal[12];
+      snprintf(signal, sizeof(signal), "%d", aps[i].rssi);
+      const char *strings[] = {(char *)aps[i].ssid, signal,
+                               aps[i].authmode == WIFI_AUTH_OPEN ? "NO"
+                                                                 : "YES"};
+      improv_serial_result(&s_improv, 4, strings, 3);
+    }
+  free(aps);
   improv_serial_result(&s_improv, 4, NULL, 0);
 }
+
 static void command(void *ctx, uint8_t cmd, const uint8_t *p, size_t n) {
   if (cmd == 1) {
     char ssid[33], password[65];
@@ -513,6 +543,23 @@ bool wifi_get_network(char *mask, size_t m, char *gateway, size_t g) {
   return true;
 }
 
+bool wifi_current_ipv4_config(network_config_t *cfg) {
+  esp_netif_ip_info_t info;
+  if (!s_connected || !s_netif ||
+      esp_netif_get_ip_info(s_netif, &info) != ESP_OK)
+    return false;
+
+  char ip[16], mask[16], gateway[16], dns[16] = "1.1.1.1";
+  snprintf(ip, sizeof(ip), IPSTR, IP2STR(&info.ip));
+  snprintf(mask, sizeof(mask), IPSTR, IP2STR(&info.netmask));
+  snprintf(gateway, sizeof(gateway), IPSTR, IP2STR(&info.gw));
+  esp_netif_dns_info_t current_dns;
+  if (esp_netif_get_dns_info(s_netif, ESP_NETIF_DNS_MAIN, &current_dns) == ESP_OK &&
+      current_dns.ip.type == ESP_IPADDR_TYPE_V4 && current_dns.ip.u_addr.ip4.addr)
+    snprintf(dns, sizeof(dns), IPSTR, IP2STR(&current_dns.ip.u_addr.ip4));
+  return s_connected && network_config_parse(cfg, ip, mask, gateway, dns);
+}
+
 void wifi_request_setup(void) { s_force_setup = true; }
 bool wifi_setup_active(void) { return s_ap; }
 const char *wifi_setup_name(void) { return s_ap_name; }
@@ -548,7 +595,7 @@ esp_err_t wifi_submit_setup(const char *ssid, const char *password,
                   (int32_t)(s_force_until - xTaskGetTickCount()) <= 0))))
     return ESP_ERR_INVALID_STATE;
   taskENTER_CRITICAL(&s_setup_lock);
-  bool already = s_configuration_pending;
+  bool already = s_configuration_pending || s_scanning;
   if (!already)
     s_configuration_pending = true;
   taskEXIT_CRITICAL(&s_setup_lock);

@@ -52,7 +52,10 @@ def main():
         from prepare_hp_firmware import valid
         hp=(ROOT/'src/hp_p1006.dl').read_bytes()
         if not valid(hp) or hp not in app:raise SystemExit('HP firmware is not embedded in application')
-    ota={'notes':(ROOT/'RELEASE_NOTES.txt').read_text().strip()[:180],'version':manifest['version'],'profile':manifest['profile'],'file':'firmware.bin','size':len(app),'sha256':hashlib.sha256(app).hexdigest()}
+    notes=(ROOT/'RELEASE_NOTES.txt').read_text().strip()[:180]
+    if manifest['profile']=='hp' and manifest['version']=='0.9.10-hp-raw12':
+        notes='HP P1006 RAW12: in từ điện thoại qua IPP, Windows qua RAW 9100. Đã thử lệnh 4 trang; đang theo dõi độ ổn định dài hạn.'
+    ota={'notes':notes,'version':manifest['version'],'profile':manifest['profile'],'file':'firmware.bin','size':len(app),'sha256':hashlib.sha256(app).hexdigest()}
     (DEST/'ota-manifest.json').write_text(json.dumps(ota,indent=2,ensure_ascii=False)+'\n')
     names=[n for n,s,e in parts]+['firmware-merged.bin','web-manifest.json','ota-manifest.json']
     (DEST/'SHA256SUMS').write_text(''.join(hashlib.sha256((DEST/n).read_bytes()).hexdigest()+'  '+n+'\n' for n in names))

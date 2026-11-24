@@ -67,3 +67,5 @@ src/hp_p1006.dl
 src/hp_p1006.tmp
 src/hp_p1006_blob.c
 /host/hp_p1008_host
+
+/host/hp_p1006_profile_host

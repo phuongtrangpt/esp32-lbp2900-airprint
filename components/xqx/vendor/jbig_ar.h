@@ -49,6 +49,10 @@ struct jbg_ardec_state {
 void arith_encode_init(struct jbg_arenc_state *s, int reuse_st);
 void arith_encode_flush(struct jbg_arenc_state *s);
 void arith_encode(struct jbg_arenc_state *s, int cx, int pix);
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+void hp_jbig_encode_fixed_byte(struct jbg_arenc_state *s,
+                               unsigned long current, unsigned long previous);
+#endif
 void arith_decode_init(struct jbg_ardec_state *s, int reuse_st);
 int  arith_decode(struct jbg_ardec_state *s, int cx);
 

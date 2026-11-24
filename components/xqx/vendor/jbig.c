@@ -1050,7 +1050,11 @@ static void encode_sde(struct jbg_enc_state *s,
 	p1 = hp;
 	if (i > 0 || !reset) {
 	  q1 = hp - hbpl;
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+          ltp = memcmp(p1, q1, hbpl) == 0;
+#else
 	  while (q1 < hp && (ltp = (*p1++ == *q1++)) != 0) ;
+#endif
 	} else
 	  while (p1 < hp + hbpl && (ltp = (*p1++ == 0)) != 0) ;
 	arith_encode(se, (s->options & JBG_LRLTWO) ? TPB2CX : TPB3CX,
@@ -1079,6 +1083,22 @@ static void encode_sde(struct jbg_enc_state *s,
       if (i > 0 || !reset) line_h2 = (long)*(hp - hbpl) << 8;
       if (i > 1 || !reset) line_h3 = (long)*(hp - hbpl - hbpl) << 8;
       
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+      /* P1006 uses a byte-aligned, fixed two-row template. Encode one byte
+         per call and keep the two context windows out of the generic loop. */
+      if (!s->mx && !s->tx[plane] && (s->options & JBG_LRLTWO) && !(hx & 7)) {
+        const unsigned char *previous = (i > 0 || !reset) ? hp - hbpl : NULL;
+        for (unsigned long byte = 0; byte < hbpl; ++byte) {
+          line_h1 |= *hp++;
+          if (previous && byte + 1 < hbpl)
+            line_h2 |= previous[byte + 1];
+          hp_jbig_encode_fixed_byte(se, line_h1, line_h2);
+          line_h1 <<= 8;
+          line_h2 <<= 8;
+        }
+        continue;
+      }
+#endif
       /* encode line */
       for (j = 0; j < hx; hp++) {
 	line_h1 |= *hp;

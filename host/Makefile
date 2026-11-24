@@ -40,7 +40,7 @@ oled_host: oled_host.c $(OLED) ../components/oled/include/*.h ../components/airp
 	$(CC) $(CFLAGS) $(INC) oled_host.c $(OLED) -o $@
 
 clean:
-	rm -rf status_led_host reconnect_host bjl_host airprint_host scan_host oled_host hp_p1008_host out *.prn *.png *.raw
+	rm -rf status_led_host reconnect_host bjl_host airprint_host scan_host oled_host hp_p1006_profile_host hp_p1008_host out *.prn *.png *.raw
 
 capt_host: capt_reference/hiscoa-decompress.c capt_host.c capt_sim.h $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) capt_host.c capt_reference/hiscoa-decompress.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
@@ -50,6 +50,12 @@ improv_host: improv_host.c ../components/improv_serial/improv_serial.c ../compon
 
 hp_host: hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c
 	$(CC) $(CFLAGS) $(INC) hp_host.c $(PRINTERS) $(BJL) ../components/airprint/printer_driver.c -lm -o $@
+
+hp_p1006_profile_host: hp_host.c ../components/printers/printers.c ../components/printers/hp_p1006.c \
+                       ../components/xqx/vendor/jbig.c ../components/xqx/vendor/jbig_ar.c \
+                       ../components/xqx/vendor/jbig_ar.h ../components/printers/mono_raster.h \
+                       ../components/printers/hp_p1006_expand.h
+	$(CC) $(CFLAGS) $(INC) -DPRINTSERVER_PROFILE_HP $(filter %.c,$^) -lm -o $@
 
 hp_p1008_host: hp_host.c ../components/printers/printers.c ../components/printers/hp_p1006.c \
                ../components/xqx/vendor/jbig.c ../components/xqx/vendor/jbig_ar.c
@@ -84,3 +90,7 @@ airprint_esp_policy_host: airprint_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTE
 
 status_led_host: status_led_host.c ../src/status_led_pattern.h
 	$(CC) $(CFLAGS) status_led_host.c -o $@
+
+hp_expand_host: hp_expand_host.c ../components/printers/hp_p1006_expand.h
+	$(CC) $(CFLAGS) hp_expand_host.c -o $@
+hp_host hp_p1008_host: ../components/printers/hp_p1006_expand.h

@@ -32,6 +32,10 @@
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
 #include "esp_heap_caps.h"
+#if defined(PRINTSERVER_HP_RAW_BRIDGE)
+#include "esp_timer.h"
+#define HP_IPP_DIAG 1
+#endif
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #define LOGI(...) ESP_LOGI("airprint", __VA_ARGS__)
@@ -74,6 +78,18 @@
 #define SPOOL_PSRAM_RESERVE (1024 * 1024)
 #define SPOOL_UPLOAD_TIMEOUT_S 30
 #define MULTIPLE_OP_TIMEOUT_S 60
+#define HP_MAX_DOCUMENT_RESERVATIONS 3
+
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+#define HP_IPP_READ_AHEAD 1
+#define IPP_READ_AHEAD_MIN (512 * 1024)
+#define IPP_READ_AHEAD_MAX (1024 * 1024)
+// Rounded peak excluding the read-ahead ring, measured on an A4 RAW9 job.
+// This is an admission estimate; JBIG memory use varies with page content.
+#define HP_IPP_JOB_PSRAM_PEAK 6700000
+#define HP_IPP_PSRAM_MARGIN (512 * 1024)
+#define IPP_RECEIVER_STACK (4 * 1024)
+#endif
 
 #define MAX_PAPERS 8         // of a driver, in the IPP attributes
 
@@ -167,6 +183,9 @@ struct airprint_http {
     bool body_failed;
     int64_t upload_deadline;    // absolute timeout for a queued upload
     job_t *receiving_job;       // only set while an admitted job owns this connection
+#ifdef HP_IPP_READ_AHEAD
+    const atomic_bool *stop_read;
+#endif
     bool in_chunks;             // a chunk was read: CRLF precedes the next size line
     bool dispatch_queue;
     bool detached;              // the socket was handed over (airprint_http_detach)
@@ -180,6 +199,43 @@ static int64_t now_us(void)
     return (int64_t)ts.tv_sec * 1000000 + ts.tv_nsec / 1000;
 }
 
+#ifdef HP_IPP_DIAG
+#define IPP_DIAG_INTERNAL (MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)
+static esp_timer_handle_t s_ipp_diag_timer;
+static portMUX_TYPE s_ipp_diag_lock = portMUX_INITIALIZER_UNLOCKED;
+static unsigned s_ipp_diag_epoch;
+static size_t s_ipp_diag_min = SIZE_MAX;
+
+static void ipp_diag_sample(void *arg)
+{
+    (void)arg;
+    portENTER_CRITICAL(&s_ipp_diag_lock);
+    unsigned epoch = s_ipp_diag_epoch;
+    portEXIT_CRITICAL(&s_ipp_diag_lock);
+
+    size_t bytes = heap_caps_get_free_size(IPP_DIAG_INTERNAL);
+    portENTER_CRITICAL(&s_ipp_diag_lock);
+    if (epoch == s_ipp_diag_epoch && bytes < s_ipp_diag_min)
+        s_ipp_diag_min = bytes;
+    portEXIT_CRITICAL(&s_ipp_diag_lock);
+}
+
+static void ipp_diag_mark(int job, int page, const char *phase)
+{
+    size_t bytes = heap_caps_get_free_size(IPP_DIAG_INTERNAL);
+    portENTER_CRITICAL(&s_ipp_diag_lock);
+    size_t phase_min = s_ipp_diag_min < bytes ? s_ipp_diag_min : bytes;
+    s_ipp_diag_min = bytes;
+    s_ipp_diag_epoch++;
+    portEXIT_CRITICAL(&s_ipp_diag_lock);
+    LOGI("job %d page %d mem %s: int=%u phase_min=%u cum_min=%u largest=%u psram=%u",
+         job, page, phase, (unsigned)bytes, (unsigned)phase_min,
+         (unsigned)heap_caps_get_minimum_free_size(IPP_DIAG_INTERNAL),
+         (unsigned)heap_caps_get_largest_free_block(IPP_DIAG_INTERNAL),
+         (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+}
+#endif
+
 static void set_recv_timeout(conn_t *c, int seconds)
 {
     struct timeval timeout = {.tv_sec = seconds};
@@ -188,6 +244,10 @@ static void set_recv_timeout(conn_t *c, int seconds)
 
 static int conn_fill(conn_t *c)
 {
+#ifdef HP_IPP_READ_AHEAD
+    if (c->stop_read && (atomic_load(c->stop_read) || c->receiving_job->cancel))
+        return -1;
+#endif
     if (c->pos < c->len)
         return 0;
     ssize_t n = recv(c->fd, c->buf, sizeof(c->buf), 0);
@@ -197,6 +257,10 @@ static int conn_fill(conn_t *c)
     while (c->receiving_job && n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         if (c->receiving_job->cancel)
             return -1;
+#ifdef HP_IPP_READ_AHEAD
+        if (c->stop_read && atomic_load(c->stop_read))
+            return -1;
+#endif
         int64_t now = now_us();
         if (!deadline)
             deadline = now + (int64_t)(ACTIVE_IPP_TIMEOUT_S - ACTIVE_IPP_SLICE_S) * 1000000;
@@ -342,11 +406,177 @@ static int body_read_exact(void *ctx, uint8_t *buf, size_t n)
     return (int)n;
 }
 
+#ifdef HP_IPP_READ_AHEAD
+typedef struct {
+    conn_t *c;
+    uint8_t *buf;
+    pthread_t thread;
+    pthread_mutex_t lock;
+    pthread_cond_t ready;
+    atomic_bool stop;
+    size_t capacity, head, used, peak, received;
+    int64_t receive_us, full_us;
+    bool done, failed;
+} ipp_read_ahead_t;
+
+static void *ipp_receive_body(void *arg)
+{
+    ipp_read_ahead_t *a = arg;
+    pthread_mutex_lock(&a->lock);
+    while (!atomic_load(&a->stop) && !a->c->receiving_job->cancel) {
+        if (a->used == a->capacity) {
+            int64_t start = now_us();
+            pthread_cond_wait(&a->ready, &a->lock);
+            a->full_us += now_us() - start;
+            continue;
+        }
+        size_t tail = (a->head + a->used) % a->capacity;
+        size_t count = a->capacity - a->used;
+        if (count > a->capacity - tail)
+            count = a->capacity - tail;
+        // Only this thread adds data. The consumer cannot access this
+        // span until the read completes and its byte count is published.
+        pthread_mutex_unlock(&a->lock);
+        int64_t start = now_us();
+        int n = body_read(a->c, a->buf + tail, count);
+        a->receive_us += now_us() - start;
+        pthread_mutex_lock(&a->lock);
+        if (n <= 0) {
+            a->failed = n < 0;
+            break;
+        }
+        a->received += n;
+        a->used += n;
+        if (a->used > a->peak)
+            a->peak = a->used;
+        pthread_cond_signal(&a->ready);
+    }
+#ifdef HP_IPP_DIAG
+    LOGI("job %d IPP receiver stack low mark: %u bytes", a->c->receiving_job->id,
+         (unsigned)uxTaskGetStackHighWaterMark(NULL));
+#endif
+    a->done = true;
+    pthread_cond_signal(&a->ready);
+    pthread_mutex_unlock(&a->lock);
+    return NULL;
+}
+
+static bool ipp_start_read_ahead(ipp_read_ahead_t *a, conn_t *c)
+{
+    size_t max_capacity = IPP_READ_AHEAD_MAX;
+#ifdef ESP_PLATFORM
+    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < HTTP_MIN_INTERNAL_FREE)
+        return false;
+    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    if (free_psram < IPP_READ_AHEAD_MIN + SPOOL_PSRAM_RESERVE)
+        return false;
+    if (free_psram < IPP_READ_AHEAD_MAX + HP_IPP_JOB_PSRAM_PEAK + HP_IPP_PSRAM_MARGIN)
+        max_capacity = IPP_READ_AHEAD_MIN;
+#endif
+    for (size_t capacity = max_capacity; capacity >= IPP_READ_AHEAD_MIN; capacity /= 2) {
+#ifdef ESP_PLATFORM
+        a->buf = heap_caps_malloc(capacity, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+#else
+        a->buf = malloc(capacity);
+#endif
+        if (a->buf) {
+            a->capacity = capacity;
+            break;
+        }
+    }
+    if (!a->buf)
+        return false;
+    a->c = c;
+    atomic_init(&a->stop, false);
+    if (pthread_mutex_init(&a->lock, NULL) != 0)
+        goto free_buffer;
+    if (pthread_cond_init(&a->ready, NULL) != 0)
+        goto destroy_lock;
+    pthread_attr_t attr;
+    if (pthread_attr_init(&attr) != 0)
+        goto destroy_cond;
+#ifdef ESP_PLATFORM
+    int err = pthread_attr_setstacksize(&attr, IPP_RECEIVER_STACK);
+#else
+    int err = pthread_attr_setstacksize(&attr, CONN_STACK_SIZE);
+#endif
+    if (!err) {
+        c->stop_read = &a->stop;
+        err = pthread_create(&a->thread, &attr, ipp_receive_body, a);
+        if (err)
+            c->stop_read = NULL;
+    }
+    pthread_attr_destroy(&attr);
+    if (!err)
+        return true;
+destroy_cond:
+    pthread_cond_destroy(&a->ready);
+destroy_lock:
+    pthread_mutex_destroy(&a->lock);
+free_buffer:
+    free(a->buf);
+    return false;
+}
+
+static int ipp_read_ahead(ipp_read_ahead_t *a, uint8_t *buf, size_t count)
+{
+    pthread_mutex_lock(&a->lock);
+    while (!a->used && !a->done && !a->c->receiving_job->cancel)
+        pthread_cond_wait(&a->ready, &a->lock);
+    int n;
+    if (a->c->receiving_job->cancel || (!a->used && a->failed)) {
+        n = -1;
+    } else {
+        if (count > a->used)
+            count = a->used;
+        size_t first = a->capacity - a->head;
+        if (first > count)
+            first = count;
+        memcpy(buf, a->buf + a->head, first);
+        memcpy(buf + first, a->buf, count - first);
+        a->head = (a->head + count) % a->capacity;
+        a->used -= count;
+        n = (int)count;
+        pthread_cond_signal(&a->ready);
+    }
+    pthread_mutex_unlock(&a->lock);
+    return n;
+}
+
+static void ipp_finish_read_ahead(ipp_read_ahead_t *a, bool drain, int id)
+{
+    if (drain) {
+        uint8_t scrap[512];
+        while (ipp_read_ahead(a, scrap, sizeof(scrap)) > 0)
+            ;
+    }
+    pthread_mutex_lock(&a->lock);
+    atomic_store(&a->stop, true);
+    pthread_cond_signal(&a->ready);
+    pthread_mutex_unlock(&a->lock);
+    pthread_join(a->thread, NULL);
+    a->c->stop_read = NULL;
+    if (!a->c->body_eof) {
+        a->c->keep_alive = false;
+        a->c->body_failed = true;
+    }
+    LOGI("job %d: IPP read-ahead %u bytes, peak %u/%u, HTTP read %.2f s, buffer full %.2f s",
+         id, (unsigned)a->received, (unsigned)a->peak, (unsigned)a->capacity,
+         a->receive_us / 1e6, a->full_us / 1e6);
+    pthread_cond_destroy(&a->ready);
+    pthread_mutex_destroy(&a->lock);
+    free(a->buf);
+}
+#endif
+
 typedef struct {
     conn_t *c;
     job_t *job;
     int64_t wait_us;            // time spent waiting for document data
     size_t offset;
+#ifdef HP_IPP_READ_AHEAD
+    ipp_read_ahead_t *read_ahead;
+#endif
 } doc_reader_t;
 
 static int doc_read(void *ctx, uint8_t *buf, size_t n)
@@ -362,7 +592,11 @@ static int doc_read(void *ctx, uint8_t *buf, size_t n)
         return (int)n;
     }
     int64_t t0 = now_us();
+#ifdef HP_IPP_READ_AHEAD
+    int k = d->read_ahead ? ipp_read_ahead(d->read_ahead, buf, n) : body_read(d->c, buf, n);
+#else
     int k = body_read(d->c, buf, n);
+#endif
     d->wait_us += now_us() - t0;
     if (k > 0)
         d->job->bytes += k;
@@ -628,6 +862,22 @@ static int outstanding_jobs(void)
     int count = 0;
     for (int i = 0; i < MAX_JOBS; i++)
         if (s_jobs[i].id && s_jobs[i].state < JOB_CANCELED)
+            count++;
+    return count;
+}
+
+static bool hp_p1006_selected(void)
+{
+    return !strcmp(s_cfg->driver->id, "hp-p1006");
+}
+
+// A Create-Job reservation uses a job-table slot, but no print stream.
+// Count each separately so a missing Send-Document cannot own the printer.
+static int hp_pending_reservations(void)
+{
+    int count = 0;
+    for (int i = 0; i < MAX_JOBS; i++)
+        if (s_jobs[i].id && s_jobs[i].state == JOB_PENDING && !s_jobs[i].order)
             count++;
     return count;
 }
@@ -1043,6 +1293,11 @@ static job_t *next_document(void)
     return next;
 }
 
+static bool hp_document_busy(const airprint_status_t *st)
+{
+    return st->busy || s_active || next_document();
+}
+
 static int queue_position(const job_t *j)
 {
     if (j->state != JOB_PENDING || !j->order)
@@ -1110,7 +1365,11 @@ typedef struct {
     job_t *job;
     int64_t read_us, flush_us;
     int64_t out_us;             // time spent in the printer output hook
-    int64_t render_us;          // time spent converting lines (render + dither + compress)
+    int64_t render_us;          // time spent in raster line callbacks
+#ifdef HP_IPP_DIAG
+    const doc_reader_t *doc_reader;
+    int64_t previous_end_us, previous_wait_us, page_start_us, page_wait_us, page_render_us;
+#endif
     int64_t last_yield_us;      // per-job watchdog cooperative yield clock
     uint32_t bytes_out;         // printer data so far
     printer_io_t io;
@@ -1183,6 +1442,10 @@ static int pipe_sync(void *ctx, const char *what)
 // Accept this legacy CAPT resolution without re-advertising it.
 static bool accepts_raster_dpi(const printer_driver_t *d, int dpi)
 {
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    if (dpi == 600 && strcmp(d->id, "hp-p1006") == 0)
+        return true;
+#endif
     return printer_driver_has_dpi(d, dpi) ||
            (strcmp(d->id, "canon-lbp2900") == 0 && dpi == 600);
 }
@@ -1190,6 +1453,12 @@ static bool accepts_raster_dpi(const printer_driver_t *d, int dpi)
 static int pipe_page_begin(void *user, const raster_page_t *pg)
 {
     pipe_t *p = user;
+#ifdef HP_IPP_DIAG
+    ipp_diag_mark(p->job->id, pg->page, "page_header");
+    p->page_start_us = now_us();
+    p->page_wait_us = p->doc_reader->wait_us;
+    p->page_render_us = p->render_us;
+#endif
     const printer_driver_t *d = s_cfg->driver;
     if (p->job->cancel)
         return 1;
@@ -1302,7 +1571,28 @@ static int pipe_line(void *user, int y, const uint8_t *px)
 static int pipe_page_end(void *user, const raster_page_t *pg)
 {
     pipe_t *p = user;
-    if (s_cfg->driver->page_end(p->drv_job)) {
+#ifdef HP_IPP_DIAG
+    int64_t halftone_us = p->render_us - p->page_render_us;
+    int64_t raster_wait_us = p->doc_reader->wait_us - p->page_wait_us;
+    int64_t header_wait_us = p->page_wait_us - p->previous_wait_us;
+    int64_t raster_done = now_us();
+    ipp_diag_mark(p->job->id, pg->page, "page_end_begin");
+    int64_t end_start = now_us();
+#endif
+    int result = s_cfg->driver->page_end(p->drv_job);
+#ifdef HP_IPP_DIAG
+    int64_t end_done = now_us();
+    ipp_diag_mark(p->job->id, pg->page, "page_end_done");
+    LOGI("job %d page %d timing ms: header_gap=%lld header_wait=%lld raster=%lld raster_wait=%lld halftone=%lld page_end=%lld",
+         p->job->id, pg->page,
+         (long long)((p->page_start_us - p->previous_end_us) / 1000),
+         (long long)(header_wait_us / 1000), (long long)((raster_done - p->page_start_us) / 1000),
+         (long long)(raster_wait_us / 1000), (long long)(halftone_us / 1000),
+         (long long)((end_done - end_start) / 1000));
+    p->previous_end_us = now_us();
+    p->previous_wait_us = p->doc_reader->wait_us;
+#endif
+    if (result) {
         p->err = IPP_DEVICE_ERROR;
         return 4;
     }
@@ -1335,7 +1625,25 @@ static void close_printer(job_t *j, bool link_ok)
 // Prints the document for a claimed job. Returns an IPP status.
 static int print_document(conn_t *c, job_t *j)
 {
+#ifdef HP_IPP_DIAG
+    pthread_mutex_lock(&s_lock);
+    int active_connections = s_connections;
+    pthread_mutex_unlock(&s_lock);
+    portENTER_CRITICAL(&s_ipp_diag_lock);
+    s_ipp_diag_min = SIZE_MAX;
+    s_ipp_diag_epoch++;
+    portEXIT_CRITICAL(&s_ipp_diag_lock);
+    bool sampling = s_ipp_diag_timer &&
+        esp_timer_start_periodic(s_ipp_diag_timer, 20 * 1000) == ESP_OK;
+    ipp_diag_mark(j->id, 0, "job_begin");
+    LOGI("job %d HTTP connections=%d heap_sampling=%s", j->id, active_connections,
+         sampling ? "20ms" : "off");
+#endif
     bool opened = !j->cancel && (!s_cfg->job_open || s_cfg->job_open(s_cfg->ctx) == 0);
+#ifdef HP_IPP_DIAG
+    if (!opened && sampling)
+        esp_timer_stop(s_ipp_diag_timer);
+#endif
     pthread_mutex_lock(&s_lock);
     if (!opened) {
         bool canceled = j->cancel;
@@ -1354,6 +1662,11 @@ static int print_document(conn_t *c, job_t *j)
     pipe_t *p = calloc(1, sizeof(*p));
     if (!p) {
         close_printer(j, false);
+#ifdef HP_IPP_DIAG
+        if (sampling)
+            esp_timer_stop(s_ipp_diag_timer);
+        ipp_diag_mark(j->id, 0, "job_alloc_failed");
+#endif
         pthread_mutex_lock(&s_lock);
         bool canceled = j->cancel;
         job_finish(j, canceled ? JOB_CANCELED : JOB_ABORTED);
@@ -1370,11 +1683,38 @@ static int print_document(conn_t *c, job_t *j)
     raster_cb_t cb = {.page_begin=pipe_page_begin, .line=pipe_line,
                        .page_end=pipe_page_end, .line_repeat=pipe_line_repeat};
     int64_t t_start = now_us();
+#ifdef HP_IPP_DIAG
+    p->doc_reader = &rd;
+    p->previous_end_us = t_start;
+#endif
+#ifdef HP_IPP_READ_AHEAD
+    ipp_read_ahead_t read_ahead = {0};
+#endif
     if (c) {
         c->receiving_job = j;
         set_recv_timeout(c, ACTIVE_IPP_SLICE_S);
+#ifdef HP_IPP_READ_AHEAD
+        if (!j->cancel && ipp_start_read_ahead(&read_ahead, c))
+            rd.read_ahead = &read_ahead;
+        else if (!j->cancel)
+            LOGI("job %d: IPP read-ahead unavailable; using direct streaming", j->id);
+#endif
     }
+#ifdef HP_IPP_DIAG
+    ipp_diag_mark(j->id, 0, "after_readahead");
+    LOGI("job %d IPP read-ahead capacity=%u", j->id,
+         rd.read_ahead ? (unsigned)rd.read_ahead->capacity : 0u);
+#endif
     int r = j->cancel ? 0 : raster_decode(doc_read, &rd, &cb, p);
+    // A positive callback result may be an error code rather than a page count.
+    bool decoded = r > 0 && r == j->impressions && !p->err;
+#ifdef HP_IPP_READ_AHEAD
+    bool used_read_ahead = rd.read_ahead != NULL;
+    if (used_read_ahead && (!decoded || j->cancel)) {
+        ipp_finish_read_ahead(rd.read_ahead, false, j->id);
+        rd.read_ahead = NULL;
+    }
+#endif
     if (c && r == RASTER_ERR_IO && !j->cancel) {
         if (c->chunked && c->body_eof && !c->body_failed)
             LOGW("job %d: IPP upload sent its final HTTP chunk before the raster was complete", j->id);
@@ -1398,9 +1738,6 @@ static int print_document(conn_t *c, job_t *j)
     LOGI("job %d: USB response waits %.3f s, USB flush waits %.3f s (included in pipeline totals)",
          j->id, p->read_us / 1e6, p->flush_us / 1e6);
 
-    // A positive decoder return may also be a callback error code. Printer
-    // callbacks set p->err, and the page count must match completed callbacks.
-    bool decoded = r > 0 && r == j->impressions && !p->err;
     bool link_ok = true;
     if (p->drv_job) {
         // Finalize or clean up the CAPT session even after cancellation/EOF.
@@ -1424,14 +1761,30 @@ static int print_document(conn_t *c, job_t *j)
     // A counted URF stream can finish decoding before the HTTP body ends.
     // Confirm its transport completed before publishing a successful job.
     if (c) {
+#ifdef HP_IPP_READ_AHEAD
+        if (rd.read_ahead)
+            ipp_finish_read_ahead(rd.read_ahead, decoded && link_ok && !j->cancel, j->id);
+#endif
         if (decoded && link_ok && !j->cancel) {
+#ifdef HP_IPP_READ_AHEAD
+            if (!used_read_ahead)
+                drain_body(c);
+#else
             drain_body(c);
+#endif
             if (!c->body_eof)
                 r = RASTER_ERR_IO;
         }
         c->receiving_job = NULL;
         set_recv_timeout(c, IDLE_TIMEOUT_S);
     }
+#ifdef HP_IPP_DIAG
+    if (sampling)
+        esp_timer_stop(s_ipp_diag_timer);
+    ipp_diag_mark(j->id, 0, "after_read_ahead_free");
+    LOGI("job %d HTTP worker stack low mark: %u bytes", j->id,
+         (unsigned)uxTaskGetStackHighWaterMark(NULL));
+#endif
     int status = IPP_OK;
     pthread_mutex_lock(&s_lock);
     if (j->cancel) {
@@ -1624,6 +1977,28 @@ static int check_job_request(const ipp_request_t *req, ipp_out_t *unsup)
     return IPP_OK;
 }
 
+static void log_hp_create_job_busy(void)
+{
+    static int64_t last_us;
+    static unsigned suppressed;
+    const int64_t interval_us = 5000000;
+
+    pthread_mutex_lock(&s_lock);
+    int64_t now = now_us();
+    if (!last_us || now - last_us >= interval_us) {
+        if (suppressed)
+            LOGI("IPP Create-Job busy: suppressed %u repeat responses in %.1f s",
+                 suppressed, (now - last_us) / 1000000.0);
+        else
+            LOGI("IPP op 0x%04x -> status 0x%04x", IPP_OP_CREATE_JOB, IPP_BUSY);
+        last_us = now;
+        suppressed = 0;
+    } else {
+        suppressed++;
+    }
+    pthread_mutex_unlock(&s_lock);
+}
+
 static void handle_ipp(conn_t *c)
 {
     ipp_request_t *req = AP_MALLOC_BULK(sizeof(*req));
@@ -1669,6 +2044,7 @@ static void handle_ipp(conn_t *c)
     ipp_out_init(&body);
     const char *message = NULL;
     airprint_status_t st;
+    bool hp = hp_p1006_selected();
 
     if (status == 0) {
         filter_t f;
@@ -1708,11 +2084,16 @@ static void handle_ipp(conn_t *c)
             }
             pthread_mutex_lock(&s_lock);
             expire_pending();
-            if ((!s_active && st.busy) || outstanding_jobs() >= job_limit() ||
-                !(j = job_create(req))) {
+            bool busy = hp
+                ? (req->op == IPP_OP_CREATE_JOB
+                    ? hp_pending_reservations() >= HP_MAX_DOCUMENT_RESERVATIONS
+                    : hp_document_busy(&st))
+                : ((!s_active && st.busy) || outstanding_jobs() >= job_limit());
+            if (busy || !(j = job_create(req))) {
                 pthread_mutex_unlock(&s_lock);
                 status = IPP_BUSY;
-                message = queue_enabled() ? "Printer or print queue is full" : "Printer is busy";
+                message = hp && req->op == IPP_OP_CREATE_JOB ? "Too many jobs waiting for documents"
+                    : queue_enabled() ? "Printer or print queue is full" : "Printer is busy";
                 break;
             }
             snprintf(j->format, sizeof(j->format), "%s", fmt[0] ? fmt : "application/octet-stream");
@@ -1723,11 +2104,15 @@ static void handle_ipp(conn_t *c)
             } else {
                 ipp_out_group(&body, IPP_TAG_JOB);
                 add_job_attrs(&body, c, j, NULL);
+                if (hp)
+                    LOGI("job %d: Create-Job accepted, waiting for Send-Document", j->id);
                 pthread_mutex_unlock(&s_lock);
             }
             break;
 
         case IPP_OP_SEND_DOCUMENT:
+            if (hp)
+                get_status(&st);
             pthread_mutex_lock(&s_lock);
             expire_pending();
             j = job_find(job_id);
@@ -1741,6 +2126,12 @@ static void handle_ipp(conn_t *c)
                 message = "Job does not accept documents";
             } else if (!format_supported(fmt)) {
                 status = IPP_DOCUMENT_FORMAT_NOT_SUPPORTED;
+            } else if (hp && !st.connected) {
+                status = IPP_NOT_ACCEPTING_JOBS;
+                message = "Printer not connected";
+            } else if (hp && hp_document_busy(&st)) {
+                status = IPP_BUSY;
+                message = "Printer is busy";
             } else {
                 if (fmt[0])
                     snprintf(j->format, sizeof(j->format), "%s", fmt);
@@ -1863,7 +2254,9 @@ static void handle_ipp(conn_t *c)
         send_http(c, "500 Internal Server Error", "text/plain", "", 0);
     else
         send_http(c, "200 OK", "application/ipp", out.buf, out.len);
-    if (req->op != IPP_OP_GET_PRINTER_ATTRIBUTES && req->op != IPP_OP_GET_JOB_ATTRIBUTES)
+    if (hp && req->op == IPP_OP_CREATE_JOB && status == IPP_BUSY)
+        log_hp_create_job_busy();
+    else if (req->op != IPP_OP_GET_PRINTER_ATTRIBUTES && req->op != IPP_OP_GET_JOB_ATTRIBUTES)
         LOGI("IPP op 0x%04x -> status 0x%04x", req->op, status);
     ipp_out_free(&out);
     ipp_out_free(&unsup);
@@ -2210,7 +2603,13 @@ static void *listen_thread(void *arg)
             close(fd);
             continue;
         }
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+        conn_t *c = AP_MALLOC_BULK(sizeof(*c));
+        if (c)
+            memset(c, 0, sizeof(*c));
+#else
         conn_t *c = calloc(1, sizeof(*c));
+#endif
         if (!c) {
             pthread_mutex_unlock(&s_lock);
             LOGW("HTTP connection allocation failed on port %u", (unsigned)port);
@@ -2240,6 +2639,15 @@ static void *listen_thread(void *arg)
 
 int airprint_start(const airprint_config_t *cfg)
 {
+#ifdef HP_IPP_DIAG
+    if (!s_ipp_diag_timer) {
+        const esp_timer_create_args_t timer = {
+            .callback = ipp_diag_sample, .name = "ipp_heap", .skip_unhandled_events = true,
+        };
+        if (esp_timer_create(&timer, &s_ipp_diag_timer) != ESP_OK)
+            LOGW("IPP heap sampler unavailable");
+    }
+#endif
     s_cfg = cfg;
     s_start = time(NULL);
     pthread_attr_t attr;

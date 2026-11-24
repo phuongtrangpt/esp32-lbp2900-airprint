@@ -1,5 +1,5 @@
 export const profiles={
- hp:{label:'HP LaserJet P1006',models:['HP LaserJet P1006'],note:'Bản riêng cho P1006. Đã có xác nhận in thực tế trên các bản trước; có sẵn file khởi động HP.'},
+ hp:{label:'HP LaserJet P1006',models:['HP LaserJet P1006'],note:'Bản chính thức RAW12 cho ESP32-S3 N16R8. Có sẵn firmware khởi động HP. In từ điện thoại qua IPP hoặc từ Windows bằng driver HP P1006 và cổng TCP/IP RAW 9100.'},
  hp_p1008:{label:'HP LaserJet P1008',models:['HP LaserJet P1008'],note:'Bản thử nghiệm riêng cho P1008 trên ESP32-S3 N16R8. Cần thử trên máy in thật. Có sẵn file khởi động HP.'},
  canon:{label:'Canon LBP2900',models:['Canon LBP2900'],note:'Bản chính thức 0.9.10, CAPT riêng cho LBP2900. Không dùng chung cho Canon LBP6030 hoặc các máy Canon laser khác.'},
  lbp6030:{label:'Canon LBP6030 · Thử nghiệm USB',models:['Canon LBP6030','Canon LBP6030B','Canon LBP6030w'],note:'Nạp qua USB. Cần xác nhận in trên máy thật cho từng biến thể.'},

@@ -800,6 +800,34 @@ static bool claim_device(void)
     return ok;
 }
 
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+static esp_err_t hp_p1006_check_boot(bool *ready)
+{
+    const usb_config_desc_t *cfg;
+    esp_err_t err = usb_host_get_active_config_descriptor(s_p.dev, &cfg);
+    if (err != ESP_OK)
+        return err;
+
+    uint8_t id[256];
+    size_t got = 0;
+    uint8_t req = USB_BM_REQUEST_TYPE_DIR_IN | USB_BM_REQUEST_TYPE_TYPE_CLASS |
+                  USB_BM_REQUEST_TYPE_RECIP_INTERFACE;
+    err = ctrl_request(req, PRN_REQ_GET_DEVICE_ID, cfg->bConfigurationValue - 1,
+                       (s_p.intf << 8) | s_p.alt, sizeof(id) - 1, id, &got);
+    if (err != ESP_OK)
+        return err;
+    if (got <= 2 || got >= sizeof(id))
+        return ESP_ERR_INVALID_RESPONSE;
+
+    size_t declared = ((size_t)id[0] << 8) | id[1];
+    if (declared >= 2 && declared < got)
+        got = declared;
+    id[got] = 0;
+    *ready = strstr((const char *)id + 2, "FWVER:") != NULL;
+    return ESP_OK;
+}
+#endif
+
 esp_err_t usb_printer_job_begin(void)
 {
     if (!usb_printer_connected() || cloud_update_busy() || wifi_setup_pending())
@@ -830,11 +858,30 @@ esp_err_t usb_printer_job_begin(void)
     s_p.raw_wanted = false;
     xSemaphoreGive(s_p.lock);
     s_p.job_active = true;
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    if (s_p.hp) {
+        bool ready = false;
+        esp_err_t err = hp_p1006_check_boot(&ready);
+        if (err == ESP_OK && !ready) {
+            err = hp_firmware_load();
+            if (err == ESP_OK)
+                err = hp_p1006_check_boot(&ready);
+        }
+        if (err != ESP_OK || !ready) {
+            ESP_LOGW(TAG, "HP P1006 boot unconfirmed: %s",
+                     esp_err_to_name(err == ESP_OK ? ESP_ERR_INVALID_RESPONSE : err));
+            usb_printer_job_end(true);
+            return err == ESP_OK ? ESP_ERR_INVALID_RESPONSE : err;
+        }
+        ESP_LOGI(TAG, "HP P1006 firmware ready (FWVER confirmed)");
+    }
+#else
     if (s_p.hp && !s_p.hp_loaded) {
         esp_err_t err=hp_firmware_load();
         if (err!=ESP_OK) { usb_printer_job_end(true); return err; }
         s_p.hp_loaded=true;
     }
+#endif
     return ESP_OK;
 }
 
@@ -862,17 +909,23 @@ static void log_stall(TickType_t since)
 
 // Waits for a free OUT transfer. The printer NAKs while its buffer is full,
 // which can last as long as it takes to print (or until paper is loaded).
-static esp_err_t get_fill_buffer(void)
+static esp_err_t get_fill_buffer(TickType_t limit)
 {
     TickType_t since = xTaskGetTickCount(), last_log = since;
     while (!s_p.fill) {
         ESP_RETURN_ON_ERROR(job_check(), TAG, "job aborted");
+#if !defined(PRINTSERVER_PROFILE_HP) || defined(PRINTSERVER_PROFILE_HP_P1008)
         if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { ESP_LOGE(TAG,"bulk OUT timeout after 15 s (endpoint 0x%02x)",s_p.ep_out); usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
+#endif
+        if (limit && (TickType_t)(xTaskGetTickCount() - since) >= limit)
+            return ESP_ERR_TIMEOUT;
+        // Dedicated P1006 streams may NAK during warm-up/paper wait. They
+        // still check cancellation/disconnect above and log stalls below.
         if (xQueueReceive(s_p.out_free, &s_p.fill, pdMS_TO_TICKS(200)) == pdTRUE) {
             s_p.fill->num_bytes = 0;
             break;
         }
-        if (xTaskGetTickCount() - last_log > pdMS_TO_TICKS(15000)) {
+        if (!limit && xTaskGetTickCount() - last_log > pdMS_TO_TICKS(15000)) {
             last_log = xTaskGetTickCount();
             log_stall(since);
         }
@@ -897,10 +950,10 @@ static esp_err_t submit_fill(void)
     return err;
 }
 
-esp_err_t usb_printer_write(const uint8_t *data, size_t len)
+static esp_err_t write_with_timeout(const uint8_t *data, size_t len, TickType_t limit)
 {
     while (len > 0) {
-        ESP_RETURN_ON_ERROR(get_fill_buffer(), TAG, "no buffer");
+        ESP_RETURN_ON_ERROR(get_fill_buffer(limit), TAG, "no buffer");
         size_t room = OUT_XFER_SIZE - s_p.fill->num_bytes;
         size_t n = len < room ? len : room;
         memcpy(s_p.fill->data_buffer + s_p.fill->num_bytes, data, n);
@@ -913,22 +966,76 @@ esp_err_t usb_printer_write(const uint8_t *data, size_t len)
     return ESP_OK;
 }
 
-esp_err_t usb_printer_flush(void)
+esp_err_t usb_printer_write(const uint8_t *data, size_t len)
+{
+    return write_with_timeout(data, len, 0);
+}
+
+static esp_err_t flush_with_timeout(TickType_t limit)
 {
     if (s_p.fill)
         ESP_RETURN_ON_ERROR(submit_fill(), TAG, "submit");
     TickType_t since = xTaskGetTickCount(), last_log = since;
     while (uxQueueMessagesWaiting(s_p.out_free) < OUT_XFER_COUNT) {
         ESP_RETURN_ON_ERROR(job_check(), TAG, "job aborted");
+#if !defined(PRINTSERVER_PROFILE_HP) || defined(PRINTSERVER_PROFILE_HP_P1008)
         if (s_p.capt && xTaskGetTickCount() - since > pdMS_TO_TICKS(15000)) { ESP_LOGE(TAG,"bulk OUT timeout after 15 s (endpoint 0x%02x)",s_p.ep_out); usb_printer_cancel(); return ESP_ERR_TIMEOUT; }
+#endif
+        if (limit && (TickType_t)(xTaskGetTickCount() - since) >= limit)
+            return ESP_ERR_TIMEOUT;
+        // Dedicated P1006 streams may NAK during warm-up/paper wait. They
+        // still check cancellation/disconnect above and log stalls below.
         xSemaphoreTake(s_p.out_sem, pdMS_TO_TICKS(100));
-        if (xTaskGetTickCount() - last_log > pdMS_TO_TICKS(15000)) {
+        if (!limit && xTaskGetTickCount() - last_log > pdMS_TO_TICKS(15000)) {
             last_log = xTaskGetTickCount();
             log_stall(since);
         }
     }
     return job_check();
 }
+
+esp_err_t usb_printer_flush(void)
+{
+    return flush_with_timeout(0);
+}
+
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+esp_err_t usb_printer_raw_write(const uint8_t *data, size_t len)
+{
+    return write_with_timeout(data, len, pdMS_TO_TICKS(12000));
+}
+
+esp_err_t usb_printer_raw_flush(void)
+{
+    return flush_with_timeout(pdMS_TO_TICKS(12000));
+}
+
+int usb_printer_raw_poll_reply(uint8_t *buf, size_t len)
+{
+    if (job_check() != ESP_OK || !s_p.job_active || !s_p.ep_in)
+        return -1;
+    if (xSemaphoreTake(s_p.lock, 0) != pdTRUE)
+        return 0;
+    if (s_p.raw_error) {
+        xSemaphoreGive(s_p.lock);
+        return -1;
+    }
+    size_t n = len < s_p.raw_len ? len : s_p.raw_len;
+    if (n) {
+        memcpy(buf, s_p.raw, n);
+        s_p.raw_len -= n;
+        memmove(s_p.raw, s_p.raw + n, s_p.raw_len);
+    }
+    bool wake = !s_p.raw_len && !s_p.in_inflight && !s_p.raw_wanted;
+    if (wake)
+        s_p.raw_wanted = true;
+    xSemaphoreGive(s_p.lock);
+    if (wake)
+        usb_host_client_unblock(s_p.client);
+    return (int)n;
+}
+
+#endif
 
 int usb_printer_read(uint8_t *buf, size_t len, uint32_t timeout_ms)
 {

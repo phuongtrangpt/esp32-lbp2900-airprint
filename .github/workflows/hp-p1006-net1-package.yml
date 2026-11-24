@@ -1,0 +1,54 @@
+name: Package HP P1006 NET1 test firmware
+on:
+  push:
+    branches: [test/hp-p1006-net1-package]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Build and verify HP firmware
+        run: |
+          python -m pip install platformio==6.2.0 esptool==4.9.0
+          pio run -e hp
+          python tools/package_firmware.py --env hp --out firmware/hp
+          python tools/prepare_web_installer.py --source firmware/hp --dest /tmp/hp-web
+          node tools/test_device_pages.mjs
+          make -C host status_led_host network_config_host
+          ASAN_OPTIONS=detect_leaks=0 host/status_led_host
+          ASAN_OPTIONS=detect_leaks=0 host/network_config_host
+      - name: Add the USB flasher and matching source
+        run: |
+          cp tools/flash.py firmware/hp/flash.py
+          git archive --format=tar.gz --prefix=source/ HEAD > firmware/hp/source-code.tar.gz
+          git rev-parse HEAD > firmware/hp/BUILD_COMMIT.txt
+          cat > firmware/hp/HUONG-DAN-TEST.txt <<'TXT'
+          HP LaserJet P1006 — ESP32-S3 N16R8 — 0.9.10-hp-raw12-net1
+          Mở PowerShell trong thư mục giải nén. Chạy:
+            py -m pip install esptool==4.9.0
+            py flash.py --port COM14 --build-dir .
+          Thay COM14 bằng cổng ESP32 thực tế. Cấu hình Wi-Fi đã lưu được giữ.
+
+          Vào trang in > Cài đặt IP động / IP tĩnh > IP tĩnh — giữ IP đang dùng.
+          Lưu, đợi ESP khởi động lại rồi mở địa chỉ cũ để kiểm tra.
+          Đổi mật khẩu hoặc tên mạng ở mục Đổi Wi-Fi / Bàn giao. Giữ BOOT khoảng 5 giây.
+          Nếu mạng cũ đã mất, kết nối Wi-Fi vietphuong esp-XXXX và mở http://192.168.4.1/setup.
+          Đèn RGB lớn tắt khi rảnh, nháy xanh khi in và giữ báo lỗi đỏ.
+          TXT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HP-P1006-USB-RAW12-NET1
+          path: firmware/hp/
+          if-no-files-found: error

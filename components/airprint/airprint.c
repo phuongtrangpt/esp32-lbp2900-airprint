@@ -464,6 +464,11 @@ static void *ipp_receive_body(void *arg)
 static bool ipp_start_read_ahead(ipp_read_ahead_t *a, conn_t *c)
 {
     size_t max_capacity = IPP_READ_AHEAD_MAX;
+#ifndef ESP_PLATFORM
+    // Native fault injection covers the real direct-stream fallback as well.
+    if (getenv("AIRPRINT_TEST_READ_AHEAD_FAIL"))
+        return false;
+#endif
 #ifdef ESP_PLATFORM
     if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < HTTP_MIN_INTERNAL_FREE)
         return false;

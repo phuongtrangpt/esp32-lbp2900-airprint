@@ -94,3 +94,7 @@ status_led_host: status_led_host.c ../src/status_led_pattern.h
 hp_expand_host: hp_expand_host.c ../components/printers/hp_p1006_expand.h
 	$(CC) $(CFLAGS) hp_expand_host.c -o $@
 hp_host hp_p1008_host: ../components/printers/hp_p1006_expand.h
+
+# Exercise the actual HP profile read-ahead path; the generic host excludes it.
+hp_ipp_host: airprint_host.c capt_sim.h $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED)
+	$(CC) $(CFLAGS) -DPRINTSERVER_PROFILE_HP $(INC) airprint_host.c $(BJL) $(AIRPRINT) $(PRINTERS) $(SCANNER) $(WEBUI) $(OLED) -lm -lpthread -o $@

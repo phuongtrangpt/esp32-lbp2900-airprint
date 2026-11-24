@@ -173,10 +173,12 @@ esp_err_t wifi_scan_networks(wifi_ap_record_t *aps, uint16_t *count) {
     esp_wifi_disconnect();
   wifi_scan_config_t scan = {0};
   esp_err_t err = esp_wifi_scan_start(&scan, true);
-  if (reconnecting && err == ESP_ERR_WIFI_STATE) {
-    vTaskDelay(pdMS_TO_TICKS(150));
+  for (int retry = 0; reconnecting && err == ESP_ERR_WIFI_STATE && retry < 5; retry++) {
+    vTaskDelay(pdMS_TO_TICKS(200));
     err = esp_wifi_scan_start(&scan, true);
   }
+  if (err != ESP_OK)
+    ESP_LOGW(TAG, "Wi-Fi scan failed: %s", esp_err_to_name(err));
   if (err == ESP_OK) {
     err = esp_wifi_scan_get_ap_records(count, aps);
     if (err != ESP_OK)
@@ -320,6 +322,14 @@ static void serial_task(void *arg) {
       memcpy(s_ssid, s_request.ssid, sizeof(s_ssid));
       memcpy(s_password, s_request.password, sizeof(s_password));
       memset(s_request.password, 0, sizeof(s_request.password));
+      // Let the HTTP response reach the client before changing its network.
+      if (!s_request.serial) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        s_force_until = xTaskGetTickCount() + pdMS_TO_TICKS(600000);
+        if (!s_ap && esp_wifi_set_mode(WIFI_MODE_APSTA) == ESP_OK)
+          s_ap = true;
+      }
+      s_started = xTaskGetTickCount();
       s_has_credentials = false;
       s_connected = false;
       esp_wifi_disconnect();
@@ -391,12 +401,15 @@ static void serial_task(void *arg) {
            (!s_connected && now - s_offline_at > pdMS_TO_TICKS(60000));
     if (s_ap_close_at && (int32_t)(s_ap_close_at - now) > 0)
       want = true;
-    if (want && !s_ap && !cloud_update_busy()) {
+    taskENTER_CRITICAL(&s_setup_lock);
+    bool scan_busy = s_scanning;
+    taskEXIT_CRITICAL(&s_setup_lock);
+    if (want && !s_ap && !scan_busy && !cloud_update_busy()) {
       if (esp_wifi_set_mode(WIFI_MODE_APSTA) == ESP_OK) {
         s_ap = true;
         ESP_LOGI(TAG, "Setup hotspot %s at " VP_SETUP_IP, s_ap_name);
       }
-    } else if (!want && s_ap && !s_pending) {
+    } else if (!want && s_ap && !s_pending && !scan_busy) {
       if (esp_wifi_set_mode(WIFI_MODE_STA) == ESP_OK)
         s_ap = false;
     }
@@ -589,7 +602,7 @@ esp_err_t wifi_submit_setup(const char *ssid, const char *password,
   if (!s_setup_queue || s_pending || cloud_update_busy() ||
       usb_printer_job_active())
     return ESP_ERR_INVALID_STATE;
-  if (!serial &&
+  if (!serial && !s_connected &&
       (!s_ap || (s_initial_credentials &&
                  (!s_force_until ||
                   (int32_t)(s_force_until - xTaskGetTickCount()) <= 0))))

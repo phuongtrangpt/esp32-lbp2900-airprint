@@ -1,17 +1,1 @@
-v0.9.10 chính thức: ghi nhớ Bật/Tắt âm báo trên trình duyệt. Đèn RGB trên ESP nháy đỏ 5 lần, nghỉ 2 giây rồi lặp lại khi cần khởi động lại/kết nối lại máy in; không cần mở trang web. Kết nối lại thành công thì trở về trạng thái thường.
-
-Âm báo sau khi mở lại trang có thể cần chạm vào trang để trình duyệt cho phép phát tiếng. Đã lưu lựa chọn sẽ có thông báo rõ ràng.
-
-v0.9.9 chính thức: Canon LBP2900 giữ tối ưu SPEED và sửa cảnh báo treo còn lưu sau khi tắt/bật máy in. Làm mới trạng thái khi USB kết nối lại, chặn phiên cũ bật lại cảnh báo.
-
-Lưu ý: một số lệnh in qua IPP từ Windows có thể ngắt sớm ở 512 KB/1 MB; lỗi này đang được điều tra, chưa xác nhận đã khắc phục. Nếu gặp lỗi, tải nhật ký trước khi ngắt nguồn ESP. Đã kiểm thử mô phỏng CAPT, HTTP chunked, thiếu RAM và phục hồi.
-
-v0.9.8 chuẩn cho Canon LBP2900. IPP in 300 dpi, trang in cho chọn 600 dpi. Đã thử chờ giấy, in tiếp và âm báo trên máy thật. Bấm Bật âm báo trên trang in.
-
-v0.9.7 thử nghiệm: Canon LBP2900 hỗ trợ 1 lệnh đang in và 2 lệnh chờ. Các lệnh tự in theo thứ tự gửi. Đã kiểm thử mô phỏng, cần thử thêm trên máy thật.
-v0.9.6: Sửa đóng phiên Canon CAPT: dùng chuỗi kết thúc Linux đầy đủ, chờ trang cuối/nhả giấy, kiểm tra phản hồi ReleaseUnit và ghi JobID. Khôi phục phiên cũ khi biết JobID; không đoán ID sau reboot. Kiểm thử nhiều lệnh liên tiếp trên cùng trạng thái thiết bị, nhả giấy trễ, từ chối release và phiên cũ bị kẹt. Nhắm lỗi ReserveUnit 0x8c sau lần in đầu; cần thử máy thật. Sau cập nhật, tắt/bật máy in một lần rồi thử 3 lệnh riêng.
-v0.9.5: Tối ưu đóng gói ảnh đen trắng cho Canon 2900 và HP P1006; loại phép chia theo từng pixel ở Canon, ghi theo byte. Giải mã raster có đường đọc nhanh. Chuyển bộ đệm đầu vào và mô tả IPP sang ưu tiên PSRAM để giảm áp lực RAM nội bộ. Đối chiếu ảnh từng byte, giữ chất lượng/lề/khổ giấy. Tốc độ thực tế cần đo trên thiết bị.
-v0.9.4: Tối ưu chờ USB theo sự kiện, đánh thức client khi cần đọc CAPT, giảm nhường CPU dư và log từng band. Canon LBP2900 thêm đầu vào bản nháp 300 dpi (nội suy lên raster CAPT 600 dpi); mặc định 600 dpi. Log đo riêng nén và chờ USB. Cần đo lại tốc độ trên máy thật; không cam kết tăng tốc theo hệ số. HP giữ 600 dpi.
-v0.9.3: Trang in và thiết lập Wi-Fi tông tối xanh ngọc, chia khối, chân trang Việt Phương ESP và phiên bản thực tế. Tự quét Wi-Fi 2.4 GHz, ưu tiên sóng mạnh, gộp SSID trùng. Kết nối thành công hiện IP nổi bật và nhắc chụp/lưu địa chỉ. Người dùng đã xác nhận Canon LBP2900 in thành công với v0.9.2; A5/A6 và tải dài Canon cần thử thêm.
-v0.9.2: Sửa LBP2900 CAPT 2.1 trả GetPrinterInfo 56 byte làm hủy lệnh trước trang đầu. Tăng bộ đệm thông tin, giữ kiểm tra giới hạn nhận; kiểm thử hồi quy với phản hồi 52 byte nội dung đúng log thực tế. Cần thử lại trên máy thật; chưa xác nhận in Canon thành công.
-v0.9.1: HP P1006 / Canon LBP2900 thêm A5 148×210 mm và A6 105×148 mm trong driver, IPP/AirPrint và trang in. A6 LBP2900 dùng hình học giấy tùy chỉnh theo cơ chế fallback upstream, cần kiểm chứng cấp giấy thật. Không gộp bản 6030 thử nghiệm. Giữ nguyên A4/Letter.
+Chính thức: sửa đổi Wi-Fi ngay trên trang in cho HP P1006 NET2 và Canon 0.9.11-wifi1. Tự tìm mạng 2.4 GHz, quét lại và chuyển mạng khi ESP đang kết nối Wi-Fi; không cần BOOT cho thao tác đổi mạng. Giữ cấu hình cũ đến khi kết nối thành công. Giữ nguyên phần xử lý in.

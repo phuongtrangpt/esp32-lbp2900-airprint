@@ -50,13 +50,13 @@ static int mock_setsockopt(int fd,int level,int key,const void *v,size_t n){
  return 0;
 }
 static ssize_t mock_recv(int fd,void *buf,size_t n,int flags){
- if(!received++){memset(buf,'Q',34);return 34;}
+ if(!received++){memset(buf,'Q',34);memcpy((char *)buf+25,"\033%-12345X",9);return 34;}
  if(first_reply && first_reply<=500 && (mode==0 || mode==3) && !sent_doc){
   assert(n>=wire_n);memcpy(buf,wire,wire_n);sent_doc=true;return mode==3?17:wire_n;
  }
  if(sent_doc && mode!=3)return 0;
  ms+=poll_ms;
- if(mode!=2 && mode!=3 && ms>=next_query){next_query+=13000;memset(buf,'Q',59);return 59;}
+ if(mode!=2 && mode!=3 && ms>=next_query){next_query+=13000;memset(buf,'Q',59);memcpy((char *)buf+50,"\033%-12345X",9);return 59;}
  errno=EAGAIN;return -1;
 }
 static ssize_t mock_send(int fd,const void *b,size_t n,int flags){if(!first_reply)first_reply=ms;return n;}
@@ -75,7 +75,13 @@ static void status_led_set_raw_printing(bool b){}
 '''
 post=r'''
 int main(void){
- uint8_t buffer[4096];init();mode=0;forward_job(1,buffer);
+ uint8_t buffer[4096];
+#ifdef RAWFIX1
+ init();mode=1;forward_job(1,buffer);assert(first_reply==100 && !ended_ok);
+ puts("RAWFIX1: UEL control escape mistaken for partial XQX; still resets after status timeout");
+ return 0;
+#endif
+ init();mode=0;forward_job(1,buffer);
 #ifdef BASELINE
  assert(first_reply==2000 && !sent_doc && !ended_ok);
  printf("baseline: first status reply %llu ms, client withheld XQX, firmware reset after %llu ms\n",(unsigned long long)first_reply,(unsigned long long)ms);
@@ -94,10 +100,11 @@ int main(void){
 }
 '''
 base=subprocess.check_output(['git','show','3a9b72b:src/hp_raw_bridge.c'],cwd=r,text=True)
+rawfix1=subprocess.check_output(['git','show','595626d192bdd45d1d7c3f92a331b668ff70eee8:src/hp_raw_bridge.c'],cwd=r,text=True)
 current=(r/'src/hp_raw_bridge.c').read_text()
 with tempfile.TemporaryDirectory() as td:
- for label,s in [('baseline',base),('fixed',current)]:
+ for label,s in [('baseline',base),('rawfix1',rawfix1),('fixed',current)]:
   p=Path(td)/label;p.with_suffix('.c').write_text(pre+extract(s)+post)
-  flags=['-DBASELINE'] if label=='baseline' else []
+  flags=['-DBASELINE'] if label=='baseline' else ['-DRAWFIX1'] if label=='rawfix1' else []
   subprocess.run(['cc','-g','-Wall','-Wextra','-Wno-unused-parameter','-fsanitize=address,undefined',*flags,'-I'+str(r/'src'),str(p.with_suffix('.c')),'-o',str(p)],check=True)
   subprocess.run([str(p)],check=True,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))

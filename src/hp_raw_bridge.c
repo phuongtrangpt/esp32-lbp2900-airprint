@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
 #include <unistd.h>
@@ -44,13 +45,22 @@ static esp_err_t timed_usb_flush(int64_t *elapsed_us)
     return result;
 }
 
-static esp_err_t relay_reply(int fd)
+static esp_err_t relay_reply(int fd, bool pre_xqx)
 {
     uint8_t reply[512];
     int count = usb_printer_raw_poll_reply(reply, sizeof(reply));
     if (count < 0) {
         ESP_LOGW(TAG, "RAW printer reply unavailable");
         return ESP_FAIL;
+    }
+    // Before XQX these are printer status replies, not document payload.
+    // A bounded prefix helps identify the HP monitor handshake failure.
+    if (pre_xqx && count > 0) {
+        char hex[97];
+        int shown = count < 32 ? count : 32;
+        for (int i = 0; i < shown; i++)
+            snprintf(hex + 3*i, sizeof(hex) - 3*i, "%02x ", reply[i]);
+        ESP_LOGI(TAG, "RAW handshake USB reply (%d/%d bytes): %s", shown, count, hex);
     }
     for (int sent = 0; sent < count;) {
         ssize_t n = send(fd, reply + sent, (size_t)(count - sent), 0);
@@ -115,7 +125,7 @@ static void forward_job(int fd, uint8_t *buffer)
             result = ESP_ERR_TIMEOUT;
             // A control-only PJL session has not started a print document.
             // Do not soft-reset HP merely because its monitor kept polling.
-            query_timeout = !xqx.marker_bytes;
+            query_timeout = true; // UEL shares the XQX escape prefix; a prefix is not a document.
             break;
         }
         int64_t write_start = esp_timer_get_time();
@@ -149,7 +159,7 @@ static void forward_job(int fd, uint8_t *buffer)
                 }
                 drained = true;
             }
-            result = relay_reply(fd);
+            result = relay_reply(fd, xqx.state == XQX_PREAMBLE);
             if (result != ESP_OK)
                 break;
             if ((TickType_t)(xTaskGetTickCount() - idle_start) >= pdMS_TO_TICKS(RAW_IDLE_SECONDS * 1000)) {
@@ -166,7 +176,7 @@ static void forward_job(int fd, uint8_t *buffer)
                 break;
             }
             ESP_LOGW(TAG, "RAW upload stopped after %zu bytes: errno=%d", sent, errno);
-            query_timeout = errno == ETIMEDOUT && xqx.state == XQX_PREAMBLE && !xqx.marker_bytes;
+            query_timeout = errno == ETIMEDOUT && xqx.state == XQX_PREAMBLE;
             result = ESP_FAIL;
             break;
         }
@@ -176,7 +186,7 @@ static void forward_job(int fd, uint8_t *buffer)
         }
     }
     if (query_timeout)
-        ESP_LOGI(TAG, "RAW status-only session expired; releasing without printer reset");
+        ESP_LOGI(TAG, "RAW pre-XQX session expired; releasing without printer reset");
     usb_printer_job_end(result == ESP_OK || query_timeout);
     status_led_set_raw_printing(false);
     ESP_LOGI(TAG, "RAW USB output %s, %zu bytes submitted: %s",

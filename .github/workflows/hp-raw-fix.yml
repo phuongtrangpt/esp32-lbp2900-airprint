@@ -41,6 +41,6 @@ jobs:
           git rev-parse HEAD > firmware/hp/BUILD_COMMIT.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: HP-P1006-RAWFIX1
+          name: HP-P1006-RAWFIX2
           path: firmware/hp/
           if-no-files-found: error

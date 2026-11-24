@@ -1,3 +1,6 @@
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+#include "hp_raw_bridge.h"
+#endif
 #include "network_settings.h"
 #include "cloud_update.h"
 // ESP32-S3 print server for the Canon PIXMA MG2500 series.
@@ -287,6 +290,10 @@ void app_main(void)
         setup_dns_start();
         if (airprint_esp_start(HOSTNAME, on_airprint_job) != ESP_OK)
             ESP_LOGE(TAG, "AirPrint failed to start");
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+        if (hp_raw_bridge_start() != ESP_OK)
+            ESP_LOGE(TAG, "HP RAW bridge failed to start");
+#endif
         if (debug)
             s_debug_server_up = debug_server_start(device_busy) == ESP_OK;
     }

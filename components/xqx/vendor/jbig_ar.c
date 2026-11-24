@@ -167,7 +167,11 @@ void arith_encode_flush(struct jbg_arenc_state *s)
 }
 
 
-void arith_encode(struct jbg_arenc_state *s, int cx, int pix) 
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+static inline __attribute__((always_inline)) void arith_encode_symbol(struct jbg_arenc_state *s, int cx, int pix)
+#else
+void arith_encode(struct jbg_arenc_state *s, int cx, int pix)
+#endif
 {
   register unsigned lsz, ss;
   register unsigned char *st;
@@ -257,6 +261,40 @@ void arith_encode(struct jbg_arenc_state *s, int cx, int pix)
  
   return;
 }
+
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+void arith_encode(struct jbg_arenc_state *s, int cx, int pix)
+{
+  arith_encode_symbol(s, cx, pix);
+}
+
+void hp_jbig_encode_fixed_byte(struct jbg_arenc_state *s,
+                               unsigned long current, unsigned long previous)
+{
+  // Across eight pixels, the fixed template uses 12 bits from the
+  // current row and bits 6..18 from the previous row. A uniform window
+  // therefore repeats the same context and symbol eight times.
+  unsigned long row = current & 0xfff;
+  unsigned long above = previous & 0x7ffc0;
+  if ((row == 0 && above == 0) || (row == 0xfff && above == 0x7ffc0)) {
+    int context = row ? 0x3ff : 0;
+    unsigned state = s->st[context];
+    unsigned reduction = 8u * lsztab[state & 0x7f];
+    // A most-probable symbol only shrinks A until it needs to be
+    // renormalized. Batch just the case where no renormalization occurs.
+    if ((state >> 7) == (row != 0) && s->a >= 0x8000u + reduction) {
+      s->a -= reduction;
+      return;
+    }
+  }
+  for (int bit = 0; bit < 8; ++bit) {
+    current <<= 1;
+    previous <<= 1;
+    int context = ((previous >> 10) & 0x3f0) | ((current >> 9) & 0xf);
+    arith_encode_symbol(s, context, (current >> 8) & 1);
+  }
+}
+#endif
 
 
 void arith_decode_init(struct jbg_ardec_state *s, int reuse_st)

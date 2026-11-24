@@ -67,7 +67,12 @@ AP_HOT static int decode_page(reader_t *r, const raster_page_t *pg, const raster
 {
     const int bpp = pg->bytes_pp;
     const size_t line_bytes = (size_t)pg->width * bpp;
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    // Leave contiguous internal RAM available for IPP status and web workers.
+    uint8_t *line = AP_MALLOC_BULK(line_bytes);
+#else
     uint8_t *line = AP_MALLOC_FAST(line_bytes);
+#endif
     if (!line)
         return RASTER_ERR_NOMEM;
     int ret = cb->page_begin ? cb->page_begin(user, pg) : 0;
@@ -209,7 +214,11 @@ int raster_decode(raster_read_fn read, void *ctx, const raster_cb_t *cb, void *u
             }
         }
     } else if (memcmp(magic, "RaS2", 4) == 0) {
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+        uint8_t *ph = AP_MALLOC_BULK(PWG_HEADER_SIZE);
+#else
         uint8_t *ph = malloc(PWG_HEADER_SIZE);
+#endif
         if (!ph)
             ret = RASTER_ERR_NOMEM;
         while (ph) {

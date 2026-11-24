@@ -3,6 +3,9 @@
 // Experimental HP LaserJet P1006, 600 dpi monochrome, simplex A4 / Letter / A5 / A6.
 #include "printer_driver.h"
 #include "mono_raster.h"
+#include "hp_p1006_expand.h"
+#include <time.h>
+#include <stdio.h>
 #include "jbig.h"
 #include <stdlib.h>
 #include <string.h>
@@ -62,32 +65,42 @@ void *hp_jbig_realloc(void *p,size_t n) {
 
 typedef struct {
     printer_io_t io;
-    int paper, width, height, stride, wire_stride, src_w, src_h, bpp, y;
+    int paper, scale_shift, width, height, stride, wire_stride, src_w, src_h, bpp, y;
     unsigned ink_pixels;
     unsigned char *raw, *chunk, *expanded;
     size_t used;
     unsigned char bih[20];
-    bool first, header, failed, open;
+    bool first, header, failed, open, p1006;
+    uint64_t expand_us, encode_us;
 } hp_job;
 // P1006's native mode is 2 bits/pixel at 600 video pixels/inch. Keep
 // the 600-dpi one-bit image in PSRAM and expand just one JBIG stripe, including
 // its two predecessor rows, instead of allocating an 8+ MB two-bit page.
 #define HP_STRIPE_ROWS 128
 static _Thread_local hp_job *encoding_job;
+static uint64_t hp_now_us(void) {
+    struct timespec t; clock_gettime(CLOCK_MONOTONIC,&t);
+    return (uint64_t)t.tv_sec*1000000+(uint64_t)t.tv_nsec/1000;
+}
 unsigned char *hp_jbig_stripe(unsigned long y,unsigned long rows,unsigned long width,int layer,int plane)
 {
     hp_job *j=encoding_job;
     if (!j) return NULL;
     if (layer || plane || rows!=HP_STRIPE_ROWS || width!=(unsigned)j->wire_stride*8) hp_jbig_oom();
+    uint64_t started = j->p1006 ? hp_now_us() : 0;
     memset(j->expanded,0,(HP_STRIPE_ROWS+2)*j->wire_stride);
     for (int r=0;r<HP_STRIPE_ROWS+2;r++) {
         long sy=(long)y+r-2;
         if (sy<0 || sy>=j->height) continue;
         const unsigned char *in=j->raw+(size_t)sy*j->stride;
         unsigned char *out=j->expanded+(size_t)r*j->wire_stride;
-        for (int x=0;x<j->width;x++) if(in[x>>3] & (0x80>>(x&7)))
-            out[x>>2] |= 0xc0>>((x&3)*2); // white=00, black=11
+        if (j->p1006)
+            hp_p1006_expand_row(out,in,(unsigned)j->width);
+        else
+            for (int x=0;x<j->width;x++) if(in[x>>3] & (0x80>>(x&7)))
+                out[x>>2] |= 0xc0>>((x&3)*2); // P1008 retains its original path
     }
+    if (j->p1006) j->expand_us += hp_now_us()-started;
     return j->expanded+2*j->wire_stride;
 }
 static int put(hp_job *j, const void *p, size_t n) {
@@ -127,9 +140,14 @@ static const printer_paper_t papers[] = {
     {"A5","iso_a5_148x210mm",14800,21000}, {"A6","iso_a6_105x148mm",10500,14800}
 };
 static void *begin(const printer_driver_t *d, const printer_io_t *io, int dpi, int paper) {
-    if (!io || !io->write || dpi!=600 || paper<0 || paper>=d->npapers) return NULL;
+    bool valid_dpi = dpi == 600;
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    valid_dpi = valid_dpi || dpi == 300;
+#endif
+    if (!io || !io->write || !valid_dpi || paper<0 || paper>=d->npapers) return NULL;
     hp_job *j=calloc(1,sizeof(*j)); if (!j) return NULL;
-    j->io=*io; j->paper=paper;
+    j->io=*io; j->paper=paper; j->p1006=!strcmp(d->id,"hp-p1006");
+    j->scale_shift = dpi == 300;
     // foo2xqx's P1006 wrapper clips 96 dots (4.064 mm) at each edge.
     j->width=papers[paper].width*600/2540-192;
     j->height=papers[paper].height*600/2540-192;
@@ -152,14 +170,69 @@ static int page_begin(void *ctx,int w,int h,int bpp) {
     j->src_w=w; j->src_h=h; j->bpp=bpp; j->y=0; j->open=true; j->ink_pixels=0;
     memset(j->raw,0,(size_t)j->stride*j->height); return 0;
 }
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+// At 300 dpi four input pixels fill one byte on each of two output rows.
+// Read each source pixel once and keep the same four dither phases as mono_pack.
+static inline unsigned pack_300_pair(uint8_t *top, uint8_t *bottom, const uint8_t *src,
+                                     int width, int row, int bpp)
+{
+    static const uint8_t matrix[4][4] = {
+        {8,136,40,168}, {200,72,232,104}, {56,184,24,152}, {248,120,216,88}
+    };
+    const uint8_t *a = matrix[row & 3], *b = matrix[(row + 1) & 3];
+    unsigned ink = 0;
+    for (int x = 0; x < width; x += 8) {
+        unsigned upper = 0, lower = 0;
+        if (bpp == 1) {
+            // White text-page margins need no comparisons or bit packing.
+            uint32_t pixels;
+            memcpy(&pixels, src, sizeof(pixels));
+            if (pixels == UINT32_MAX) {
+                *top++ = 0;
+                *bottom++ = 0;
+                src += 4;
+                continue;
+            }
+        }
+        for (unsigned k = 0; k < 4; ++k, src += bpp) {
+            unsigned gray = bpp == 1 ? src[0] : (77u * src[0] + 150u * src[1] + 29u * src[2]) >> 8;
+            unsigned a0 = gray < a[(k & 1) * 2], a1 = gray < a[(k & 1) * 2 + 1];
+            unsigned b0 = gray < b[(k & 1) * 2], b1 = gray < b[(k & 1) * 2 + 1];
+            upper = (upper << 2) | (a0 << 1) | a1;
+            lower = (lower << 2) | (b0 << 1) | b1;
+            ink += a0 + a1 + b0 + b1;
+        }
+        *top++ = (uint8_t)upper;
+        *bottom++ = (uint8_t)lower;
+    }
+    return ink;
+}
+#endif
+
 static int line(void *ctx,int y,const uint8_t *p) {
     hp_job *j=ctx;
     if (!j->open || j->failed || y!=j->y || y>=j->src_h) return -1;
     j->y++;
-    int row=y-96;
-    if (p && row>=0 && row<j->height) {
-        unsigned char *out=j->raw+(size_t)row*j->stride;
-        j->ink_pixels += mono_pack(out,j->width,p,j->src_w,j->bpp,96,0,row);
+    int row = (y << j->scale_shift) - 96;
+    int rows = 1 << j->scale_shift;
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    if (p && j->p1006 && rows == 2 && row >= 0 && row + 1 < j->height &&
+        j->width % 8 == 0 && j->src_w * 2 >= j->width + 96) {
+        uint8_t *top = j->raw + (size_t)row * j->stride;
+        if (j->bpp == 1)
+            j->ink_pixels += pack_300_pair(top, top + j->stride, p + 48, j->width, row, 1);
+        else
+            j->ink_pixels += pack_300_pair(top, top + j->stride, p + 48 * 3, j->width, row, 3);
+        return 0;
+    }
+#endif
+    for (int offset = 0; p && offset < rows; ++offset) {
+        int target = row + offset;
+        if (target < 0 || target >= j->height)
+            continue;
+        unsigned char *out = j->raw + (size_t)target * j->stride;
+        j->ink_pixels += mono_pack(out, j->width, p, j->src_w, j->bpp,
+                                   96, j->scale_shift, target);
     }
     return 0;
 }
@@ -186,9 +259,24 @@ static int page_end(void *ctx) {
     }
     jbg_enc_init(&enc,j->wire_stride*8,j->height,1,planes,encoded,j);
     jbg_enc_options(&enc,JBG_ILEAVE|JBG_SMID,JBG_DELAY_AT|JBG_LRLTWO|JBG_TPDON|JBG_TPBON|JBG_DPON,128,0,0);
-    jbg_enc_out(&enc); jbg_enc_free(&enc); oom=NULL; encoding_job=NULL; block(j); rec(j,4,0); j->open=false;
+    uint64_t encode_start=j->p1006 ? hp_now_us() : 0;
+    jbg_enc_out(&enc);
+    if (j->p1006) j->encode_us += hp_now_us()-encode_start;
+    jbg_enc_free(&enc); oom=NULL; encoding_job=NULL; block(j); rec(j,4,0); j->open=false;
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    // Complete the page transfer before returning to document decoding.
+    if (!j->failed && j->io.flush && j->io.flush(j->io.ctx) < 0)
+        j->failed = true;
+#endif
     return j->failed ? -1:0;
 }
+#ifndef PRINTSERVER_PROFILE_HP_P1008
+static void stats(void *ctx,char *buf,size_t n) {
+    hp_job *j=ctx;
+    snprintf(buf,n,"HP P1006 expand=%.3f s JBIG+output=%.3f s (expansion included)",
+             j->expand_us/1e6,j->encode_us/1e6);
+}
+#endif
 static int end(void *ctx) {
     hp_job *j=ctx;
     if (j->open) j->failed=true;
@@ -197,9 +285,19 @@ static int end(void *ctx) {
     if (!rc && j->io.flush && j->io.flush(j->io.ctx)<0) rc=-1;
     free(j->raw); free(j->chunk); free(j->expanded); free(j); return rc;
 }
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+static int abort_job(void *ctx) {
+    hp_job *j = ctx;
+    // A page buffered for JBIG has no XQX header until page_end starts.
+    // Drop an incomplete raster page and close the valid prefix of the job.
+    // end() still reports failure after a partial USB write or encoder error.
+    j->open = false;
+    return end(j);
+}
+#endif
 static int test(const printer_driver_t *d,const printer_io_t *io,int dpi,const char *label) {
     hp_job *j=begin(d,io,dpi,0); if (!j) return -1;
-    int w=papers[0].width*600/2540,h=papers[0].height*600/2540;
+    int w=papers[0].width*dpi/2540,h=papers[0].height*dpi/2540;
     unsigned char *p=malloc(w); if (!p) { j->failed=true; return end(j); }
     page_begin(j,w,h,1);
     for (int y=0;y<h;y++) {
@@ -223,12 +321,22 @@ const printer_driver_t hp_p1006_driver={
     .usb_vid=0x03f0,.usb_pid=0x3e17,
 #endif
     .color=false,.scanner=false,
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    .resolutions={300},.nresolutions=1,.papers=papers,
+#else
     .resolutions={600},.nresolutions=1,.papers=papers,
+#endif
 #ifdef PRINTSERVER_PROFILE_HP_P1008
     .npapers=3,  // A4, Letter and A5 are present in the upstream P1008 PPD.
 #else
     .npapers=4,
 #endif
     .margin_left=407,.margin_right=407,.margin_top=407,.margin_bottom=407,
+#ifndef PRINTSERVER_PROFILE_HP_P1008
+    .job_stats=stats,
+#endif
+#if defined(PRINTSERVER_PROFILE_HP) && !defined(PRINTSERVER_PROFILE_HP_P1008)
+    .job_abort=abort_job,
+#endif
     .job_begin=begin,.page_begin=page_begin,.page_line=line,.page_end=page_end,.job_end=end,.test_page=test
 };

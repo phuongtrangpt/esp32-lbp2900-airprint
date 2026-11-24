@@ -81,7 +81,12 @@ jobs:
           make -C host airprint_esp_policy_host
           python tools/test_capt_esp_policy.py
       - name: HP P1006 raster tests
-        run: ASAN_OPTIONS=detect_leaks=0 host/hp_host
+        run: |
+          ASAN_OPTIONS=detect_leaks=0 host/hp_host
+          make -C host hp_p1006_profile_host hp_expand_host
+          ASAN_OPTIONS=detect_leaks=0 host/hp_p1006_profile_host
+          ASAN_OPTIONS=detect_leaks=0 host/hp_expand_host
+          ASAN_OPTIONS=detect_leaks=0 python tools/test_hp_ipp_reservations.py
       - name: HP P1008 raster tests
         run: ASAN_OPTIONS=detect_leaks=0 host/hp_p1008_host
       - name: Standard printer streams and memory stress

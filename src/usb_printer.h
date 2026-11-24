@@ -44,6 +44,12 @@ esp_err_t usb_printer_job_begin(void);
 esp_err_t usb_printer_write(const uint8_t *data, size_t len);
 // Sends any buffered data and waits until the printer has accepted it.
 esp_err_t usb_printer_flush(void);
+#ifdef PRINTSERVER_HP_RAW_BRIDGE
+esp_err_t usb_printer_raw_write(const uint8_t *data, size_t len);
+esp_err_t usb_printer_raw_flush(void);
+// Returns 0 while no reply is available. An idle printer may NAK bulk IN.
+int usb_printer_raw_poll_reply(uint8_t *buf, size_t len);
+#endif
 // CAPT binary back channel, byte count or -1. Only while a job owns the device.
 int usb_printer_read(uint8_t *buf, size_t len, uint32_t timeout_ms);
 // Waits until the back channel has delivered text containing `needle`.

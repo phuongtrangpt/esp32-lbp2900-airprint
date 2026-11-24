@@ -63,6 +63,8 @@ def main():
     if app_offset!=0x20000: raise SystemExit(f'Unexpected ota_0 offset: {app_offset}')
     settings=json.loads((BUILD/'flasher_args.json').read_text())['flash_settings']
     version=re.search(r'set\(PROJECT_VER \"([^\"]+)\"\)', (ROOT/'CMakeLists.txt').read_text()).group(1)
+    if args.env == "hp":
+        version = (OUT/"firmware.bin").read_bytes()[48:80].split(b"\0",1)[0].decode("ascii")
     manifest={'chip':'esp32s3','board':'ESP32-S3 N16R8','version':version,
               'physical_printer_tested':False,'flash_size':settings['flash_size'],'flash_mode':settings['flash_mode'],'flash_freq':settings['flash_freq'],
               'profile':args.env,'name':PROFILE_NAMES.get(args.env, 'Print Server ESP 32'),

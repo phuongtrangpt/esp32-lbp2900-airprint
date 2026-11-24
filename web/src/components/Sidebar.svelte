@@ -92,7 +92,7 @@
     {/each}
   </ul>
 
-  <a href="/setup" style="display:block;padding:12px 18px;text-decoration:none">Thiết lập Wi-Fi / Bàn giao ↗</a>
+  <a href="/setup" style="display:block;padding:12px 18px;text-decoration:none">Đổi Wi-Fi / Bàn giao ↗</a>
   <a href="/update" style="display:block;padding:12px 18px;text-decoration:none">Phiên bản / Cập nhật firmware ↗</a>
   <a href="https://www.facebook.com/leviethoaiphuong" target="_blank" rel="noopener noreferrer" style="display:block;padding:12px 18px;text-decoration:none">Facebook · Hỗ trợ Việt Phương ↗</a>
   <a href="/network" style="display:block;padding:12px 18px;text-decoration:none">Cài đặt IP động / IP tĩnh ↗</a>

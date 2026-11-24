@@ -10,6 +10,22 @@ int main(void)
     assert(status_led_select(false, false, true, true) == LED_BUSY);
     assert(status_led_select(false, false, false, true) == LED_READY);
     assert(status_led_select(false, false, false, false) == LED_WAITING);
+    assert(status_led_print_only_state(LED_OFF, false) == LED_OFF);
+    assert(status_led_print_only_state(LED_WAITING, false) == LED_OFF);
+    assert(status_led_print_only_state(LED_READY, false) == LED_OFF);
+    assert(status_led_print_only_state(LED_BUSY, false) == LED_BUSY);
+    assert(status_led_print_only_state(LED_READY, true) == LED_BUSY);
+    assert(status_led_print_only_state(LED_ERROR, false) == LED_ERROR);
+    assert(status_led_print_only_state(LED_ERROR, true) == LED_ERROR);
+    assert(status_led_print_only_state(LED_RECOVERY_REQUIRED, false) == LED_RECOVERY_REQUIRED);
+    assert(status_led_print_only_state(LED_RECOVERY_REQUIRED, true) == LED_RECOVERY_REQUIRED);
+    status_led_frame_t off = status_led_frame(LED_OFF, 0);
+    assert(off.r == 0 && off.g == 0 && off.b == 0);
+    status_led_frame_t blink = status_led_frame(LED_BUSY, 0);
+    assert(blink.r == 0 && blink.g == 255 && blink.b == 0 && blink.duration_ms == 250);
+    blink = status_led_frame(LED_BUSY, blink.next);
+    assert(blink.r == 0 && blink.g == 0 && blink.b == 0 && blink.duration_ms == 250);
+
     unsigned step = 0;
     for (unsigned cycle = 0; cycle < 20; ++cycle) {
         unsigned flashes = 0, duration = 0;

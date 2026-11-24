@@ -17,7 +17,11 @@ int wifi_rssi(void);
 bool wifi_get_network(char *mask,size_t m,char *gateway,size_t g);
 
 #include "network_config.h"
+#include "esp_wifi_types.h"
 #include "airprint.h"
+// Copy the active station's IPv4 configuration for use as a static address.
+bool wifi_current_ipv4_config(network_config_t *cfg);
+esp_err_t wifi_scan_networks(wifi_ap_record_t *aps, uint16_t *count);
 // Queued to the Wi-Fi worker; credentials are saved only after connection succeeds.
 esp_err_t wifi_submit_setup(const char *ssid,const char *password,const network_config_t *cfg,bool serial);
 void wifi_request_setup(void);

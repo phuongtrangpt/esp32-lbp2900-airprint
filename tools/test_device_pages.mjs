@@ -49,6 +49,48 @@ await s.context.poll();
 assert.match(s.node('status').textContent,/Chưa kết nối/);
 assert.equal(s.node('save').disabled,false);
 
+// Existing customers must scan and change networks through the current LAN,
+// with no setup hotspot or physical BOOT step.
+let lanBusy=false, lanScans=0, failScan=false;
+const lanPosts=[];
+const lan=page('src/setup_portal.c',async(url,options)=>{
+ if(url.endsWith('/status'))return {json:async()=>({ap:false,connected:true,pending:false,busy:lanBusy})};
+ if(url.endsWith('/scan')){
+  lanScans++;
+  return {ok:!failScan,json:async()=>failScan?{message:'scan failed'}:{networks:[{ssid:'New Wi-Fi',rssi:-40,channel:6}]}};
+ }
+ lanPosts.push(JSON.parse(options.body));
+ return {ok:true,json:async()=>({message:'connecting'})};
+});
+await tick();
+assert.equal(lanScans,1,'LAN page must scan automatically');
+assert.equal(lan.node('save').disabled,false);
+await lan.context.poll();
+await lan.context.poll();
+assert.equal(lanScans,1,'status polling must not restart scans or clear connected state');
+failScan=true;
+await lan.node('scan').onclick();
+assert.match(lan.node('status').textContent,/scan failed/);
+assert.equal(lan.node('scan').disabled,false,'failed scans remain retryable');
+failScan=false;
+await lan.node('scan').onclick();
+assert.equal(lan.node('networks').children[1].value,'New Wi-Fi');
+lanBusy=true;
+await lan.context.poll();
+assert.equal(lan.node('scan').disabled,true);
+assert.equal(lan.node('save').disabled,true);
+const previous=lanScans;
+await lan.node('scan').onclick();
+assert.equal(lanScans,previous,'printing must block scan');
+lanBusy=false;
+await lan.context.poll();
+lan.node('ssid').value='New Wi-Fi';
+lan.node('password').value='newsecret123';
+await lan.node('form').onsubmit({preventDefault(){}});
+assert.deepEqual(lanPosts,[{ssid:'New Wi-Fi',password:'newsecret123',mode:'dhcp'}]);
+assert.match(lan.node('status').textContent,/Wi-Fi cũ/);
+assert.equal(lan.node('save').disabled,true,'prevent duplicate submissions during handover');
+
 const networkCalls=[];
 const network=page('src/network_settings.c',async(url,options)=>{
  assert.equal(url,'/api/network');

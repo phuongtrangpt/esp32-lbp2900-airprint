@@ -1,0 +1,51 @@
+name: Wi-Fi change from existing LAN
+on:
+  push:
+    branches: [fix/wifi-scan]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  firmware:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        profile: [hp, canon]
+    env:
+      FIRMWARE_UPDATE_BASE_URL: ${{ vars.FIRMWARE_UPDATE_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Verify printing implementation remains unchanged
+        run: git diff --exit-code 83fac5d614961592e000cd239f5213239a9f32e3 -- components/printers components/capt components/xqx components/airprint src/usb_printer.c src/hp_raw_bridge.c src/hp_firmware.c src/print_job.c
+      - name: Test LAN Wi-Fi setup and device pages
+        run: |
+          node tools/test_device_pages.mjs
+          ASAN_OPTIONS=detect_leaks=0 python tools/test_wifi_setup.py
+      - name: Build firmware
+        run: |
+          python -m pip install platformio==6.2.0 esptool==4.9.0
+          pio run -e ${{ matrix.profile }}
+          python tools/package_firmware.py --env ${{ matrix.profile }} --out firmware/${{ matrix.profile }}
+      - name: Package USB flash script and matching source
+        run: |
+          cp tools/flash.py firmware/${{ matrix.profile }}/flash.py
+          cp docs/WIFI-FIX.md firmware/${{ matrix.profile }}/HUONG-DAN.txt
+          git archive --format=tar.gz --prefix=source/ HEAD > firmware/${{ matrix.profile }}/source-code.tar.gz
+          git rev-parse HEAD > firmware/${{ matrix.profile }}/BUILD_COMMIT.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WIFI-FIX-${{ matrix.profile }}
+          path: firmware/${{ matrix.profile }}/
+          if-no-files-found: error

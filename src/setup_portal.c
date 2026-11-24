@@ -19,14 +19,14 @@ static const char page[] =
     "<!doctype html><html lang=vi><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>vietphuong esp · Thiết lập</title><style>*{box-sizing:border-box}html{color-scheme:dark}body{font:15px/1.6 system-ui;max-width:760px;margin:0 auto;padding:32px 18px 24px;background:#080f1d;color:#ecf3ff}body:before{content:\"\";position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 90% 0, #16395166,transparent 60%);z-index:-1}header{padding:20px 4px 26px}h1{font-size:34px;line-height:1.2;letter-spacing:-1px;margin:12px 0}h2{font-size:19px;margin:0 0 8px}p{color:#a9bad1;margin:8px 0 18px}.eyebrow{color:#65e3cc;font-size:12px;font-weight:750;letter-spacing:2px}.card{padding:24px;margin:0 0 18px;background:linear-gradient(145deg,#17253a,#101c2d);border:1px solid #2c405a;border-radius:22px;box-shadow:0 16px 35px #0003}.step{display:inline-grid;place-items:center;width:29px;height:29px;border-radius:10px;background:#63e6cb22;color:#70efdb;font-size:13px;margin-right:8px}input,select,button{box-sizing:border-box;width:100%;min-height:48px;padding:12px 14px;border-radius:12px;border:1px solid #354c68;background:#0c1728;color:#eff6ff;font:inherit}input:focus,select:focus{outline:2px solid #63e6cb;border-color:transparent}label{display:block;margin:16px 0 0;color:#c5d4e7}label input,label select{margin-top:7px}button{background:#6ce6cc;color:#071c22;border-color:transparent;font-weight:750;cursor:pointer;margin:16px 0 8px}button:hover{filter:brightness(1.08)}button:disabled{opacity:.55;cursor:wait}#scan{background:#20364d;color:#8ff2e0;border:1px solid #395c72}a{color:#82ebd7;text-underline-offset:4px}#status:empty,#result:empty{display:none}#status{padding:16px;border:1px solid #345870;background:#112b3d;border-radius:14px;color:#d5e8ff}#result{padding:24px;background:#11372e;border:1px solid #53c9a5;border-radius:18px;margin:18px 0}#result a{display:block;font-size:25px;font-weight:800;overflow-wrap:anywhere}#result p{color:#d9f3e9;margin:12px 0 0}footer{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:20px 4px;color:#8fa3be;font-size:12px}details summary{cursor:pointer;color:#cad8eb}.hint{font-size:13px}[hidden]{display:none!important}@media(max-width:480px){body{padding:14px 12px}.card{padding:18px}h1{font-size:28px}#result a{font-size:21px}}</style><header><span class=eyebrow>VIETPHUONG ESP / KẾT NỐI KHÔNG DÂY</span><h1>Máy in cũ. Trải nghiệm mới.</h1><p>Kết nối Wi-Fi lần đầu hoặc đổi tên mạng và mật khẩu.</p><p><a href='https://www.facebook.com/leviethoaiphuong' target=_blank rel=noopener>Facebook · Hỗ trợ Việt Phương</a> · <a href='/'>Trang in</a></p></header><form id=form><section class=card><h2><span class=step>01</span>Kết nối Wi-Fi nhà bạn</h2><p class=hint>Chỉ tìm Wi-Fi 2.4 GHz · Mạng mạnh nhất ở đầu danh sách.</p><p id=info>Đang đọc trạng thái Wi-Fi…</p><p class=hint>Nếu Wi-Fi cũ đã đổi tên hoặc mật khẩu, giữ BOOT 5 giây, kết nối vào Wi-Fi <strong>vietphuong esp-XXXX</strong> của ESP, rồi mở <strong>http://192.168.4.1/setup</strong>.</p><button id=scan type=button disabled>Tìm mạng Wi-Fi 2.4 GHz</button><select id=networks aria-label='Mạng tìm thấy'><option>Chọn mạng hoặc nhập tên bên dưới</option></select><label>Tên Wi-Fi<input id=ssid required maxlength=32 autocomplete=off></label><label>Mật khẩu Wi-Fi<input id=password type=password maxlength=63 autocomplete=new-password></label></section><button id=save disabled>Kết nối Wi-Fi</button></form><p id=status role=status></p><div id=result></div><p>ESP tự nhận IP từ router khi kết nối Wi-Fi. Sau khi kết nối, anh có thể mở mục <strong>Địa chỉ IP</strong> trên trang in để giữ địa chỉ đó làm IP tĩnh.</p><details class=card><summary>Bàn giao thiết bị cho khách</summary><p>Xóa Wi-Fi và IP đã thử, giữ firmware HP. Giữ BOOT 5 giây rồi bấm nút bên dưới.</p><button id=handover type=button>Bàn giao · xóa Wi-Fi đã lưu</button></details><footer><span>© Việt Phương · vietphuong esp</span><span id=firmware>Đang đọc phiên bản…</span><a href='https://www.facebook.com/leviethoaiphuong' target=_blank rel=noopener>Facebook hỗ trợ ↗</a></footer>\n"
     "<script>\n"
     "const $=id=>document.getElementById(id);\n"
-    "let waiting=false, submitting=false, scanning=false, ap=false, scanned=false;\n"
+    "let waiting=false, submitting=false, scanning=false, ap=false, scanned=false, connected=false, busy=false;\n"
     "function buttons(){\n"
-    "  $('scan').disabled=!ap||waiting||submitting||scanning;\n"
-    "  $('save').disabled=!ap||waiting||submitting||scanning;\n"
+    "  $('scan').disabled=(!ap&&!connected)||busy||waiting||submitting||scanning;\n"
+    "  $('save').disabled=(!ap&&!connected)||busy||waiting||submitting||scanning;\n"
     "}\n"
     "$('networks').onchange=()=>{$('ssid').value=$('networks').value};\n"
     "$('scan').onclick=async()=>{\n"
-    "  if(!ap||scanning||submitting||waiting)return;\n"
+    "  if((!ap&&!connected)||busy||scanning||submitting||waiting)return;\n"
     "  scanning=true;\n"
     "  buttons();\n"
     "  $('status').textContent='Đang tìm Wi-Fi 2.4 GHz…';\n"
@@ -72,7 +72,7 @@ static const char page[] =
     "    const j=await r.json();\n"
     "    if(!r.ok)throw Error(j.message);\n"
     "    waiting=true;\n"
-    "    $('status').textContent=j.message;\n"
+    "    $('status').textContent=j.message+' Nếu trang mất kết nối, chuyển sang Wi-Fi mới và mở lại trang in. Nếu thất bại, ESP sẽ quay về Wi-Fi cũ.';\n"
     "  }catch(e){\n"
     "    $('status').textContent=e.message;\n"
     "  }finally{\n"
@@ -86,12 +86,14 @@ static const char page[] =
     "    const j=await r.json();\n"
     "    $('firmware').textContent='Firmware '+(j.firmware||'—');\n"
     "    ap=j.ap;\n"
+    "    connected=j.connected;\n"
+    "    busy=!!(j.pending||j.busy);\n"
     "    buttons();\n"
-    "    $('info').textContent=ap?'Wi-Fi thiết lập: '+j.ap_name:'Giữ BOOT 5 giây khi ESP đang chạy để mở chức năng đổi Wi-Fi.';\n"
-    "    if(ap&&!scanned&&!waiting&&!submitting&&!j.pending){\n"
+    "    $('info').textContent=ap?'Wi-Fi thiết lập: '+j.ap_name:connected?'Đang dùng Wi-Fi hiện tại. Chọn mạng mới bên dưới để đổi Wi-Fi.':'Chưa có kết nối. Giữ BOOT 5 giây để mở Wi-Fi thiết lập.';\n"
+    "    if((ap||connected)&&!busy&&!scanned&&!waiting&&!submitting){\n"
     "      scanned=true;\n"
     "      $('scan').onclick();\n"
-    "    }else if(!ap)scanned=false;\n"
+    "    }else if(!ap&&!connected)scanned=false;\n"
     "    if(!waiting)return;\n"
     "    if(j.pending)return;\n"
     "    if(j.error){\n"
@@ -112,7 +114,7 @@ static const char page[] =
     "    }\n"
     "    buttons();\n"
     "  }catch(e){\n"
-    "    if(waiting)$('status').textContent='Đang chờ ESP. Nếu Wi-Fi thiết lập đã tắt, kết nối lại Wi-Fi nhà.';\n"
+    "    if(waiting)$('status').textContent='Đang đổi Wi-Fi. Chuyển sang mạng mới rồi mở lại trang in; nếu thất bại, ESP sẽ quay về Wi-Fi cũ. Có thể kết nối hotspot vietphuong esp để kiểm tra.';\n"
     "  }\n"
     "}\n"
     "setInterval(poll,2000);\n"
@@ -178,6 +180,7 @@ bool wifi_setup_http(airprint_http_t *h, const char *method, const char *path) {
     cJSON_AddBoolToObject(j, "connected", wifi_connected());
     cJSON_AddBoolToObject(j, "pending", wifi_setup_pending());
     cJSON_AddBoolToObject(j, "ap", wifi_setup_active());
+    cJSON_AddBoolToObject(j, "busy", usb_printer_job_active() || cloud_update_busy());
     cJSON_AddNumberToObject(j, "error", wifi_setup_error());
     cJSON_AddStringToObject(j, "ip", ip);
     cJSON_AddStringToObject(j, "ap_name", wifi_setup_name());
@@ -186,10 +189,10 @@ bool wifi_setup_http(airprint_http_t *h, const char *method, const char *path) {
     return true;
   }
   if (get && !strcmp(path, "/api/setup/scan")) {
-    if (!wifi_setup_active() || wifi_setup_pending() ||
+    if ((!wifi_setup_active() && !wifi_connected()) || wifi_setup_pending() ||
         usb_printer_job_active() || cloud_update_busy()) {
       message(h, "409 Conflict",
-              "Giữ BOOT 5 giây để mở thiết lập; quét mạng khi máy đang rảnh.");
+              "Chỉ quét Wi-Fi khi ESP có kết nối hoặc đang mở thiết lập và máy đang rảnh.");
       return true;
     }
     uint16_t n = 24;
@@ -283,7 +286,7 @@ bool wifi_setup_http(airprint_http_t *h, const char *method, const char *path) {
           : e == ESP_ERR_INVALID_ARG
               ? "Tên Wi-Fi/mật khẩu/IP không hợp lệ. Mật khẩu 8–63 ký tự hoặc "
                 "để trống cho mạng mở."
-              : "Máy đang bận hoặc chưa mở thiết lập. Giữ BOOT 5 giây rồi thử "
+              : "Máy đang bận hoặc mất kết nối. Chờ máy rảnh rồi thử "
                 "lại.");
   return true;
 }

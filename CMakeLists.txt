@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16.0)
 # explicit version: ESP-IDF otherwise runs `git describe`, which fails in a
 # repository without commits
-set(PROJECT_VER "0.9.10-vietphuong")
+set(PROJECT_VER "0.9.11-wifi1")
 set(PRINTSERVER_PROFILE "all" CACHE STRING "Printer profile: hp, hp_p1008, canon, pixma, standard, all")
 if(PRINTSERVER_PROFILE STREQUAL "hp")
   add_compile_definitions(PRINTSERVER_PROFILE_HP=1)
@@ -18,7 +18,7 @@ elseif(NOT PRINTSERVER_PROFILE STREQUAL "all")
 endif()
 if(PRINTSERVER_PROFILE STREQUAL "hp")
   if(PRINTSERVER_HP_RAW_BRIDGE)
-    set(PROJECT_VER "0.9.10-hp-raw12-net1")
+    set(PROJECT_VER "0.9.10-hp-raw12-net2")
     add_compile_definitions(PRINTSERVER_HP_RAW_BRIDGE=1)
   else()
     set(PROJECT_VER "0.9.10-hp-test4")

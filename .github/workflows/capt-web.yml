@@ -1,0 +1,102 @@
+name: Publish CAPT test catalog
+on:
+  push:
+    branches: [main, web/capt-family]
+    paths:
+      - installer/**
+      - tools/prepare_capt_family_web.py
+      - .github/workflows/capt-web.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  pinned-release:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Retain verified CAPT test binaries as immutable prerelease assets
+        run: |
+          TAG=capt-family-test1-da12cf9
+          if gh release view "$TAG" >/dev/null 2>&1; then exit 0; fi
+          for PROFILE in lbp6000 lbp6200 lbp3010; do
+            gh run download 45551290587 --name "$PROFILE-USB-TEST" --dir "staging/$PROFILE"
+          done
+          python - <<'PY'
+          import sys, hashlib
+          from pathlib import Path
+          sys.path.insert(0,'tools')
+          from prepare_capt_family_web import DIGESTS
+          for profile,digest in DIGESTS.items():
+              p=Path('staging')/profile/(profile+'-USB-TEST.zip')
+              assert hashlib.sha256(p.read_bytes()).hexdigest()==digest
+          PY
+          cat > /tmp/capt-release-notes.txt <<'NOTES'
+          Separate CAPT prototypes for LBP6000/6018, LBP6200(d), LBP3010/3018/3050 and LBP3100/3108/3150.
+          Built from da12cf97456cf3a6e0edf2effc7e818e7a9145c5. Hardware validation pending.
+          LBP6200 assumes the LBP6000 command sequence. Simplex A4/Letter/A5 only.
+          These assets supply the online installer; stable LBP2900/P1006 firmware is unchanged.
+          NOTES
+          gh release create "$TAG" staging/*/*-USB-TEST.zip --target da12cf97456cf3a6e0edf2effc7e818e7a9145c5 --prerelease --title 'CAPT family TEST1 — hardware validation pending' --notes-file /tmp/capt-release-notes.txt
+  build:
+    needs: pinned-release
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Preserve published model binaries from the latest successful official build
+        run: |
+          BASE_RUN=$(gh api "repos/$GH_REPO/actions/workflows/build.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].id')
+          test "$BASE_RUN" != null
+          gh run download "$BASE_RUN" --name vietphuong-esp-web --dir base-site
+          mkdir -p installer/public/firmware
+          cp -a base-site/firmware/. installer/public/firmware/
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('installer/public/firmware')
+          profiles=['hp','hp_p1008','canon','lbp6030','pixma','standard']
+          records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest()
+                   for profile in profiles for p in (root/profile).rglob('*') if p.is_file()}
+          assert all(any(n.startswith(profile+'/') for n in records) for profile in profiles)
+          Path('/tmp/preserved-models.json').write_text(json.dumps(records))
+          PY
+      - name: Stage exact CAPT prototypes for online USB flashing only
+        run: |
+          python -m pip install esptool==4.9.0
+          python tools/prepare_capt_family_web.py
+          rm -rf installer/public/downloads
+      - name: Validate and build online installer
+        run: |
+          npm --prefix installer ci
+          npm --prefix installer test
+          npm --prefix installer run build
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('installer/dist/firmware')
+          for name,digest in json.loads(Path('/tmp/preserved-models.json').read_text()).items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          assert not list(Path('installer/dist').rglob('*.zip'))
+          assert not (Path('installer/dist')/'downloads').exists()
+          print('Existing model assets byte-identical; no downloadable ZIPs in published website')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vietphuong-esp-web
+          path: installer/dist/
+          if-no-files-found: error

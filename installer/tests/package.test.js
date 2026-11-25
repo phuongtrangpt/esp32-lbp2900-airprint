@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile,stat } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
-for (const profile of ['hp','hp_p1008','canon','lbp6030','pixma','standard']) {
+for (const profile of ['hp','hp_p1008','canon','lbp6000','lbp6200','lbp3010','lbp6030','pixma','standard']) {
 const root=new URL(`../public/firmware/${profile}/`,import.meta.url);
 const available=await stat(new URL('web-manifest.json',root)).then(()=>true,()=>false);
 test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`,{skip:!available},async()=>{
@@ -10,7 +10,7 @@ test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`
  if(profile==='hp_p1008')assert.equal(manifest.hpBootstrapEmbedded,true);
  assert.equal(manifest.builds.length,1);const build=manifest.builds[0];
  assert.equal(build.chipFamily,'ESP32-S3');assert.equal(build.serialType,'uart');
- if(profile==='lbp6030'){
+ if(['lbp6030','lbp6000','lbp6200','lbp3010'].includes(profile)){
   assert.equal(manifest.usbOnly,true);
   await assert.rejects(stat(new URL('ota-manifest.json',root)),{code:'ENOENT'});
  }else{

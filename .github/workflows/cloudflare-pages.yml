@@ -1,7 +1,7 @@
 name: Deploy vietphuong esp to Cloudflare Pages
 on:
   workflow_run:
-    workflows: [Build HP P1006 and Canon LBP2900 ESP 32]
+    workflows: [Build HP P1006 and Canon LBP2900 ESP 32, Publish CAPT test catalog]
     types: [completed]
 permissions:
   contents: read

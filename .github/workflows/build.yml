@@ -1,6 +1,12 @@
 name: Build HP P1006 and Canon LBP2900 ESP 32
 on:
   push:
+    paths-ignore:
+      - installer/**
+      - tools/prepare_capt_family_web.py
+      - .github/workflows/capt-web.yml
+      - .github/workflows/cloudflare-pages.yml
+      - .github/workflows/build.yml
   pull_request:
   workflow_dispatch:
 permissions:
@@ -125,6 +131,8 @@ jobs:
           npm run build
       - name: Stage pinned Canon LBP6030 USB prerelease
         run: python tools/prepare_lbp6030_web.py
+      - name: Stage pinned CAPT family USB prototypes
+        run: python tools/prepare_capt_family_web.py
       - name: Build USB installer and offline Windows package
         run: |
           npm --prefix installer ci
@@ -134,12 +142,15 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags='-s -w' -o release/PrintServer-Offline.exe tools/offline/main.go
           cp "$(go env GOROOT)/LICENSE" release/LICENSE-Go.txt
           python tools/package_offline.py
+          mkdir -p release/offline
+          mv installer/dist/downloads/* release/offline/
+          rmdir installer/dist/downloads
       - uses: actions/upload-artifact@v4
         with:
           name: esp32-hp-p1006-canon-lbp2900-profiles
           path: |
             firmware/
-            installer/dist/downloads/
+            release/offline/
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:

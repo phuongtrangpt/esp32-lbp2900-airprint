@@ -94,6 +94,15 @@ static void response(airprint_http_t *h,const char *status,const char *message,c
 }
 static const char *value(cJSON *j,const char *key) { cJSON *v=cJSON_GetObjectItemCaseSensitive(j,key);return cJSON_IsString(v)?v->valuestring:NULL; }
 bool network_settings_http(airprint_http_t *h,const char *method,const char *path) {
+    if (!strcmp(path,"/api/wifi-signal")) {
+        if (strcmp(method,"GET")) { response(h,"405 Method Not Allowed","Chỉ hỗ trợ GET.",NULL); return true; }
+        bool connected = wifi_connected();
+        int rssi = connected ? wifi_rssi() : 0;
+        char body[80];
+        int n = snprintf(body,sizeof(body),"{\"connected\":%s,\"rssi\":%d}",connected ? "true" : "false",rssi);
+        airprint_http_send_ex(h,"200 OK","application/json","Cache-Control: no-store\r\n",body,n);
+        return true;
+    }
     bool html=!strcmp(path,"/network");if(!html&&strcmp(path,"/api/network"))return false;
     if(html&&!strcmp(method,"GET")){airprint_http_send(h,"200 OK","text/html; charset=utf-8",page,sizeof(page)-1);return true;}
     if(!html&&!strcmp(method,"GET")) {

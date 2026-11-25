@@ -1,4 +1,5 @@
 <script lang="ts">
+  import WifiSignal from '../components/WifiSignal.svelte';
   import Printer from '@lucide/svelte/icons/printer';
   import Upload from '@lucide/svelte/icons/upload';
   import FolderOpen from '@lucide/svelte/icons/folder-open';
@@ -101,6 +102,7 @@
 </script>
 
 <div class="intro"><span>VIETPHUONG ESP / PRINT STUDIO</span><h2>In ấn thật đơn giản.</h2><p class="muted">Tài liệu của bạn. Kết nối không dây. Sẵn sàng trên mọi thiết bị.</p></div>
+<WifiSignal />
 <div class="grid">
   <section class="card hero">
     <div class="art"><Printer size={40} strokeWidth={1.5} /></div>

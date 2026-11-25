@@ -161,6 +161,7 @@ class Service:
                     continue
                 with self.lock:
                     j['state'], j['reason'], j['message'] = 5, 'job-transforming', 'Rendering on PC'
+                    render_started = time.monotonic()
                     emit('rendering', job=j['id'])
                     j['process'] = subprocess.Popen([self.renderer, str(inp), str(out)], stdout=subprocess.PIPE,
                                                      stderr=subprocess.PIPE, creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
@@ -170,7 +171,7 @@ class Service:
                 if j['process'].returncode:
                     raise ValueError(stderr.decode(errors='replace')[-1000:] or 'Raster conversion failed')
                 info = json.loads(stdout)
-                emit('rendered', job=j['id'], pages=info['pages'], bytes=out.stat().st_size)
+                emit('rendered', job=j['id'], pages=info['pages'], bytes=out.stat().st_size, raster_bytes=inp.stat().st_size, render_ms=round((time.monotonic()-render_started)*1000))
                 j['message'], j['reason'] = 'Sending compressed data to ESP', 'job-printing'
                 def connection(s):
                     with self.lock:
@@ -183,11 +184,12 @@ class Service:
                     if now - last[0] > 0.2 or done == total:
                         emit('sending', job=j['id'], done=done, total=total)
                         last[0] = now
+                send_started = time.monotonic()
                 send_job(self.host, out, j['cancel'], progress, connection)
                 with self.lock:
                     if not j['cancel'].is_set():
                         j['state'], j['reason'], j['message'] = 9, 'job-completed-successfully', 'USB delivered; paper output not confirmed'
-                        emit('usb-delivered', job=j['id'], pages=info['pages'], message=j['message'])
+                        emit('usb-delivered', job=j['id'], pages=info['pages'], send_ms=round((time.monotonic()-send_started)*1000), message=j['message'])
             except Exception as e:
                 with self.lock:
                     if j['process'] and j['process'].poll() is None:

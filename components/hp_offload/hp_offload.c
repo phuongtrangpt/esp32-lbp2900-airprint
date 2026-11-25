@@ -35,7 +35,7 @@ uint32_t hp_offload_crc(uint32_t state,const uint8_t *p,size_t n) {
     while(n--) {state^=*p++;for(int i=0;i<8;i++)state=(state>>1)^((0u-(state&1u))&0xedb88320u);}
     return state;
 }
-int hp_offload_session(int fd,const hp_offload_io_t *io,hp_offload_state_t *state,uint8_t *buffer) {
+int hp_offload_session(int fd,const hp_offload_io_t *io,hp_offload_state_t *state,uint8_t buffer[HP_OFFLOAD_CHUNK]) {
     struct timeval timeout={.tv_sec=30};
     setsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,&timeout,sizeof(timeout));
     setsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,&timeout,sizeof(timeout));

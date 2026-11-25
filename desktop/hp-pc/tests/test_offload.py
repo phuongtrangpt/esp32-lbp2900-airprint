@@ -88,6 +88,23 @@ class Conversion(unittest.TestCase):
         data=bytearray(raster(2));offset=4+(len(data)-4)//2
         struct.pack_into('!I',data,offset+276,600);struct.pack_into('!I',data,offset+280,600)
         p,out=self.render(data);self.assertNotEqual(p.returncode,0);self.assertFalse(out.exists())
+    def test_urf_white_matches_pwg_white(self):
+        w,h=1240,1748
+        urf=bytearray(b'UNIRAST\0'+struct.pack('!I',2))
+        pwg=bytearray(b'RaS2')
+        for _ in range(2):
+            ph=bytearray(32);ph[:4]=bytes([8,0,1,4]);struct.pack_into('!III',ph,12,w,h,300);urf.extend(ph)
+            ph=bytearray(1796)
+            for pos,v in [(276,300),(280,300),(372,w),(376,h),(384,8),(388,8),(392,w),(400,18)]:struct.pack_into('!I',ph,pos,v)
+            pwg.extend(ph)
+            for y in range(0,h,256):
+                block=bytes([min(256,h-y)-1,128]);urf.extend(block);pwg.extend(block)
+        p,out=self.render(urf);self.assertEqual(p.returncode,0,p.stderr);expected=out.read_bytes();out.unlink()
+        p,out=self.render(pwg);self.assertEqual(p.returncode,0,p.stderr);self.assertEqual(out.read_bytes(),expected);out.unlink()
+        p,out=self.render(urf[:-1]);self.assertNotEqual(p.returncode,0);self.assertFalse(out.exists())
+        # A declared page count that disagrees with actual pages is refused.
+        struct.pack_into('!I',urf,8,1)
+        p,out=self.render(urf);self.assertNotEqual(p.returncode,0);self.assertFalse(out.exists())
     def test_rgb(self):
         p,_=self.render(raster(rgb=True));self.assertEqual(p.returncode,0,p.stderr)
 

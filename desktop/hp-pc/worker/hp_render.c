@@ -32,9 +32,13 @@ int main(int argc,char **argv) {
     size_t n=strlen(argv[2])+5;char *tmp=malloc(n);if(!tmp)return 2;snprintf(tmp,n,"%s.tmp",argv[2]);
     FILE *in=fopen(argv[1],"rb"),*out=fopen(tmp,"wb");
     if(!in || !out){if(in)fclose(in);if(out)fclose(out);remove(tmp);free(tmp);return 2;}
+    unsigned declared=0;unsigned char signature[12];
+    if(fread(signature,1,12,in)==12 && !memcmp(signature,"UNIRAST\0",8))
+        declared=(unsigned)signature[8]<<24|(unsigned)signature[9]<<16|(unsigned)signature[10]<<8|signature[11];
+    rewind(in);
     context c={.out=out};raster_cb_t cb={.page_begin=page_begin,.line=line,.line_repeat=repeat,.page_end=page_end};
     int pages=raster_decode(read_file,in,&cb,&c);
-    bool ok=pages>0 && pages==c.pages && !ferror(in);
+    bool ok=pages>0 && pages==c.pages && (!declared || declared==(unsigned)pages) && !ferror(in);
     fclose(in);
     if(c.job){int ret=ok?hp_p1006_driver.job_end(c.job):hp_p1006_driver.job_abort(c.job);if(ret)ok=false;}
     if(ferror(out))ok=false;if(fclose(out))ok=false;

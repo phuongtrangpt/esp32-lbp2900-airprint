@@ -22,3 +22,9 @@ test('IP cannot be changed while printing; existing native configuration wins ov
  assert.equal(get('ip').value,'192.168.10.22');assert.equal(get('start').disabled,true);await get('start').onclick();assert.equal(calls.length,1);
  s.busy=false;await context.refresh();get('ip').value='192.168.10.23';await get('start').onclick();assert.equal(calls.find(c=>c[0]==='start_worker')[1].ip,'192.168.10.23');
 });
+
+test('a running PC service must not display a disconnected printer as ready',async()=>{
+ const s={boot_id:'one',service_state:'Running',ready:true,settings:{esp_ip:'192.168.10.21'},events:[],device:{online:false,state:'offline',message:'USB not connected'}};
+ const {get,context}=ui(s);await new Promise(setImmediate);assert.match(get('device').textContent,/Offline/);
+ s.device={online:true,state:'ready',message:'Ready'};await context.refresh();assert.match(get('device').textContent,/Sẵn sàng/);
+});

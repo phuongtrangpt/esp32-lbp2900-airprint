@@ -18,6 +18,9 @@ import zlib
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 from test_offload import ipp,raster
 from transport import exact,HEADER,FRAME,REPLY
+from fake_esp import FakeESP
+from ipp_codec import decode,integer
+import io
 SERVICE='VietPhuongHPP1006PC'
 DATA=Path(os.environ['PROGRAMDATA'])/'VietPhuong/HP-P1006-PC'
 
@@ -87,7 +90,9 @@ def main():
             raise
         helper=folder/'hp-pc-service.exe';app=folder/'hp-pc-test.exe'
         assert helper.is_file() and app.is_file(),list(folder.iterdir())
+        peer=None
         try:
+            peer=FakeESP().start()
             info=wait(scinfo);assert info['StartMode']=='Auto',info
             assert info['StartName'].lower()==r'nt authority\localservice',info
             subprocess.run([str(helper),'--set-ip','127.0.0.1'],check=True,timeout=30)
@@ -105,30 +110,29 @@ def main():
             request(ipp(11))
             print('SERVICE GUI: close-to-tray, single instance, and exit-manager without stopping IPP passed',flush=True)
             # A real LocalService-owned worker renders and sends a complete job.
-            captured=[];errors=[]
-            listener=socket.socket();listener.bind(('127.0.0.1',9101));listener.listen(1);listener.settimeout(30)
-            def peer():
-                try:
-                    with listener.accept()[0] as s:
-                        s.settimeout(20)
-                        magic,op,total,crc,job=HEADER.unpack(exact(s,32));assert magic==b'VPHPO01\n' and op==2
-                        s.sendall(REPLY.pack(b'VPHPA01\n',0,0,0));data=bytearray();seq=0
-                        while True:
-                            i,n,c=FRAME.unpack(exact(s,12));assert i==seq
-                            if not n:
-                                assert len(data)==total and zlib.crc32(data)==crc
-                                s.sendall(REPLY.pack(b'VPHPA01\n',2,seq,len(data)));break
-                            block=exact(s,n);assert zlib.crc32(block)==c;data.extend(block)
-                            s.sendall(REPLY.pack(b'VPHPA01\n',1,seq,len(data)));seq+=1
-                        captured.append(bytes(data))
-                except Exception as e:errors.append(repr(e))
-                finally:listener.close()
-            t=threading.Thread(target=peer,daemon=True);t.start()
+            wait(lambda:status().get('device',{}).get('online'))
+            def printer_state():
+                _,_,a=decode(io.BytesIO(request(ipp(11))));return integer(a,'printer-state')
+            assert printer_state()==3
+            peer.connected=False
+            wait(lambda:status().get('device',{}).get('online') is False)
+            assert printer_state()==5
+            # A full job can wait safely while USB is absent; reconnect resumes it.
             request(ipp(doc=raster(2)))
-            wait(lambda:bool(captured));t.join(timeout=5);assert not errors,errors
+            wait(lambda:any(e.get('phase')=='waiting-device' for e in status()['events']))
+            assert not peer.captured
+            peer.connected=True
+            wait(lambda:bool(peer.captured))
             wait(lambda:any(e.get('phase')=='usb-delivered' for e in status()['events']))
-            assert captured[0].endswith(b'\x1b%-12345X@PJL EOJ\n\x1b%-12345X')
-            print('SERVICE PRINT: no GUI, LocalService -> native HP converter -> simulated ESP passed',flush=True)
+            assert not peer.errors,peer.errors
+            assert peer.captured[0].endswith(b'\x1b%-12345X@PJL EOJ\n\x1b%-12345X')
+            peer.reachable=False
+            wait(lambda:status().get('device',{}).get('online') is False)
+            assert printer_state()==5
+            peer.reachable=True
+            wait(lambda:status().get('device',{}).get('online'))
+            assert printer_state()==3
+            print('SERVICE PRINT: no GUI, LocalService -> native HP -> ESP; USB/network offline/reconnect states and safe held-job resume passed',flush=True)
             old=status()['worker_pid'];subprocess.run(['taskkill','/F','/T','/PID',str(old)],check=True,capture_output=True)
             wait(lambda:status().get('ready') and status().get('worker_pid') not in (None,old))
             request(ipp(11));print('SERVICE RECOVERY: worker killed and automatically recovered',flush=True)
@@ -143,6 +147,7 @@ def main():
             except Exception as e:print('STATUS READ:',e,flush=True)
             raise
         finally:
+            if peer:peer.close()
             if gui and gui.poll() is None:
                 subprocess.run([str(app),'--quit'],timeout=15)
                 try:gui.wait(timeout=10)

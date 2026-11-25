@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id);
 const invoke=window.__TAURI__.core.invoke;
 let busy=false,pending=false,initialized=false,lastSequence=0,bootId='',lastError='';
-const labels={'service-started':'Dịch vụ Windows đã khởi động','service-stopped':'Dịch vụ Windows đã dừng','media-normalized':'Đã nhận dạng khổ giấy',ready:'Dịch vụ in sẵn sàng',spooled:'Đã nhận đủ tài liệu',rendering:'PC đang xử lý và nén',rendered:'PC đã xử lý xong',sending:'Đang gửi sang ESP','usb-delivered':'Đã chuyển qua USB — hãy kiểm tra giấy',failed:'Lệnh in gặp lỗi',canceled:'Đã hủy',stopped:'Bộ xử lý in đã dừng'};
+const labels={'device-status':'Trạng thái máy in','waiting-device':'Đang chờ máy in','service-started':'Dịch vụ Windows đã khởi động','service-stopped':'Dịch vụ Windows đã dừng','media-normalized':'Đã nhận dạng khổ giấy',ready:'Dịch vụ nhận lệnh đang chạy',spooled:'Đã nhận đủ tài liệu',rendering:'PC đang xử lý và nén',rendered:'PC đã xử lý xong',sending:'Đang gửi sang ESP','usb-delivered':'Đã chuyển qua USB — hãy kiểm tra giấy',failed:'Lệnh in gặp lỗi',canceled:'Đã hủy',stopped:'Bộ xử lý in đã dừng'};
 function log(message,time){$('log').textContent=($('log').textContent+'\n'+new Date(time||Date.now()).toLocaleTimeString()+' · '+message).split('\n').slice(-60).join('\n');}
 function event(e){
  const title=labels[e.phase]||e.phase;$('status').textContent=title+(e.message?' · '+e.message:'');
@@ -15,6 +15,7 @@ async function refresh(){
   if(!initialized){$('ip').value=s.settings?.esp_ip||localStorage.getItem('esp-ip')||'';initialized=true;}
   if(s.boot_id!==bootId){bootId=s.boot_id;lastSequence=0;}
   for(const e of s.events||[])if(e.sequence>lastSequence){event(e);lastSequence=e.sequence;}
+  const device=s.device||{};const names={ready:'Sẵn sàng',busy:'Máy in đang bận',offline:'Offline — không kết nối',checking:'Đang kiểm tra kết nối',error:'Máy in cần xử lý lỗi'};$('device').textContent=(names[device.state]||'Đang kiểm tra máy in')+(device.message?' · '+device.message:'');
   busy=!!s.busy;$('ip').disabled=busy||pending;$('start').disabled=busy||pending;
   $('target').textContent='Windows Service: '+s.service_state+(s.esp?' · ESP '+s.esp+':9101':' · Chưa lưu IP ESP');
   if(s.service_state==='NotInstalled')$('status').textContent='Chưa có Windows Service. Hãy cài bản 0.2.0 bằng quyền quản trị.';

@@ -71,3 +71,15 @@ người dùng không cần Python hoặc Rust. License GPL-3.0-or-later; giữ 
 báo gốc trong mã HP / JBIG (JBIG gốc GPL-2.0-or-later).
 
 Mã nguồn: https://github.com/phuongtrangpt/esp32-lbp2900-airprint/tree/feat/hp-pc-offload
+
+### Trạng thái máy in thật
+
+Worker kiểm tra API trạng thái USB của ESP và giao thức 9101 khoảng mỗi 3 giây.
+Không coi việc dịch vụ PC đang chạy là máy in sẵn sàng. Trạng thái kết nối được
+đưa vào IPP printer-state / printer-state-reasons / printer-state-message để
+Windows đọc, và vào giao diện quản lý. Windows có thể cập nhật chậm theo chu kỳ
+truy vấn của driver. Không quét thêm USB khi đang truyền lệnh của chính PC.
+
+Lệnh chưa gửi USB được giữ ở PC nếu mất kết nối hoặc máy in đang bận, tiếp tục
+khi kết nối trở lại. Lệnh đã truyền một phần rồi lỗi vẫn dừng, không tự in lại.
+Không cần đổi firmware ESP để có tính năng này.

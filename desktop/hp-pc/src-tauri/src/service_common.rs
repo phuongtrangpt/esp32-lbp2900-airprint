@@ -56,6 +56,7 @@ pub fn configure(ip:&str)->Result<(),u8>{
 pub fn snapshot()->Value{
     let mut status=status_file();
     let state=service(ServiceAccess::QUERY_STATUS).and_then(|s|s.query_status().map_err(|e|e.to_string())).map(|s|format!("{:?}",s.current_state)).unwrap_or_else(|_|"NotInstalled".into());
+    if state!="Running"{status["device"]=json!({"online":false,"state":"offline","message":"Windows print service is not running"});}
     status["service_state"]=json!(state);
     status["settings"]=serde_json::to_value(settings()).unwrap_or_else(|_|json!({}));
     status

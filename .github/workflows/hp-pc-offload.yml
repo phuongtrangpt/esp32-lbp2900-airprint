@@ -19,7 +19,9 @@ jobs:
           gcc -O2 -g -DPRINTSERVER_PROFILE_HP=1 -Icomponents/airprint/include -Icomponents/airprint -Icomponents/xqx/vendor desktop/hp-pc/worker/hp_render.c components/airprint/raster.c components/printers/hp_p1006.c components/xqx/vendor/jbig.c components/xqx/vendor/jbig_ar.c -lm -o /tmp/hp-pc-build/hp-render
           gcc -O1 -g -fsanitize=address,undefined -no-pie -Icomponents/hp_offload/include desktop/hp-pc/tests/bridge_host.c components/hp_offload/hp_offload.c -o /tmp/hp-pc-build/bridge-host
       - name: Actual native transport and IPP tests
-        run: python desktop/hp-pc/tests/test_offload.py -v
+        run: |
+          python desktop/hp-pc/tests/test_offload.py -v
+          python desktop/hp-pc/tests/test_device_status.py -v
       - name: Bound ESP address UI regression
         run: node --test desktop/hp-pc/tests/ui_state.test.cjs
       - name: Stable driver guards
@@ -70,6 +72,8 @@ jobs:
         run: |
           $env:HP_PC_BUILD = (Resolve-Path desktop/hp-pc/build).Path
           python desktop/hp-pc/tests/test_offload.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python desktop/hp-pc/tests/test_device_status.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Windows printer queue capability and integration
         run: python desktop/hp-pc/tests/windows_queue_smoke.py desktop/hp-pc/build/hp-render.exe

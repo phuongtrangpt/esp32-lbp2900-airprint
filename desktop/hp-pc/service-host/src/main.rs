@@ -16,15 +16,16 @@ impl Job{fn attach(child:&Child)->Result<Self,String>{unsafe{
     Ok(Self(h))
 }}}
 impl Drop for Job{fn drop(&mut self){unsafe{CloseHandle(self.0);}}}
-struct Report{events:VecDeque<Value>,seq:u64,boot:String,busy:HashSet<u64>,ready:bool,ip:Option<String>,pid:Option<u32>}
+struct Report{events:VecDeque<Value>,seq:u64,boot:String,busy:HashSet<u64>,ready:bool,ip:Option<String>,pid:Option<u32>,device:Value}
 impl Report{
- fn new()->Self{Self{events:VecDeque::new(),seq:0,boot:format!("{}-{}",SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis(),std::process::id()),busy:HashSet::new(),ready:false,ip:None,pid:None}}
+ fn new()->Self{Self{events:VecDeque::new(),seq:0,boot:format!("{}-{}",SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis(),std::process::id()),busy:HashSet::new(),ready:false,ip:None,pid:None,device:json!({"online":false,"state":"checking","message":"Waiting for ESP"})}}
  fn event(&mut self,mut e:Value){
+  if e["phase"]=="device-status"{self.device=e["device"].clone();}
   if let Some(id)=e["job"].as_u64(){match e["phase"].as_str().unwrap_or(""){"spooled"=>{self.busy.insert(id);},"usb-delivered"|"failed"|"canceled"=>{self.busy.remove(&id);},_=>{}}}
-  if e["phase"]=="ready"{self.ready=true;}if e["phase"]=="stopped"{self.ready=false;self.busy.clear();}
+  if e["phase"]=="ready"{self.ready=true;}if e["phase"]=="stopped"{self.ready=false;self.busy.clear();self.device=json!({"online":false,"state":"offline","message":"Print worker is stopped"});}
   self.seq+=1;e["time_ms"]=json!(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_millis() as u64);e["sequence"]=json!(self.seq);self.events.push_back(e);while self.events.len()>80{self.events.pop_front();}self.save();
  }
- fn save(&self){let _=atomic_json(&data_dir().join("status.json"),&json!({"boot_id":self.boot,"ready":self.ready,"esp":self.ip,"worker_pid":self.pid,"busy":!self.busy.is_empty(),"events":self.events,"active_job":self.busy.iter().min().copied()}));}
+ fn save(&self){let _=atomic_json(&data_dir().join("status.json"),&json!({"boot_id":self.boot,"ready":self.ready,"device":self.device,"esp":self.ip,"worker_pid":self.pid,"busy":!self.busy.is_empty(),"events":self.events,"active_job":self.busy.iter().min().copied()}));}
 }
 fn stop_child(c:&mut Child){if let Some(input)=c.stdin.as_mut(){let _=writeln!(input,"stop");}let until=Instant::now()+Duration::from_secs(8);while Instant::now()<until{if c.try_wait().ok().flatten().is_some(){return;}std::thread::sleep(Duration::from_millis(100));}let _=c.kill();let _=c.wait();}
 fn supervise(stop:Arc<AtomicBool>){
@@ -37,7 +38,7 @@ fn supervise(stop:Arc<AtomicBool>){
   if let Ok(entries)=std::fs::read_dir(&spool){for entry in entries.flatten(){if entry.file_name().to_string_lossy().starts_with("hp-pc-test-") && entry.file_type().map(|t|t.is_dir()).unwrap_or(false){let _=std::fs::remove_dir_all(entry.path());}}}
   let mut c=match Command::new(helper).args(["--esp",&ip]).env("TEMP",&spool).env("TMP",&spool).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).creation_flags(0x08000000).spawn(){Ok(c)=>c,Err(e)=>{report.event(json!({"phase":"failed","message":format!("Worker launch failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
   let job=match Job::attach(&c){Ok(j)=>j,Err(e)=>{let _=c.kill();let _=c.wait();report.event(json!({"phase":"failed","message":format!("Worker isolation failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
-  report.ip=Some(ip.clone());report.pid=Some(c.id());report.ready=false;report.busy.clear();report.save();
+  report.ip=Some(ip.clone());report.pid=Some(c.id());report.ready=false;report.device=json!({"online":false,"state":"checking","message":"Checking ESP and USB printer"});report.busy.clear();report.save();
   let (tx,rx)=mpsc::sync_channel(128);
   if let Some(out)=c.stdout.take(){let t=tx.clone();std::thread::spawn(move||{for l in BufReader::new(out).lines().map_while(Result::ok){if l.len()<=16384{if let Ok(e)=serde_json::from_str::<Value>(&l){if t.send(e).is_err(){break;}}}}});}
   if let Some(err)=c.stderr.take(){std::thread::spawn(move||{for l in BufReader::new(err).lines().map_while(Result::ok){if tx.send(json!({"phase":"failed","message":l.chars().take(1000).collect::<String>()})).is_err(){break;}}});}

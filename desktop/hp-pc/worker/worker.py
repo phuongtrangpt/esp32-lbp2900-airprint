@@ -20,7 +20,8 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from ipp_codec import attr, values, decode, text, raw, integer, reply, collection
-from transport import MAX_BYTES, hello, send_job
+from transport import MAX_BYTES, hello, send_job, DeviceUnavailable
+from device_status import probe_device, offline
 
 MEDIA_SIZES = [(21000,29700),(21590,27940),(14800,21000),(10500,14800)]
 MEDIA = ['iso_a4_210x297mm', 'na_letter_8.5x11in', 'iso_a5_148x210mm', 'iso_a6_105x148mm']
@@ -39,7 +40,7 @@ class IppError(Exception):
 
 
 class Service:
-    def __init__(self, host, renderer):
+    def __init__(self, host, renderer, monitor=False, poll_interval=3):
         self.host, self.renderer = host, str(renderer)
         self.root = Path(tempfile.mkdtemp(prefix='hp-pc-test-'))
         self.jobs = collections.OrderedDict()
@@ -50,8 +51,54 @@ class Service:
         self.next_id = 0
         self.shutdown = threading.Event()
         self.active = None
+        self.device = dict(online=not monitor,can_print=not monitor,state='checking' if monitor else 'ready',message='Checking ESP and USB printer' if monitor else 'Ready',reasons=['connecting-to-device-error'] if monitor else ['none'])
+        self.device_changed = threading.Event()
+        self.monitor_enabled = monitor
+        self.poll_interval = poll_interval
+        self.monitor_thread = threading.Thread(target=self.watch_device, daemon=True)
+        if monitor:
+            self.monitor_thread.start()
         self.thread = threading.Thread(target=self.process, daemon=True)
         self.thread.start()
+
+    def update_device(self, device):
+        with self.lock:
+            changed = device != self.device
+            self.device = device
+        self.device_changed.set()
+        if changed:
+            emit('device-status',device=device,message=device['message'])
+
+    def watch_device(self):
+        failures=0
+        while not self.shutdown.is_set():
+            with self.lock:
+                sending=self.active is not None and self.active['connection'] is not None
+            if not sending:
+                try:
+                    device=probe_device(self.host)
+                    failures=0
+                    self.update_device(device)
+                except Exception:
+                    failures+=1
+                    if failures>=2 or not self.device['online']:
+                        self.update_device(offline('Offline: cannot reach ESP; check Wi-Fi, ESP power and IP address'))
+            self.shutdown.wait(self.poll_interval)
+
+    def wait_for_device(self,j):
+        waiting=False
+        while not self.device['can_print']:
+            if self.shutdown.is_set() or j['cancel'].is_set():
+                raise InterruptedError('Canceled while waiting for printer; no USB data sent')
+            if not waiting:
+                with self.lock:
+                    j['state'],j['reason'],j['message']=4,'printer-stopped',self.device['message']
+                emit('waiting-device',job=j['id'],message=j['message'])
+                waiting=True
+            self.device_changed.wait(.5)
+            self.device_changed.clear()
+        with self.lock:
+            j['state'],j['reason'],j['message']=5,'job-printing','Sending compressed data to ESP'
 
     def validate(self, a, document=False):
         if document and text(a, 'document-format', 'image/pwg-raster') not in ('image/pwg-raster', 'image/urf'):
@@ -198,8 +245,17 @@ class Service:
                     if now - last[0] > 0.2 or done == total:
                         emit('sending', job=j['id'], done=done, total=total)
                         last[0] = now
-                send_started = time.monotonic()
-                send_job(self.host, out, j['cancel'], progress, connection)
+                while True:
+                    self.wait_for_device(j)
+                    send_started = time.monotonic()
+                    try:
+                        send_job(self.host, out, j['cancel'], progress, connection)
+                        break
+                    except DeviceUnavailable as e:
+                        # Only retry an explicit pre-frame refusal, never a partial transfer.
+                        if not self.monitor_enabled:
+                            raise
+                        self.update_device(offline(str(e)))
                 with self.lock:
                     if not j['cancel'].is_set():
                         j['state'], j['reason'], j['message'] = 9, 'job-completed-successfully', 'USB delivered; paper output not confirmed'
@@ -223,7 +279,10 @@ class Service:
         self.shutdown.set()
         for j in list(self.jobs.values()):
             self.cancel(j)
+        self.device_changed.set()
         self.thread.join(timeout=35)
+        if self.monitor_enabled:
+            self.monitor_thread.join(timeout=4)
         if not self.thread.is_alive():
             shutil.rmtree(self.root, ignore_errors=True)
 
@@ -233,11 +292,13 @@ class Service:
     def printer_attrs(self):
         with self.lock:
             count = sum(j['state'] < 7 for j in self.jobs.values())
+        device=self.device.copy()
+        state=5 if not device['online'] or device['state']=='error' else 4 if count or device['state']=='busy' else 3
         d = b'\x04'
         for tag, name, value in [(0x45, 'printer-uri-supported', URI), (0x42, 'printer-name', 'HP P1006 PC TEST'),
               (0x41, 'printer-info', 'Windows rendering / ESP USB transport TEST'), (0x41, 'printer-make-and-model', 'HP P1006 PC TEST'),
               (0x45, 'printer-uuid', 'urn:uuid:13cf9f52-e673-43ac-9c2f-3293ca665c17'),
-              (0x23, 'printer-state', 4 if count else 3), (0x44, 'printer-state-reasons', 'none'),
+              (0x23, 'printer-state', state), (0x41, 'printer-state-message', device['message']),
               (0x22, 'printer-is-accepting-jobs', count < 3), (0x21, 'queued-job-count', count),
               (0x22, 'color-supported', False), (0x44, 'sides-default', 'one-sided'), (0x44, 'sides-supported', 'one-sided'),
               (0x44, 'print-color-mode-default', 'monochrome'), (0x44, 'print-color-mode-supported', 'monochrome'),
@@ -252,6 +313,7 @@ class Service:
               (0x32, 'printer-resolution-default', struct.pack('!iiB', 300, 300, 3)),
               (0x44, 'pwg-raster-document-sheet-back', 'normal'), (0x44, 'pwg-raster-document-type-supported', 'sgray_8')]:
             d += attr(tag, name, value)
+        d += values(0x44,'printer-state-reasons',device['reasons'])
         def media_col(name, index):
             w,h = MEDIA_SIZES[index]
             return collection(name, [('media-size', 0x34, [('x-dimension',0x21,w),('y-dimension',0x21,h)]),
@@ -448,7 +510,7 @@ def main():
     renderer = args.renderer or base / ('hp-render.exe' if os.name == 'nt' else 'hp-render')
     if not Path(renderer).is_file():
         raise SystemExit('hp-render executable missing')
-    service = Service(args.esp, renderer)
+    service = Service(args.esp, renderer, monitor=True)
     server = Server(('127.0.0.1', args.port), service)
     def commands():
         for line in sys.stdin:
@@ -461,7 +523,7 @@ def main():
                 return
         server.shutdown()
     threading.Thread(target=commands, daemon=True).start()
-    emit('ready', message=f'Local IPP service running; ESP target {service.host}:9101; keep this app open', uri=URI, esp=service.host)
+    emit('ready', message=f'Local IPP service running; ESP target {service.host}:9101', uri=URI, esp=service.host)
     try:
         server.serve_forever(poll_interval=0.2)
     finally:

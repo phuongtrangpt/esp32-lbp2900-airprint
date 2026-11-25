@@ -38,6 +38,11 @@ def hello(host, port=9101):
     return True
 
 
+class DeviceUnavailable(ConnectionError):
+    """An explicit refusal before the first document frame: no print data submitted."""
+    pass
+
+
 def send_job(host, path, canceled, progress, connection=lambda s: None, port=9101):
     total, crc = 0, 0
     with open(path, 'rb') as f:
@@ -52,8 +57,11 @@ def send_job(host, path, canceled, progress, connection=lambda s: None, port=910
     connection(s)
     try:
         s.sendall(HEADER.pack(b'VPHPO01\n', 2, total, crc, job_id))
-        if response(s) != (0, 0, 0):
-            raise ConnectionError('ESP refused job (printer busy or wrong firmware/model)')
+        initial = response(s)
+        if initial[0] in (101,102) and initial[2] == 0:
+            raise DeviceUnavailable(f'ESP not ready (status {initial[0]}); no document bytes submitted')
+        if initial != (0, 0, 0):
+            raise ConnectionError('ESP refused job before data transfer')
         seq = 0
         with open(path, 'rb') as f:
             for data in iter(lambda: f.read(CHUNK), b''):

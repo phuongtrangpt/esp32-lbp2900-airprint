@@ -1,0 +1,94 @@
+name: HP P1006 PC offload experiment
+on:
+  push:
+    branches: [feat/hp-pc-offload]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build unchanged raster / HP engine on PC
+        run: |
+          mkdir -p /tmp/hp-pc-build
+          gcc -O2 -g -DPRINTSERVER_PROFILE_HP=1 -Icomponents/airprint/include -Icomponents/airprint -Icomponents/xqx/vendor desktop/hp-pc/worker/hp_render.c components/airprint/raster.c components/printers/hp_p1006.c components/xqx/vendor/jbig.c components/xqx/vendor/jbig_ar.c -lm -o /tmp/hp-pc-build/hp-render
+          gcc -O1 -g -fsanitize=address,undefined -no-pie -Icomponents/hp_offload/include desktop/hp-pc/tests/bridge_host.c components/hp_offload/hp_offload.c -o /tmp/hp-pc-build/bridge-host
+      - name: Actual native transport and IPP tests
+        run: python desktop/hp-pc/tests/test_offload.py -v
+      - name: Stable driver guards
+        run: |
+          git fetch origin c0d059e29deb78801001798e34f9d0151a77ccdc --depth=1
+          git diff --exit-code c0d059e29deb78801001798e34f9d0151a77ccdc -- components/printers/hp_p1006.c components/printers/canon_lbp2900.c components/capt components/airprint/raster.c src/usb_printer.c src/hp_raw_bridge.c installer
+  firmware:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - run: python -m pip install platformio==6.2.0 esptool==4.9.0
+      - run: |
+          pio run -e hp_pc
+          python tools/package_firmware.py --env hp_pc --out firmware/hp_pc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HP-P1006-PC-TEST-firmware
+          path: firmware/hp_pc/
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+      - name: Build native Windows HP converter
+        shell: msys2 {0}
+        run: |
+          mkdir -p desktop/hp-pc/build
+          gcc -O2 -static -DPRINTSERVER_PROFILE_HP=1 -Icomponents/airprint/include -Icomponents/airprint -Icomponents/xqx/vendor desktop/hp-pc/worker/hp_render.c components/airprint/raster.c components/printers/hp_p1006.c components/xqx/vendor/jbig.c components/xqx/vendor/jbig_ar.c -lm -lwinpthread -o desktop/hp-pc/build/hp-render.exe
+      - name: Converter and IPP tests on Windows
+        shell: pwsh
+        run: |
+          $env:HP_PC_BUILD = (Resolve-Path desktop/hp-pc/build).Path
+          python desktop/hp-pc/tests/test_offload.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package standalone worker
+        shell: pwsh
+        run: |
+          python -m pip install pyinstaller==6.16.0
+          python -m PyInstaller --noconfirm --clean --onedir --console --name hp-pc-worker --distpath desktop/hp-pc/worker-dist --workpath desktop/hp-pc/build/pyinstaller --specpath desktop/hp-pc/build --add-binary "desktop/hp-pc/build/hp-render.exe;." desktop/hp-pc/worker/worker.py
+          New-Item -ItemType Directory -Force desktop/hp-pc/src-tauri/resources/helper | Out-Null
+          Copy-Item desktop/hp-pc/worker-dist/hp-pc-worker/* desktop/hp-pc/src-tauri/resources/helper -Recurse -Force
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/hp-pc/src-tauri
+      - name: Build Tauri Windows installer
+        working-directory: desktop/hp-pc
+        run: |
+          cargo install tauri-cli --locked --version '^2'
+          cargo tauri build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: HP-P1006-PC-TEST-Windows
+          path: |
+            desktop/hp-pc/src-tauri/target/release/bundle/nsis/*-setup.exe
+            desktop/hp-pc/README.md
+            LICENSE

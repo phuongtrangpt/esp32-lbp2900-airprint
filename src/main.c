@@ -1,4 +1,6 @@
-#ifdef PRINTSERVER_HP_RAW_BRIDGE
+#if defined(PRINTSERVER_HP_PC_OFFLOAD)
+#include "hp_pc_bridge.h"
+#elif defined(PRINTSERVER_HP_RAW_BRIDGE)
 #include "hp_raw_bridge.h"
 #endif
 #include "network_settings.h"
@@ -290,7 +292,10 @@ void app_main(void)
         setup_dns_start();
         if (airprint_esp_start(HOSTNAME, on_airprint_job) != ESP_OK)
             ESP_LOGE(TAG, "AirPrint failed to start");
-#ifdef PRINTSERVER_HP_RAW_BRIDGE
+#if defined(PRINTSERVER_HP_PC_OFFLOAD)
+        if (hp_pc_bridge_start() != ESP_OK)
+            ESP_LOGE(TAG, "HP PC offload failed to start");
+#elif defined(PRINTSERVER_HP_RAW_BRIDGE)
         if (hp_raw_bridge_start() != ESP_OK)
             ESP_LOGE(TAG, "HP RAW bridge failed to start");
 #endif

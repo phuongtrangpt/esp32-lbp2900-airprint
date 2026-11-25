@@ -1,0 +1,5 @@
+/build/
+/worker-dist/
+/src-tauri/target/
+/src-tauri/resources/
+__pycache__/

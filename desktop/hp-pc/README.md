@@ -1,0 +1,56 @@
+# HP P1006 PC Offload — TEST 1
+
+Nhánh riêng `feat/hp-pc-offload`. Không hợp nhất hoặc phát hành lên web chính thức.
+Chưa thử trên ESP / máy in thật hoặc hàng đợi Windows thực tế.
+
+Windows dùng Microsoft IPP Class Driver gửi PWG raster đến dịch vụ chỉ lắng nghe
+`127.0.0.1:8632/ipp/print`. Bộ chuyển đổi C trên PC dùng nguyên mã raster / mono
+packing / JBIG / XQX của HP hiện tại. Nhận đủ và chuyển đổi thành công **toàn bộ**
+tài liệu mới bắt đầu gửi dữ liệu đã nén qua TCP 9101. ESP chỉ kiểm tra khung,
+CRC, trình tự XQX và chuyển qua USB; không render/nén trên đường này.
+Không dùng trình điều khiển HP1006PrintProc/IMF hay bắt tay RAW 9100 của Windows.
+
+## Kiểm thử dự kiến
+
+1. Dùng ESP32-S3 N16R8 dành riêng cho thử nghiệm; nạp profile **hp_pc**, phiên bản
+   **0.1.0-hp-pc-test1** qua USB. Không thay firmware chính thức của khách.
+2. Cài `HP P1006 PC TEST` trên Windows 10/11 x64, mở app, nhập IP ESP và kiểm tra.
+3. Bấm **Bật dịch vụ in**, sau đó **Thêm HP P1006 PC TEST**. Hàng đợi cũ giữ nguyên.
+   Cmdlet `Add-Printer -IppURL` phải có trên Windows; nếu Windows báo thiếu quyền,
+   mở app bằng Run as administrator chỉ để thêm hàng đợi.
+4. Giữ app mở; Ctrl+P từ PDF/Word, chọn **HP P1006 PC TEST**, A4/A5/A6/Letter,
+   300 hoặc 600 dpi, một mặt, một bản. Chọn trang trong ứng dụng nguồn.
+5. Thử lần lượt một trang, PDF chọn trang 5–10, 10 trang, hủy lệnh, rút mạng khi
+   đang gửi rồi in lại bằng tay sau khi kiểm tra giấy. Ghi thời gian nhận/render/
+   gửi và log ESP; so sánh với IPP trực tiếp trên cùng tài liệu/thiết lập.
+
+Điện thoại vẫn có thể IPP trực tiếp tới ESP qua 631 khi USB rảnh. Dịch vụ PC không
+nhận yêu cầu từ LAN. Không hỗ trợ in từ điện thoại qua PC trong TEST 1.
+
+## Giới hạn và ý nghĩa trạng thái
+
+- Bản này dành riêng HP P1006 USB `03f0:3e17`; không dùng cho Canon.
+- Giữ app và Windows hoạt động trong khi in. Chưa có tự khởi động hoặc chạy nền
+  khi đóng cửa sổ. Hàng đợi thử sẽ báo offline khi app đóng.
+- Không nhận PDF trực tiếp qua IPP; Windows raster hóa PDF/Word trước. Chỉ gray8
+  và RGB8 PWG/URF, khổ giấy/dpi đồng nhất trong một lệnh. Không duplex/copies>1.
+- Tối đa 256 MiB tài liệu, tối đa ba lệnh chưa kết thúc, hai lệnh chờ xử lý.
+  Dữ liệu tạm xóa sau khi kết thúc; không phục hồi/in lại tự động khi app mở lại.
+- Lỗi trang cuối bị thiếu dữ liệu sẽ từ chối cả lệnh **trước khi gửi USB**. Không
+  thể phát hiện trường hợp phía gửi khai báo một tài liệu ít trang nhưng hợp lệ.
+- CRC và ACK xác nhận byte đã được chuyển qua USB, **không** xác nhận giấy đã ra.
+  Lỗi mạng/USB có thể để lại một phần giấy đã in: kiểm tra trước khi gửi lại.
+- Giao thức 9101 chỉ dùng trong LAN tin cậy, chưa mã hóa/xác thực. 4 KiB buffer
+  PSRAM + task stack 4 KiB, ngoài buffer USB có sẵn; chưa đo RAM trên ESP thật.
+- Dự kiến giảm tải CPU ESP; mức tăng tốc chỉ có thể kết luận sau đo trên máy thật.
+
+## Build / kiểm tra
+
+Linux native (gcc): xem các lệnh trong `.github/workflows/hp-pc-offload.yml`.
+Windows: MinGW-w64 build converter, Python 3.12 + PyInstaller 6.16.0 build worker,
+Rust stable + Tauri 2 build NSIS. Installer gói sẵn worker và converter; người dùng
+không cần cài Python. Xem workflow để tái tạo đúng các bước.
+ESP: `pio run -e hp_pc`; firmware có tên app/OTA profile riêng.
+
+GPL-3.0-or-later; bộ JBIG gốc GPL-2.0-or-later. Giữ giấy phép gốc trong repo.
+Mã nguồn tương ứng nằm trên cùng nhánh/commit với artifact Actions.

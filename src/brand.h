@@ -7,7 +7,9 @@
 // authentication.
 #define VP_SETUP_IP "192.168.4.1"
 #define VP_CLOUD_BASE FIRMWARE_UPDATE_BASE_URL
-#if defined(PRINTSERVER_PROFILE_HP_P1008)
+#if defined(PRINTSERVER_HP_PC_OFFLOAD)
+#define VP_PROFILE "hp_pc"
+#elif defined(PRINTSERVER_PROFILE_HP_P1008)
 #define VP_PROFILE "hp_p1008"
 #elif defined(PRINTSERVER_PROFILE_HP)
 #define VP_PROFILE "hp"

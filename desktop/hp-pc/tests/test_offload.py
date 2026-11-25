@@ -19,7 +19,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / 'desktop/hp-pc/worker'))
 from transport import HEADER, FRAME, response, send_job, hello
-from ipp_codec import attr, decode, integer, reply
+from ipp_codec import attr, decode, integer, reply, collection
 from worker import Service, Server
 BUILD = Path(os.environ.get('HP_PC_BUILD', '/tmp/hp-pc-build'))
 RENDER = BUILD / ('hp-render.exe' if os.name == 'nt' else 'hp-render')
@@ -179,7 +179,17 @@ class Spooler(unittest.TestCase):
             status,_=self.post(ipp(6,attrs=attrs,doc=raster()),chunked=True);self.assertEqual(status,0)
             self.wait_job(self.service.jobs[job]);self.assertEqual(self.service.jobs[job]['state'],9)
             self.assertEqual(send.call_count,1)
-            self.assertEqual(self.post(ipp(6,attrs=attrs,doc=raster()))[0],0x0405)
+            self.assertEqual(self.post(ipp(6,req=8,attrs=attrs,doc=raster()))[0],0x0405)
+    def test_media_collection_and_dedup(self):
+        media = collection('media-col', [('media-size',0x34,[('x-dimension',0x21,21000),('y-dimension',0x21,29700)])])
+        self.assertEqual(self.post(ipp(4,attrs=media))[0],0)
+        with patch('worker.send_job') as send:
+            body = ipp(doc=raster())
+            self.assertEqual(self.post(body)[0],0)
+            self.assertEqual(self.post(body)[0],0)
+            j=next(iter(self.service.jobs.values()));self.wait_job(j)
+            self.assertEqual(len(self.service.jobs),1)
+            self.assertEqual(send.call_count,1)
     def test_cancel_held_job(self):
         _,data=self.post(ipp(5));_,_,a=decode(io.BytesIO(data));job=integer(a,'job-id')
         self.assertEqual(self.post(ipp(8,attrs=attr(0x21,'job-id',job)))[0],0)

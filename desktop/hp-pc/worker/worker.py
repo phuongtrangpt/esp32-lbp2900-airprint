@@ -3,10 +3,12 @@
 import argparse
 import collections
 import ipaddress
+import hashlib
 import json
 import os
 from pathlib import Path
 import queue
+import re
 import shutil
 import socket
 import struct
@@ -17,11 +19,12 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from ipp_codec import attr, values, decode, text, raw, integer, reply
+from ipp_codec import attr, values, decode, text, raw, integer, reply, collection
 from transport import MAX_BYTES, hello, send_job
 
+MEDIA_SIZES = [(21000,29700),(21590,27940),(14800,21000),(10500,14800)]
 MEDIA = ['iso_a4_210x297mm', 'na_letter_8.5x11in', 'iso_a5_148x210mm', 'iso_a6_105x148mm']
-URI = 'http://127.0.0.1:8632/ipp/print'
+URI = 'ipp://127.0.0.1:8632/ipp/print'
 _print_lock = threading.Lock()
 
 
@@ -42,6 +45,8 @@ class Service:
         self.jobs = collections.OrderedDict()
         self.lock = threading.RLock()
         self.pending = queue.Queue(maxsize=2)
+        self.replies = collections.OrderedDict()
+        self.request_lock = threading.Lock()
         self.next_id = 0
         self.shutdown = threading.Event()
         self.active = None
@@ -57,8 +62,18 @@ class Service:
             raise IppError(0x040b, 'One copy, simplex only')
         if text(a, 'media', MEDIA[0]) not in MEDIA:
             raise IppError(0x040b, 'Unsupported paper')
-        if raw(a, 'media-col') is not None:
-            raise IppError(0x040b, 'Use the named media attribute, not media-col')
+        col = raw(a, 'media-col')
+        if col is not None:
+            if not isinstance(col, dict):
+                raise IppError(0x040b, 'Invalid media collection')
+            size = raw(col, 'media-size')
+            if size is not None and (not isinstance(size, dict) or (integer(size, 'x-dimension'), integer(size, 'y-dimension')) not in MEDIA_SIZES):
+                raise IppError(0x040b, 'Unsupported media dimensions')
+            if text(col, 'media-size-name', MEDIA[0]) not in MEDIA or text(col, 'media-type', 'stationery') != 'stationery':
+                raise IppError(0x040b, 'Unsupported paper type')
+            for edge in ('left','right','top','bottom'):
+                if integer(col, f'media-{edge}-margin', 407) < 407:
+                    raise IppError(0x040b, 'Borderless printing unsupported')
         resolution = raw(a, 'printer-resolution')
         if resolution is not None and resolution not in (struct.pack('!iiB', d, d, 3) for d in (300, 600)):
             raise IppError(0x040b, 'Use 300 or 600 dpi')
@@ -221,17 +236,48 @@ class Service:
               (0x32, 'printer-resolution-default', struct.pack('!iiB', 300, 300, 3)),
               (0x44, 'pwg-raster-document-sheet-back', 'normal'), (0x44, 'pwg-raster-document-type-supported', 'sgray_8')]:
             d += attr(tag, name, value)
-        d += values(0x23, 'operations-supported', [2, 4, 5, 6, 8, 9, 10, 11])
+        def media_col(name, index):
+            w,h = MEDIA_SIZES[index]
+            return collection(name, [('media-size', 0x34, [('x-dimension',0x21,w),('y-dimension',0x21,h)]),
+                ('media-size-name',0x44,MEDIA[index]),('media-type',0x44,'stationery'),('media-source',0x44,'auto')]
+                + [(f'media-{edge}-margin',0x21,407) for edge in ('left','right','top','bottom')])
+        for name in ('media-col-database','media-col-ready'):
+            d += b''.join(media_col(name if i == 0 else '', i) for i in range(len(MEDIA)))
+        d += media_col('media-col-default',0)
+        d += values(0x44,'media-col-supported',['media-size','media-size-name','media-type','media-source','media-left-margin','media-right-margin','media-top-margin','media-bottom-margin'])
+        for edge in ('left','right','top','bottom'):
+            d += attr(0x21,f'media-{edge}-margin-supported',407)
+        d += attr(0x44,'media-source-supported','auto') + attr(0x44,'media-type-supported','stationery')
+        d += values(0x23, 'operations-supported' , [2, 4, 5, 6, 8, 9, 10, 11])
         d += values(0x44, 'ipp-versions-supported', ['1.1', '2.0'])
         d += values(0x49, 'document-format-supported', ['image/pwg-raster', 'image/urf'])
         d += values(0x44, 'media-supported', MEDIA)
         d += values(0x32, 'printer-resolution-supported', [struct.pack('!iiB', d, d, 3) for d in (300, 600)])
         d += values(0x32, 'pwg-raster-document-resolution-supported', [struct.pack('!iiB', d, d, 3) for d in (300, 600)])
         d += values(0x44, 'urf-supported', ['V1.4', 'CP1', 'W8', 'RS300-600', 'DM1'])
-        d += values(0x44, 'job-creation-attributes-supported', ['job-name', 'copies', 'media', 'sides', 'printer-resolution', 'print-color-mode'])
+        d += values(0x44, 'job-creation-attributes-supported', ['job-name', 'copies', 'media', 'media-col', 'sides', 'printer-resolution', 'print-color-mode'])
         return d
 
     def handle(self, body):
+        # A lost local HTTP reply must not cause Windows to print the same job twice.
+        digest = hashlib.sha256()
+        for block in iter(lambda: body.read(65536), b''):
+            digest.update(block)
+        body.seek(0)
+        key = digest.digest()
+        with self.request_lock:
+            if key in self.replies:
+                return self.replies[key]
+            result = self.dispatch(body)
+            body.seek(0)
+            op = struct.unpack('!H', body.read(4)[2:4])[0]
+            if op in (2, 5, 6):
+                self.replies[key] = result
+                while len(self.replies) > 32:
+                    self.replies.popitem(last=False)
+            return result
+
+    def dispatch(self, body):
         op, request, a = decode(body)
         try:
             if op == 11:
@@ -304,12 +350,12 @@ class Handler(BaseHTTPRequestHandler):
         super().setup()
         self.connection.settimeout(30)
     def handle_expect_100(self):
-        if self.path != '/ipp/print':
+        if not re.fullmatch(r'/ipp/print(?:/jobs/[0-9]+)?', self.path):
             self.send_error(404)
             return False
         return super().handle_expect_100()
     def do_POST(self):
-        if self.path != '/ipp/print' or self.headers.get_content_type() != 'application/ipp':
+        if not re.fullmatch(r'/ipp/print(?:/jobs/[0-9]+)?', self.path) or self.headers.get_content_type() != 'application/ipp':
             self.send_error(404)
             return
         try:

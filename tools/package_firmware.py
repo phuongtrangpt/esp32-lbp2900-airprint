@@ -15,6 +15,9 @@ BUILD=ROOT/'.pio/build/esp32s3'
 OUT=ROOT/'firmware'
 
 PROFILE_NAMES = {
+    'lbp6000': 'Canon LBP6000 TEST ESP 32',
+    'lbp6200': 'Canon LBP6200 TEST ESP 32',
+    'lbp3010': 'Canon LBP3010/3100 TEST ESP 32',
     'hp': 'HP LaserJet P1006 ESP 32',
     'hp_p1008': 'HP LaserJet P1008 TEST ESP 32',
     'canon': 'Canon LBP2900 ESP 32',
@@ -63,7 +66,7 @@ def main():
     if app_offset!=0x20000: raise SystemExit(f'Unexpected ota_0 offset: {app_offset}')
     settings=json.loads((BUILD/'flasher_args.json').read_text())['flash_settings']
     version=re.search(r'set\(PROJECT_VER \"([^\"]+)\"\)', (ROOT/'CMakeLists.txt').read_text()).group(1)
-    if args.env == "hp":
+    if args.env in ("hp", "lbp6000", "lbp6200", "lbp3010"):
         version = (OUT/"firmware.bin").read_bytes()[48:80].split(b"\0",1)[0].decode("ascii")
     manifest={'chip':'esp32s3','board':'ESP32-S3 N16R8','version':version,
               'physical_printer_tested':False,'flash_size':settings['flash_size'],'flash_mode':settings['flash_mode'],'flash_freq':settings['flash_freq'],

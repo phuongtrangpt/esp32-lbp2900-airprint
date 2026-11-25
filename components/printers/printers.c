@@ -17,8 +17,18 @@ extern const printer_driver_t canon_mg2500_driver, canon_mg2400_driver, canon_p2
     canon_mp280_driver, canon_mp490_driver, canon_mp493_driver, canon_mp495_driver, canon_mx340_driver,
     canon_mx350_driver, canon_mx360_driver, canon_mx410_driver, canon_mx420_driver;
 
+#if defined(PRINTSERVER_PROFILE_CAPT_FAMILY)
+extern const printer_driver_t canon_lbp6000_driver, canon_lbp6200_driver,
+    canon_lbp3010_driver, canon_lbp3100_driver;
+#endif
 const printer_driver_t *const printer_drivers[] = {
-#if defined(PRINTSERVER_PROFILE_HP_P1008)
+#if defined(PRINTSERVER_PROFILE_LBP6000)
+    &canon_lbp6000_driver,
+#elif defined(PRINTSERVER_PROFILE_LBP6200)
+    &canon_lbp6200_driver,
+#elif defined(PRINTSERVER_PROFILE_LBP3010)
+    &canon_lbp3010_driver, &canon_lbp3100_driver,
+#elif defined(PRINTSERVER_PROFILE_HP_P1008)
     &hp_p1008_driver,
 #elif defined(PRINTSERVER_PROFILE_HP)
     &hp_p1006_driver,
@@ -86,6 +96,11 @@ const printer_driver_t *printer_driver_match(uint16_t vid, uint16_t pid, const c
     for (int i = 0; printer_drivers[i]; i++)
         if (printer_drivers[i]->usb_vid && printer_drivers[i]->usb_vid == vid && printer_drivers[i]->usb_pid == pid)
             return printer_drivers[i];
+#if defined(PRINTSERVER_PROFILE_CAPT_FAMILY)
+    // Prototype profiles bind only to documented USB IDs, never a model string
+    // or another printer advertising PCL/PS.
+    return NULL;
+#else
     char mfg[32], mdl[64];
     device_id_field(device_id, "MFG", "MANUFACTURER", mfg, sizeof(mfg));
     device_id_field(device_id, "MDL", "MODEL", mdl, sizeof(mdl));
@@ -110,4 +125,5 @@ const printer_driver_t *printer_driver_match(uint16_t vid, uint16_t pid, const c
     }
 #endif
     return NULL;
+#endif
 }

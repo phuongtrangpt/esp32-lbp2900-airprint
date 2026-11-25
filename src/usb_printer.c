@@ -597,6 +597,11 @@ static void open_device(uint8_t addr)
     bool standard=driver && !strncmp(driver->id,"generic-",8);
     s_p.lbp2900 = info.vid == 0x04a9 && info.pid == 0x2676;
     s_p.capt = standard || s_p.lbp2900 || s_p.hp;
+#if defined(PRINTSERVER_PROFILE_CAPT_FAMILY)
+    // These profiles need synchronous binary CAPT reads. Keep the LBP2900
+    // recovery flag separate: its model-specific reset sequence is not shared.
+    s_p.capt = driver && driver->usb_vid == info.vid && driver->usb_pid == info.pid;
+#endif
     s_p.raw_len = 0;
     s_p.raw_error = false;
     s_p.raw_wanted = false;

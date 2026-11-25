@@ -145,8 +145,13 @@ void cf_capt_pause(unsigned ms)
             cf_capt_fail("CAPT job canceled");
         check();
         unsigned part = ms > 20 ? 20 : ms;
+#ifdef ESP_PLATFORM
+        TickType_t ticks = pdMS_TO_TICKS(part);
+        vTaskDelay(ticks ? ticks : 1);
+#else
         struct timespec delay = { .tv_sec=0, .tv_nsec=(long)part*1000000L };
         nanosleep(&delay, NULL);
+#endif
         ms -= part;
     }
     check();

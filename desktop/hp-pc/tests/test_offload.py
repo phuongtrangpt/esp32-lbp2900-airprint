@@ -118,6 +118,40 @@ class Transport(Conversion):
             self.assertTrue(hello('127.0.0.1',port))
             send_job('127.0.0.1',out,threading.Event(),lambda *args:None,port=port)
         self.assertEqual(out.read_bytes(),sink.read_bytes())
+    def noisy_job(self):
+        import random
+        rng=random.Random(1006)
+        # Preserve the supported A6 header; encode independent literal rows.
+        data=bytearray(raster()[:1800])
+        for _ in range(1748):
+            data.append(0)
+            row=rng.randbytes(1240)
+            for x in range(0,1240,128):
+                block=row[x:x+128]
+                data.append(257-len(block));data.extend(block)
+        p,out=self.render(data);self.assertEqual(p.returncode,0,p.stderr)
+        self.assertGreater(out.stat().st_size,4096*3)
+        return out
+    def test_multiple_usb_frames_byte_exact(self):
+        out=self.noisy_job();sink=self.root/'usb';progress=[]
+        with bridge(sink) as port:
+            send_job('127.0.0.1',out,threading.Event(),lambda done,total:progress.append(done),port=port)
+        self.assertGreater(len(progress),3)
+        self.assertEqual(out.read_bytes(),sink.read_bytes())
+    def test_whole_job_crc_failure_is_unknown_without_replay(self):
+        out=self.noisy_job();data=out.read_bytes();sink=self.root/'usb'
+        with bridge(sink) as port:
+            with socket.create_connection(('127.0.0.1',port)) as s:
+                s.sendall(HEADER.pack(b'VPHPO01\n',2,len(data),zlib.crc32(data)^1,999));self.assertEqual(response(s)[0],0)
+                seq=0
+                for off in range(0,len(data),4096):
+                    block=data[off:off+4096]
+                    s.sendall(FRAME.pack(seq,len(block),zlib.crc32(block))+block)
+                    self.assertEqual(response(s)[0],1);seq+=1
+                s.sendall(FRAME.pack(seq,0,0));self.assertEqual(response(s)[0],104)
+            with socket.create_connection(('127.0.0.1',port)) as s:
+                s.sendall(HEADER.pack(b'VPHPO01\n',3,0,0,999));self.assertEqual(response(s)[0],108)
+        self.assertEqual(sink.read_bytes(),data)
     def test_busy_and_wrong_model(self):
         for mode in (1,2):
             sink=self.root/'usb'

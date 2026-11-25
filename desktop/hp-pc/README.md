@@ -1,7 +1,7 @@
 # HP P1006 PC Offload — TEST 1
 
 Nhánh riêng `feat/hp-pc-offload`. Không hợp nhất hoặc phát hành lên web chính thức.
-Chưa thử trên ESP / máy in thật hoặc hàng đợi Windows thực tế.
+Chưa thử trên ESP / máy in thật hoặc máy Windows của người dùng.
 
 Windows dùng Microsoft IPP Class Driver gửi PWG raster đến dịch vụ chỉ lắng nghe
 `127.0.0.1:8632/ipp/print`. Bộ chuyển đổi C trên PC dùng nguyên mã raster / mono
@@ -58,17 +58,22 @@ Mã nguồn tương ứng nằm trên cùng nhánh/commit với artifact Actions
 
 ## Kết quả kiểm tra trước phần cứng
 
-- 22 bài kiểm thử native chạy qua trên Linux: PWG/URF, gray/RGB, nhiều trang,
+- 24 bài kiểm thử native chạy qua trên Linux: PWG/URF, gray/RGB, nhiều trang,
   cắt trang cuối, số trang URF không khớp, HTTP chunked/EOF, Create/Send/Cancel,
   chống lặp khi mất HTTP reply, khung TCP bị chia nhỏ, sai CRC/thứ tự, máy sai/
   bận, lệnh gửi trùng và truy vấn sau khi mất ACK cuối. USB dùng sink mô phỏng.
-- Giao thức C chạy với AddressSanitizer + UndefinedBehaviorSanitizer.
+- Giao thức C và adapter chuyển đổi chạy với AddressSanitizer + UndefinedBehaviorSanitizer.
 - Bộ HP hiện tại vẫn cho kết quả XQX 300 dpi gray giống từng byte với đường
   600 dpi đã phóng lớn; kiểm thử IPP/CAPT hiện có chạy qua.
 - Các bài native Windows chạy trên Actions, kiểm tra thêm worker đã đóng gói
-  với ESP giả lập. Bài hàng đợi Windows thực chỉ chạy nếu runner có đăng ký sẵn
-  Microsoft IPP Class Driver; nếu thiếu sẽ ghi NOT RUN, không coi là đã kiểm thử.
+  với ESP giả lập. Trên runner Windows, thêm hàng đợi Microsoft IPP Class Driver
+  và PrintTestPage đã qua: raster thực của Windows chuyển đổi thành HP XQX,
+  chỉ thay tầng USB bằng mô phỏng. Bản 064c33d: 12 bài Windows chạy qua, 10 bài
+  POSIX được bỏ qua; luồng packaged worker cũng đã qua. Hai kiểm tra nhiều khung
+  và CRC toàn lệnh bổ sung chạy qua native Linux sau build này.
 - QEMU chưa chạy được tại môi trường phát triển hiện tại vì thiếu PlatformIO/
   QEMU. Kiểm thử IPP CUPS conformance không chạy do thiếu ipptool; script cũ ghi
   0 pass/0 fail. Không dùng các mục này làm bằng chứng kiểm thử thành công.
 - Chưa đo tốc độ in, RAM trên ESP thật hoặc thời gian giấy ra.
+
+Mã nguồn: https://github.com/phuongtrangpt/esp32-lbp2900-airprint/tree/feat/hp-pc-offload

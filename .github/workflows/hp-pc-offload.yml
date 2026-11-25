@@ -69,6 +69,8 @@ jobs:
           $env:HP_PC_BUILD = (Resolve-Path desktop/hp-pc/build).Path
           python desktop/hp-pc/tests/test_offload.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Windows printer queue capability and integration
+        run: python desktop/hp-pc/tests/windows_queue_smoke.py desktop/hp-pc/build/hp-render.exe
       - name: Package standalone worker
         shell: pwsh
         run: |
@@ -77,6 +79,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           New-Item -ItemType Directory -Force desktop/hp-pc/src-tauri/resources/helper | Out-Null
           Copy-Item desktop/hp-pc/worker-dist/hp-pc-worker/* desktop/hp-pc/src-tauri/resources/helper -Recurse -Force
+      - name: Standalone packaged worker end-to-end simulation
+        run: python desktop/hp-pc/tests/smoke_bundle.py desktop/hp-pc/src-tauri/resources/helper/hp-pc-worker.exe
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-node@v4
         with:

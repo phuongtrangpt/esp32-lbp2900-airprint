@@ -5,12 +5,12 @@ from pathlib import Path
 from urllib.request import urlopen
 from zipfile import ZipFile
 ROOT = Path(__file__).resolve().parents[1]
-COMMIT = 'da12cf97456cf3a6e0edf2effc7e818e7a9145c5'
-TAG = 'capt-family-test1-da12cf9'
+COMMIT = 'c4d34ae1d280d0993fcdebc0c4d6732ae72b0c71'
+TAG = 'capt-family-test2-c4d34ae'
 DIGESTS = {
-    'lbp6000': 'bc9ff507b0ac72cda0e6420fdccae40548e37e1443398de4ad81f26d2d70979d',
-    'lbp6200': '0676a42085e60ba9124a97d44091067972ebad04bbd793e7676aa3189a625a6a',
-    'lbp3010': '71ecfbfc1e469c5ad3a612eb00a1491dc766a8ddbeb8d7610ff987b22c89b666',
+    'lbp6000': '11cf28125201ea86e45f67ed57408e8833c77f84524c0e8710744bfa99d76515',
+    'lbp6200': 'b8b1efa9aca30d63d96b7e195dc49812e0e2c40f480cc9bf6a85954b93e69fc6',
+    'lbp3010': '87a3eda80e88681e74e117e999f1a573024cf046657d864f410f601062d9338b',
 }
 def stage(profile, raw):
     if hashlib.sha256(raw).hexdigest() != DIGESTS[profile]:
@@ -25,7 +25,7 @@ def stage(profile, raw):
         if ((folder/'BUILD_COMMIT.txt').read_text().strip()!=COMMIT
             or manifest['profile']!=profile or manifest['chip']!='esp32s3'
             or manifest['flash_size']!='16MB' or manifest['physical_printer_tested'] is not False
-            or manifest['version']!='0.1.0-'+profile+'-test1'
+            or manifest['version']!='0.1.1-'+profile+'-test2'
             or app[80:112].split(b'\0')[0]!=('vietphuong_'+profile).encode()):
             raise ValueError('Wrong CAPT model, build or flash layout')
         dest=ROOT/'installer/public/firmware'/profile

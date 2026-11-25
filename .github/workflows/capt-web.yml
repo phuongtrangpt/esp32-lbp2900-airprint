@@ -23,10 +23,10 @@ jobs:
       - uses: actions/checkout@v4
       - name: Retain verified CAPT test binaries as immutable prerelease assets
         run: |
-          TAG=capt-family-test1-da12cf9
+          TAG=capt-family-test2-c4d34ae
           if gh release view "$TAG" >/dev/null 2>&1; then exit 0; fi
           for PROFILE in lbp6000 lbp6200 lbp3010; do
-            gh run download 45551290587 --name "$PROFILE-USB-TEST" --dir "staging/$PROFILE"
+            gh run download 45560009900 --name "$PROFILE-USB-TEST" --dir "staging/$PROFILE"
           done
           python - <<'PY'
           import sys, hashlib
@@ -39,11 +39,11 @@ jobs:
           PY
           cat > /tmp/capt-release-notes.txt <<'NOTES'
           Separate CAPT prototypes for LBP6000/6018, LBP6200(d), LBP3010/3018/3050 and LBP3100/3108/3150.
-          Built from da12cf97456cf3a6e0edf2effc7e818e7a9145c5. Hardware validation pending.
+          Built from c4d34ae1d280d0993fcdebc0c4d6732ae72b0c71. Hardware validation pending.
           LBP6200 assumes the LBP6000 command sequence. Simplex A4/Letter/A5 only.
           These assets supply the online installer; stable LBP2900/P1006 firmware is unchanged.
           NOTES
-          gh release create "$TAG" staging/*/*-USB-TEST.zip --target da12cf97456cf3a6e0edf2effc7e818e7a9145c5 --prerelease --title 'CAPT family TEST1 — hardware validation pending' --notes-file /tmp/capt-release-notes.txt
+          gh release create "$TAG" staging/*/*-USB-TEST.zip --target c4d34ae1d280d0993fcdebc0c4d6732ae72b0c71 --prerelease --title 'CAPT family TEST2 — hardware validation pending' --notes-file /tmp/capt-release-notes.txt
   build:
     needs: pinned-release
     runs-on: ubuntu-24.04

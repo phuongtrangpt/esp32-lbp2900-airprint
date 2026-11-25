@@ -105,6 +105,12 @@ class Conversion(unittest.TestCase):
         # A declared page count that disagrees with actual pages is refused.
         struct.pack_into('!I',urf,8,1)
         p,out=self.render(urf);self.assertNotEqual(p.returncode,0);self.assertFalse(out.exists())
+    def test_small_paper_rounding_vs_custom_size(self):
+        data=bytearray(raster())
+        struct.pack_into('!I',data,4+372,1244)
+        p,out=self.render(data);self.assertEqual(p.returncode,0,p.stderr);out.unlink()
+        struct.pack_into('!I',data,4+372,1260)
+        p,out=self.render(data);self.assertNotEqual(p.returncode,0);self.assertFalse(out.exists())
     def test_rgb(self):
         p,_=self.render(raster(rgb=True));self.assertEqual(p.returncode,0,p.stderr)
 
@@ -241,6 +247,17 @@ class Spooler(unittest.TestCase):
             j=next(iter(self.service.jobs.values()));self.wait_job(j)
             self.assertEqual(len(self.service.jobs),1)
             self.assertEqual(send.call_count,1)
+    def test_windows_pdf_media_rounding_and_custom_alias(self):
+        for x,y in ((21005,29693),(21590,27939),(14801,21000),(10499,14801)):
+            media=collection('media-col',[('media-size',0x34,[('x-dimension',0x21,x),('y-dimension',0x21,y)]),('media-size-name',0x44,'custom_pdf_form')])
+            status,_=self.post(ipp(4,attrs=attr(0x44,'media','custom_pdf_form')+media))
+            self.assertEqual(status,0)
+        # Do not silently accept arbitrary sheets or missing dimensions.
+        media=collection('media-col',[('media-size',0x34,[('x-dimension',0x21,21590),('y-dimension',0x21,35560)])])
+        with patch('worker.emit') as event:
+            status,_=self.post(ipp(4,attrs=media));self.assertEqual(status,0x040b)
+            self.assertIn('215.90 x 355.60 mm',event.call_args.kwargs['message'])
+        self.assertEqual(self.post(ipp(4,attrs=attr(0x44,'media','custom_pdf_form')))[0],0x040b)
     def test_cancel_held_job(self):
         _,data=self.post(ipp(5));_,_,a=decode(io.BytesIO(data));job=integer(a,'job-id')
         self.assertEqual(self.post(ipp(8,attrs=attr(0x21,'job-id',job)))[0],0)

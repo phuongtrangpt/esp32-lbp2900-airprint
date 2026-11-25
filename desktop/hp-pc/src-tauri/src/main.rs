@@ -11,10 +11,10 @@ fn hidden(c: &mut Command) -> &mut Command {
 }
 fn stop(state: &Worker) -> Result<(), String> {
     let mut lock=state.0.lock().map_err(|e|e.to_string())?;
-    if let Some(mut child)=lock.take() {
+    if let Some(child)=lock.as_mut() {
         if let Some(input)=child.stdin.as_mut() { let _=writeln!(input,"stop"); }
-        // Worker has bounded socket/subprocess cancellation. Keep UI responsive.
-        std::thread::spawn(move || { let _=child.wait(); });
+        // Keep the child until it actually exits: a new worker must not race
+        // the old listener while shutting down.
     }
     Ok(())
 }

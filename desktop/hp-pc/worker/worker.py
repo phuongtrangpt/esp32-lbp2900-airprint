@@ -60,20 +60,34 @@ class Service:
             raise IppError(0x040f, 'Compression must be none')
         if integer(a, 'copies', 1) != 1 or text(a, 'sides', 'one-sided') != 'one-sided':
             raise IppError(0x040b, 'One copy, simplex only')
-        if text(a, 'media', MEDIA[0]) not in MEDIA:
-            raise IppError(0x040b, 'Unsupported paper')
+        named_media = text(a, 'media', '')
+        matched = None
         col = raw(a, 'media-col')
         if col is not None:
             if not isinstance(col, dict):
                 raise IppError(0x040b, 'Invalid media collection')
             size = raw(col, 'media-size')
-            if size is not None and (not isinstance(size, dict) or (integer(size, 'x-dimension'), integer(size, 'y-dimension')) not in MEDIA_SIZES):
-                raise IppError(0x040b, 'Unsupported media dimensions')
-            if text(col, 'media-size-name', MEDIA[0]) not in MEDIA or text(col, 'media-type', 'stationery') != 'stationery':
+            if size is not None:
+                if not isinstance(size, dict):
+                    raise IppError(0x040b, 'Invalid media-size collection')
+                x, y = integer(size, 'x-dimension'), integer(size, 'y-dimension')
+                # PDF dimensions and Windows forms can round differently when
+                # converting points/inches/pixels to 1/100 mm. Limit acceptance
+                # to 0.5 mm around a supported physical sheet, never arbitrary sizes.
+                matched = next((i for i, (w, h) in enumerate(MEDIA_SIZES)
+                                if abs(x-w) <= 50 and abs(y-h) <= 50), None)
+                if matched is None:
+                    raise IppError(0x040b, f'Unsupported media dimensions: {x/100:.2f} x {y/100:.2f} mm ({x}, {y}); choose A4, Letter, A5 or A6 portrait')
+                if (x, y) != MEDIA_SIZES[matched]:
+                    emit('media-normalized', requested_mm=[x/100,y/100], media=MEDIA[matched],
+                         message=f'Paper {x/100:.2f} x {y/100:.2f} mm matched to {MEDIA[matched]}')
+            if (matched is None and text(col, 'media-size-name', MEDIA[0]) not in MEDIA) or text(col, 'media-type', 'stationery') != 'stationery':
                 raise IppError(0x040b, 'Unsupported paper type')
             for edge in ('left','right','top','bottom'):
                 if integer(col, f'media-{edge}-margin', 407) < 407:
                     raise IppError(0x040b, 'Borderless printing unsupported')
+        if named_media and named_media not in MEDIA and matched is None:
+            raise IppError(0x040b, f'Unsupported paper name: {named_media}')
         resolution = raw(a, 'printer-resolution')
         if resolution is not None and resolution not in (struct.pack('!iiB', d, d, 3) for d in (300, 600)):
             raise IppError(0x040b, 'Use 300 or 600 dpi')
@@ -317,7 +331,7 @@ class Service:
                 return reply(request, groups=b''.join(self.job_attrs(j) for j in jobs))
             raise IppError(0x0501, 'Operation not supported')
         except IppError as e:
-            emit('ipp-error', message=e.message)
+            emit('ipp-error', message=e.message, operation=f'0x{op:04x}', job=integer(a, 'job-id'))
             return reply(request, e.status)
 
 
@@ -447,7 +461,7 @@ def main():
                 return
         server.shutdown()
     threading.Thread(target=commands, daemon=True).start()
-    emit('ready', message='Local IPP service running; keep this app open', uri=URI)
+    emit('ready', message=f'Local IPP service running; ESP target {service.host}:9101; keep this app open', uri=URI, esp=service.host)
     try:
         server.serve_forever(poll_interval=0.2)
     finally:

@@ -1,0 +1,20 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const vm=require('node:vm');
+test('bound ESP address stays locked until worker stops; restart uses the new IP',async()=>{
+  const elements=new Map();
+  const get=id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',disabled:false,removeAttribute(){}});return elements.get(id);};
+  let event;const calls=[];
+  const context={document:{getElementById:get},localStorage:{getItem:()=> '192.168.10.21',setItem(){}},window:{__TAURI__:{core:{invoke:async(name,args)=>{calls.push([name,args]);}},event:{listen:(_name,cb)=>{event=cb;}}}},Date,Math};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../ui/app.js'),'utf8'),context);
+  await get('start').onclick();assert.equal(calls[0][1].ip,'192.168.10.21');
+  event({payload:{phase:'ready',esp:'192.168.10.21'}});
+  assert.equal(get('ip').disabled,true);assert.match(get('target').textContent,/192\.168\.10\.21:9101/);
+  await get('start').onclick();assert.equal(calls.length,1);assert.equal(get('ip').disabled,true);
+  await get('stop').onclick();assert.equal(get('ip').disabled,true);
+  event({payload:{phase:'stopped'}});assert.equal(get('ip').disabled,false);
+  get('ip').value='192.168.10.22';await get('start').onclick();
+  assert.equal(calls[2][1].ip,'192.168.10.22');
+});

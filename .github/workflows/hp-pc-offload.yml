@@ -20,6 +20,8 @@ jobs:
           gcc -O1 -g -fsanitize=address,undefined -no-pie -Icomponents/hp_offload/include desktop/hp-pc/tests/bridge_host.c components/hp_offload/hp_offload.c -o /tmp/hp-pc-build/bridge-host
       - name: Actual native transport and IPP tests
         run: python desktop/hp-pc/tests/test_offload.py -v
+      - name: Bound ESP address UI regression
+        run: node --test desktop/hp-pc/tests/ui_state.test.cjs
       - name: Stable driver guards
         run: |
           git fetch origin c0d059e29deb78801001798e34f9d0151a77ccdc --depth=1

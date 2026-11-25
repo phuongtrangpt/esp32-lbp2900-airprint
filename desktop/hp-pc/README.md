@@ -77,3 +77,12 @@ Mã nguồn tương ứng nằm trên cùng nhánh/commit với artifact Actions
 - Chưa đo tốc độ in, RAM trên ESP thật hoặc thời gian giấy ra.
 
 Mã nguồn: https://github.com/phuongtrangpt/esp32-lbp2900-airprint/tree/feat/hp-pc-offload
+
+## Windows 0.1.1 FIX 1
+
+Chỉ cập nhật ứng dụng PC, dùng lại firmware `0.1.0-hp-pc-test1`; không cần nạp ESP.
+Nhận sai số làm tròn kích thước giấy tối đa 0.5 mm cho A4/Letter/A5/A6, kể cả
+Windows đặt tên form PDF là custom; vẫn từ chối khổ tùy chỉnh ngoài giới hạn.
+Bộ chuyển đổi trên PC dùng cùng dung sai. Lỗi khổ giấy ghi số đo nhận thực tế.
+Khóa IP khi dịch vụ đang chạy và hiển thị đúng đích ESP:9101. Dừng dịch vụ, chờ
+đã dừng rồi đổi IP/bật lại; không khởi tạo worker mới khi worker cũ chưa thoát.

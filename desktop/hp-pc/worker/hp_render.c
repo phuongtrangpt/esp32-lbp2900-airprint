@@ -43,8 +43,10 @@ static int page_begin(void *ctx,const raster_page_t *pg) {
     int paper=-1;
     for(int i=0;i<d->npapers;i++) {
         int w=d->papers[i].width*pg->dpi/2540,h=d->papers[i].height*pg->dpi/2540;
-        if(abs(w-pg->width)<=2 && abs(h-pg->height)<=2){paper=i;break;}
+        int tolerance=(pg->dpi*5+253)/254; // 0.5 mm, rounded up to pixels
+        if(abs(w-pg->width)<=tolerance && abs(h-pg->height)<=tolerance){paper=i;break;}
     }
+    if(paper<0)fprintf(stderr,"Unsupported raster dimensions: %d x %d px at %d dpi (%.2f x %.2f mm).\n",pg->width,pg->height,pg->dpi,pg->width*25.4/pg->dpi,pg->height*25.4/pg->dpi);
     if(paper<0 || (c->job && (c->dpi!=pg->dpi || c->paper!=paper)))return RASTER_ERR_UNSUPPORTED;
     if(!c->job){printer_io_t io={.write=write_file,.ctx=c->out};c->dpi=pg->dpi;c->paper=paper;c->job=d->job_begin(d,&io,pg->dpi,paper);}
     return c->job?d->page_begin(c->job,pg->width,pg->height,pg->bytes_pp):RASTER_ERR_NOMEM;

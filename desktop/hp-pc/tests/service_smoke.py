@@ -77,7 +77,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='hp-pc-service-',dir=os.environ.get('RUNNER_TEMP')) as dest:
         folder=Path(dest)/'app'
         try:
-            subprocess.run([str(installer),'/S',f'/D={folder}'],check=True,timeout=180)
+            subprocess.run([str(installer),'/S',f'/D={folder}'],check=True,timeout=300)
         except Exception:
             print('INSTALL FAILURE FILES:',[str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()][:60],flush=True)
             print('INSTALL FAILURE SERVICE:',scinfo(),flush=True)

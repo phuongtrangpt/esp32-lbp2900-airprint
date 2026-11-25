@@ -38,6 +38,10 @@
         "displayLanguageSelector": false,
         "installMode": "perMachine",
         "installerHooks": "installer-hooks.nsh"
+      },
+      "webviewInstallMode": {
+        "type": "embedBootstrapper",
+        "silent": true
       }
     },
     "icon": [

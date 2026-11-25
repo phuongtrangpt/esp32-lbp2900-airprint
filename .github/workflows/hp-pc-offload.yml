@@ -62,7 +62,7 @@ jobs:
         shell: msys2 {0}
         run: |
           mkdir -p desktop/hp-pc/build
-          gcc -O2 -static -DPRINTSERVER_PROFILE_HP=1 -Icomponents/airprint/include -Icomponents/airprint -Icomponents/xqx/vendor desktop/hp-pc/worker/hp_render.c components/airprint/raster.c components/printers/hp_p1006.c components/xqx/vendor/jbig.c components/xqx/vendor/jbig_ar.c -lm -lwinpthread -o desktop/hp-pc/build/hp-render.exe
+          gcc -O2 -static -municode -DPRINTSERVER_PROFILE_HP=1 -Icomponents/airprint/include -Icomponents/airprint -Icomponents/xqx/vendor desktop/hp-pc/worker/hp_render.c components/airprint/raster.c components/printers/hp_p1006.c components/xqx/vendor/jbig.c components/xqx/vendor/jbig_ar.c -lm -lwinpthread -o desktop/hp-pc/build/hp-render.exe
       - name: Converter and IPP tests on Windows
         shell: pwsh
         run: |

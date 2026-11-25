@@ -66,7 +66,7 @@ def bridge(path, mode=0):
 
 class Conversion(unittest.TestCase):
     def setUp(self):
-        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
+        self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)/'In thử tiếng Việt';self.root.mkdir()
     def tearDown(self):
         self.temp.cleanup()
     def render(self,data):

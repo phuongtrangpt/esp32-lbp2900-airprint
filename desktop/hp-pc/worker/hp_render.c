@@ -5,6 +5,26 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
+#include <wchar.h>
+typedef wchar_t pathchar;
+#define MAIN wmain
+#define pathlen wcslen
+#define openpath _wfopen
+#define removepath _wremove
+#define renamepath _wrename
+#define MODE(x) L##x
+static void tempname(pathchar *out,size_t n,const pathchar *name){swprintf(out,n,L"%ls.tmp",name);}
+#else
+typedef char pathchar;
+#define MAIN main
+#define pathlen strlen
+#define openpath fopen
+#define removepath remove
+#define renamepath rename
+#define MODE(x) x
+static void tempname(pathchar *out,size_t n,const pathchar *name){snprintf(out,n,"%s.tmp",name);}
+#endif
 extern const printer_driver_t hp_p1006_driver;
 typedef struct { FILE *out; void *job; int dpi,paper,pages; } context;
 typedef struct { FILE *file; bool urf; } input;
@@ -35,11 +55,11 @@ static int repeat(void *ctx,int y,const uint8_t *p,bool r) {
     return hp_p1006_driver.page_line_repeat?hp_p1006_driver.page_line_repeat(j,y,p,r):hp_p1006_driver.page_line(j,y,p);
 }
 static int page_end(void *ctx,const raster_page_t *pg) { (void)pg;context*c=ctx;int ret=hp_p1006_driver.page_end(c->job);if(!ret)c->pages++;return ret; }
-int main(int argc,char **argv) {
+int MAIN(int argc,pathchar **argv) {
     if(argc!=3){fprintf(stderr,"usage: hp-render input.raster output.xqx\n");return 2;}
-    size_t n=strlen(argv[2])+5;char *tmp=malloc(n);if(!tmp)return 2;snprintf(tmp,n,"%s.tmp",argv[2]);
-    FILE *in=fopen(argv[1],"rb"),*out=fopen(tmp,"wb");
-    if(!in || !out){if(in)fclose(in);if(out)fclose(out);remove(tmp);free(tmp);return 2;}
+    size_t n=pathlen(argv[2])+5;pathchar *tmp=malloc(n*sizeof(pathchar));if(!tmp)return 2;tempname(tmp,n,argv[2]);
+    FILE *in=openpath(argv[1],MODE("rb")),*out=openpath(tmp,MODE("wb"));
+    if(!in || !out){if(in)fclose(in);if(out)fclose(out);removepath(tmp);free(tmp);return 2;}
     unsigned declared=0;unsigned char signature[12];
     bool urf=fread(signature,1,12,in)==12 && !memcmp(signature,"UNIRAST\0",8);
     if(urf)
@@ -52,8 +72,8 @@ int main(int argc,char **argv) {
     fclose(in);
     if(c.job){int ret=ok?hp_p1006_driver.job_end(c.job):hp_p1006_driver.job_abort(c.job);if(ret)ok=false;}
     if(ferror(out))ok=false;if(fclose(out))ok=false;
-    if(ok && rename(tmp,argv[2]))ok=false;
-    if(!ok){remove(tmp);fprintf(stderr,"Raster conversion refused: %s (pages=%d). Nothing sent to ESP.\n",raster_strerror(pages),c.pages);}
+    if(ok && renamepath(tmp,argv[2]))ok=false;
+    if(!ok){removepath(tmp);fprintf(stderr,"Raster conversion refused: %s (pages=%d). Nothing sent to ESP.\n",raster_strerror(pages),c.pages);}
     else printf("{\"pages\":%d,\"dpi\":%d}\n",pages,c.dpi);
     free(tmp);return ok?0:1;
 }

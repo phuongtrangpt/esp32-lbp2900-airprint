@@ -47,10 +47,28 @@ nhận yêu cầu từ LAN. Không hỗ trợ in từ điện thoại qua PC tro
 ## Build / kiểm tra
 
 Linux native (gcc): xem các lệnh trong `.github/workflows/hp-pc-offload.yml`.
-Windows: MinGW-w64 build converter, Python 3.12 + PyInstaller 6.16.0 build worker,
+Windows: chạy `python desktop/hp-pc/make_icon.py` tạo icon tái lập,
+MinGW-w64 build converter, Python 3.12 + PyInstaller 6.16.0 build worker,
 Rust stable + Tauri 2 build NSIS. Installer gói sẵn worker và converter; người dùng
 không cần cài Python. Xem workflow để tái tạo đúng các bước.
 ESP: `pio run -e hp_pc`; firmware có tên app/OTA profile riêng.
 
 GPL-3.0-or-later; bộ JBIG gốc GPL-2.0-or-later. Giữ giấy phép gốc trong repo.
 Mã nguồn tương ứng nằm trên cùng nhánh/commit với artifact Actions.
+
+## Kết quả kiểm tra trước phần cứng
+
+- 22 bài kiểm thử native chạy qua trên Linux: PWG/URF, gray/RGB, nhiều trang,
+  cắt trang cuối, số trang URF không khớp, HTTP chunked/EOF, Create/Send/Cancel,
+  chống lặp khi mất HTTP reply, khung TCP bị chia nhỏ, sai CRC/thứ tự, máy sai/
+  bận, lệnh gửi trùng và truy vấn sau khi mất ACK cuối. USB dùng sink mô phỏng.
+- Giao thức C chạy với AddressSanitizer + UndefinedBehaviorSanitizer.
+- Bộ HP hiện tại vẫn cho kết quả XQX 300 dpi gray giống từng byte với đường
+  600 dpi đã phóng lớn; kiểm thử IPP/CAPT hiện có chạy qua.
+- Các bài native Windows chạy trên Actions, kiểm tra thêm worker đã đóng gói
+  với ESP giả lập. Bài hàng đợi Windows thực chỉ chạy nếu runner có đăng ký sẵn
+  Microsoft IPP Class Driver; nếu thiếu sẽ ghi NOT RUN, không coi là đã kiểm thử.
+- QEMU chưa chạy được tại môi trường phát triển hiện tại vì thiếu PlatformIO/
+  QEMU. Kiểm thử IPP CUPS conformance không chạy do thiếu ipptool; script cũ ghi
+  0 pass/0 fail. Không dùng các mục này làm bằng chứng kiểm thử thành công.
+- Chưa đo tốc độ in, RAM trên ESP thật hoặc thời gian giấy ra.

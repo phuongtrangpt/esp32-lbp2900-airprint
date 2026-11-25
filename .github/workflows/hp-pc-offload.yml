@@ -78,14 +78,21 @@ jobs:
           New-Item -ItemType Directory -Force desktop/hp-pc/src-tauri/resources/helper | Out-Null
           Copy-Item desktop/hp-pc/worker-dist/hp-pc-worker/* desktop/hp-pc/src-tauri/resources/helper -Recurse -Force
       - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: desktop/hp-pc/src-tauri
+          cache-on-failure: true
       - name: Build Tauri Windows installer
         working-directory: desktop/hp-pc
         run: |
-          cargo install tauri-cli --locked --version '^2'
-          cargo tauri build --bundles nsis
+          python make_icon.py
+          npm install --global @tauri-apps/cli@2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          tauri build --bundles nsis
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
           name: HP-P1006-PC-TEST-Windows
@@ -93,3 +100,4 @@ jobs:
             desktop/hp-pc/src-tauri/target/release/bundle/nsis/*-setup.exe
             desktop/hp-pc/README.md
             LICENSE
+            desktop/hp-pc/src-tauri/Cargo.lock

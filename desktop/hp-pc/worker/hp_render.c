@@ -7,7 +7,15 @@
 #include <string.h>
 extern const printer_driver_t hp_p1006_driver;
 typedef struct { FILE *out; void *job; int dpi,paper,pages; } context;
-static int read_file(void *ctx,uint8_t *p,size_t n) { FILE *f=ctx;size_t k=fread(p,1,n,f);return k?(int)k:ferror(f)?-1:0; }
+typedef struct { FILE *file; bool urf; } input;
+static int read_file(void *ctx,uint8_t *p,size_t n) {
+    input *in=ctx;FILE *f=in->file;bool first=ftell(f)==0;
+    size_t k=fread(p,1,n,f);
+    // Decode URF to actual EOF, then compare its original declared page count.
+    // The streaming decoder otherwise stops at that count and ignores trailing pages.
+    if(in->urf && first && k>=12)memset(p+8,0,4);
+    return k?(int)k:ferror(f)?-1:0;
+}
 static int write_file(void *ctx,const uint8_t *p,size_t n) { return fwrite(p,1,n,ctx)==n?0:-1; }
 static int page_begin(void *ctx,const raster_page_t *pg) {
     context *c=ctx;const printer_driver_t *d=&hp_p1006_driver;
@@ -33,11 +41,13 @@ int main(int argc,char **argv) {
     FILE *in=fopen(argv[1],"rb"),*out=fopen(tmp,"wb");
     if(!in || !out){if(in)fclose(in);if(out)fclose(out);remove(tmp);free(tmp);return 2;}
     unsigned declared=0;unsigned char signature[12];
-    if(fread(signature,1,12,in)==12 && !memcmp(signature,"UNIRAST\0",8))
+    bool urf=fread(signature,1,12,in)==12 && !memcmp(signature,"UNIRAST\0",8);
+    if(urf)
         declared=(unsigned)signature[8]<<24|(unsigned)signature[9]<<16|(unsigned)signature[10]<<8|signature[11];
     rewind(in);
     context c={.out=out};raster_cb_t cb={.page_begin=page_begin,.line=line,.line_repeat=repeat,.page_end=page_end};
-    int pages=raster_decode(read_file,in,&cb,&c);
+    input source={.file=in,.urf=urf};
+    int pages=raster_decode(read_file,&source,&cb,&c);
     bool ok=pages>0 && pages==c.pages && (!declared || declared==(unsigned)pages) && !ferror(in);
     fclose(in);
     if(c.job){int ret=ok?hp_p1006_driver.job_end(c.job):hp_p1006_driver.job_abort(c.job);if(ret)ok=false;}

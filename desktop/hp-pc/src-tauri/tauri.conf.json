@@ -3,18 +3,43 @@
   "productName": "HP P1006 PC TEST",
   "version": "0.1.0",
   "identifier": "vn.io.vietphuong.hp-pc-test",
-  "build": {"frontendDist": "../ui"},
+  "build": {
+    "frontendDist": "../ui"
+  },
   "app": {
     "withGlobalTauri": true,
-    "windows": [{"title": "HP P1006 PC OFFLOAD • TEST", "width": 850, "height": 720, "minWidth": 650, "minHeight": 600}],
-    "security": {"csp": "default-src 'self'; style-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost"}
+    "windows": [
+      {
+        "title": "HP P1006 PC OFFLOAD \u2022 TEST",
+        "width": 850,
+        "height": 720,
+        "minWidth": 650,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+    }
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis"],
-    "resources": {"resources/helper/": "helper/"},
+    "targets": [
+      "nsis"
+    ],
+    "resources": {
+      "resources/helper/": "helper/"
+    },
     "shortDescription": "Experimental HP P1006 PC rendering and ESP USB transport",
     "licenseFile": "../../../LICENSE",
-    "windows": {"nsis": {"displayLanguageSelector": false, "installMode": "currentUser"}}
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "currentUser"
+      }
+    },
+    "icon": [
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
   }
 }

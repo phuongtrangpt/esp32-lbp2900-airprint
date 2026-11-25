@@ -1,1 +1,2 @@
+Wi-Fi: trang in hiển thị 4 vạch sóng, chú thích tốt/khá/yếu/rất yếu và RSSI dBm. Số đo được cập nhật khi trang đang mở, tạm dừng đọc thêm khi đang in. Giữ nguyên phần xử lý in của LBP2900 và HP P1006.
 Chính thức: sửa đổi Wi-Fi ngay trên trang in cho HP P1006 NET2 và Canon 0.9.11-wifi1. Tự tìm mạng 2.4 GHz, quét lại và chuyển mạng khi ESP đang kết nối Wi-Fi; không cần BOOT cho thao tác đổi mạng. Giữ cấu hình cũ đến khi kết nối thành công. Giữ nguyên phần xử lý in.

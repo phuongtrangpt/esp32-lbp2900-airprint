@@ -58,6 +58,7 @@ jobs:
         run: |
           ASAN_OPTIONS=detect_leaks=0 host/portal_dns_host
           node tools/test_device_pages.mjs
+          python tools/test_wifi_signal.py
           ASAN_OPTIONS=detect_leaks=0 host/network_config_host
           curl -fsSL https://www.quirinux.org/printers/sihpP1006.tar.gz -o /tmp/hp-source.tar.gz
           ASAN_OPTIONS=detect_leaks=0 host/hp_bootstrap_host /tmp/hp-source.tar.gz /tmp/hp-verified.dl

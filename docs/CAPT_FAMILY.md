@@ -82,3 +82,5 @@ Hardware acceptance: verify descriptors, one-page A4, three consecutive jobs,
 ten-page PDF, 300/600 dpi, paper-out, cancel, USB reconnect, power cycle. LBP6200
 acceptance additionally needs USB capture comparison with Canon's own driver
 before claiming native AirPrint support.
+
+TEST2 adds Wi-Fi signal bars, readable quality captions and RSSI on the device print page. The model command flows and compression code are unchanged.

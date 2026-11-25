@@ -19,8 +19,8 @@
 
 #pragma once
 
-#include "std.h"
-#include "hiscoa-common.h"
+#include "cf_std.h"
+#include "cf_hiscoa-common.h"
 
 size_t cf_hiscoa_compress_band(void *buf, size_t size,
 	const void *band, unsigned line_size, unsigned nlines,

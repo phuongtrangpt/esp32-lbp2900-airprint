@@ -19,26 +19,12 @@
 
 #pragma once
 
-#include "std.h"
+#include "cf_std.h"
 
-struct cups_page_header2_s;
+struct printer_state_s;
 
-struct page_dims_s {
-	/* set by CUPS */
-	unsigned media_type;
-	unsigned media_adapt;
-	char media_size[0x40];
-	unsigned paper_width;
-	unsigned paper_height;
-	unsigned toner_save;
-	unsigned manual_duplex;
-	unsigned ink_k;
-	unsigned margin_height;
-	unsigned margin_width;
-	/* set by printer ops */
-	unsigned line_size;
-	unsigned band_size;
-	unsigned num_lines;
-};
+size_t cf_ops_compress_band_hiscoa(struct printer_state_s *state,
+	void *band, size_t size,
+	const void *pixels, unsigned line_size, unsigned num_lines, bool last);
 
-void page_set_dims(struct page_dims_s *dims, const struct cups_page_header2_s *header);
+void cf_ops_send_band_hiscoa(struct printer_state_s *state, const void *data, size_t size);

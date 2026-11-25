@@ -17,12 +17,12 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "capt-status.h"
+#include "cf_capt-status.h"
 
-#include "std.h"
+#include "cf_std.h"
 #include "cf_capt_transport.h"
-#include "word.h"
-#include "capt-command.h"
+#include "cf_word.h"
+#include "cf_capt-command.h"
 
 #include <stdio.h>
 #include <string.h>

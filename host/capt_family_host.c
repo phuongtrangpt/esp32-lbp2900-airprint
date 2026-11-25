@@ -2,9 +2,12 @@
 // Protocol model, NOT a physical printer compatibility test.
 #include "printer_driver.h"
 #include "cf_capt_transport.h"
-#include "capt-command.h"
-#include "hiscoa-common.h"
-#include "capt_reference/hiscoa-decompress.h"
+#include "cf_capt-command.h"
+#include "cf_hiscoa-common.h"
+// Same ABI as the unchanged independent reference decoder. Its translation
+// unit uses the original header; avoid mixing two private header sets here.
+unsigned hiscoa_decompress_band(const void **band, size_t *size, void *output,
+    size_t *output_size, unsigned line_size, const struct cf_hiscoa_params *params);
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -154,6 +157,13 @@ static void failures(void)
         void *j=d->job_begin(d,&link,300,0);assert(j);
         assert(d->page_begin(j,2480,3507,1)<0);assert(d->job_end(j)<0);
     }
+    // A cancellation arriving inside a fragmented reply must finish that
+    // frame before cleanup; otherwise leftover USB bytes corrupt the release.
+    fake_t interrupted=device(d,300,0);interrupted.cancel_after=30;
+    printer_io_t interrupted_link=io(&interrupted);
+    void *interrupted_job=d->job_begin(d,&interrupted_link,300,0);assert(interrupted_job);
+    assert(d->page_begin(interrupted_job,2480,3507,1)<0);
+    assert(!d->job_abort(interrupted_job) && interrupted.released==1 && !interrupted.restart);
     fake_t f=device(d,300,0);printer_io_t link=io(&f);
     void *j=d->job_begin(d,&link,300,0);assert(j && !d->page_begin(j,2480,3507,1));
     f.canceled=true;assert(!d->job_abort(j));assert(f.released==1 && !f.restart);

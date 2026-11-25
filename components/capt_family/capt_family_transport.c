@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // CAPT packet framing over byte-counted binary USB I/O. No CUPS dependency.
 #include "cf_capt_transport.h"
-#include "capt-command.h"
+#include "cf_capt-command.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -43,7 +43,6 @@ _Noreturn void cf_capt_fail(const char *message)
 }
 static void check(void)
 {
-    if (!current->cleaning_up && current->io.canceled && current->io.canceled(current->io.ctx)) cf_capt_fail("CAPT cf_job canceled");
     if (now_ms() >= current->deadline_ms) cf_capt_fail("CAPT operation timed out");
 #ifdef ESP_PLATFORM
     // Poll loops must let USB, Wi-Fi, cancel timer and watchdog tasks run.
@@ -73,7 +72,7 @@ static void send_buffer(void)
 {
     // Finish an in-flight reply before switching to the abort sequence.
     if (!current->cleaning_up && current->io.canceled && current->io.canceled(current->io.ctx))
-        cf_capt_fail("CAPT cf_job canceled");
+        cf_capt_fail("CAPT job canceled");
     check();
     if (current->io.write(current->io.ctx, current->buffer, current->used) < 0 ||
         current->io.flush(current->io.ctx) < 0) cf_capt_fail("CAPT USB write failed");
@@ -142,6 +141,8 @@ void cf_capt_pause(unsigned ms)
 {
     // Short sleeps keep cancellation/deadlines responsive during engine waits.
     while (ms) {
+        if (!current->cleaning_up && current->io.canceled && current->io.canceled(current->io.ctx))
+            cf_capt_fail("CAPT job canceled");
         check();
         unsigned part = ms > 20 ? 20 : ms;
         struct timespec delay = { .tv_sec=0, .tv_nsec=(long)part*1000000L };

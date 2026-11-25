@@ -3,9 +3,9 @@
 #include "printer_driver.h"
 #include "mono_raster.h"
 #include "cf_capt_transport.h"
-#include "printer.h"
-#include "paper.h"
-#include "capt-status.h"
+#include "cf_printer.h"
+#include "cf_paper.h"
+#include "cf_capt-status.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>

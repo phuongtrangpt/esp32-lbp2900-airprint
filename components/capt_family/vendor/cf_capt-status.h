@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include "std.h"
+#include "cf_std.h"
 
 struct cf_capt_status_s {
 	uint16_t status[7];

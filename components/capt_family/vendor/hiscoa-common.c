@@ -17,9 +17,9 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hiscoa-common.h"
+#include "cf_hiscoa-common.h"
 
-#include "std.h"
+#include "cf_std.h"
 
 const struct cf_hiscoa_params cf_hiscoa_default_params = {
 	.origin_3 = 1,

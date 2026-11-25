@@ -19,19 +19,26 @@
 
 #pragma once
 
-#include "std.h"
+#include "cf_std.h"
 
-enum cf_hiscoa_eob_type {
-	HISCOA_EOB_NORMAL = 0x0,
-	HISCOA_EOB_LAST = 0x01,
+struct cups_page_header2_s;
+
+struct page_dims_s {
+	/* set by CUPS */
+	unsigned media_type;
+	unsigned media_adapt;
+	char media_size[0x40];
+	unsigned paper_width;
+	unsigned paper_height;
+	unsigned toner_save;
+	unsigned manual_duplex;
+	unsigned ink_k;
+	unsigned margin_height;
+	unsigned margin_width;
+	/* set by printer ops */
+	unsigned line_size;
+	unsigned band_size;
+	unsigned num_lines;
 };
 
-struct cf_hiscoa_params {
-	int origin_3;
-	int origin_5;
-	int origin_0;
-	int origin_2;
-	int origin_4;
-};
-
-extern const struct cf_hiscoa_params cf_hiscoa_default_params;
+void page_set_dims(struct page_dims_s *dims, const struct cups_page_header2_s *header);

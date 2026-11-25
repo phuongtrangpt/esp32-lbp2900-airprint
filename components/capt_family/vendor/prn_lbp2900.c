@@ -18,16 +18,16 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "std.h"
+#include "cf_std.h"
 #include "cf_capt_transport.h"
-#include "word.h"
-#include "capt-command.h"
-#include "capt-status.h"
-#include "generic-ops.h"
-#include "hiscoa-common.h"
-#include "hiscoa-compress.h"
-#include "paper.h"
-#include "printer.h"
+#include "cf_word.h"
+#include "cf_capt-command.h"
+#include "cf_capt-status.h"
+#include "cf_generic-ops.h"
+#include "cf_hiscoa-common.h"
+#include "cf_hiscoa-compress.h"
+#include "cf_paper.h"
+#include "cf_printer.h"
 
 #include <stdio.h>
 #include <stdlib.h>

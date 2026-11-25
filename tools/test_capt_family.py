@@ -5,7 +5,7 @@ import os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix='capt-family-') as tmp:
     # Independent upstream decompressor, namespaced without editing its source.
-    inc=['-Icomponents/airprint/include','-Icomponents/capt_family/include','-Icomponents/capt_family/vendor','-Ihost']
+    inc=['-Icomponents/airprint/include','-Icomponents/capt_family/include','-Icomponents/capt_family/vendor','-Ihost','-Icomponents/capt/vendor']
     flags=['-O2','-g','-Wall','-Wextra','-Wno-unused-function','-Wno-unused-variable','-Wno-unused-parameter','-fsanitize=address,undefined','-fno-pie','-no-pie']
     src=['host/capt_family_host.c','host/capt_reference/hiscoa-decompress.c','components/printers/printers.c','components/printers/canon_capt_family.c','components/capt_family/capt_family_transport.c']+[str(p.relative_to(ROOT)) for p in (ROOT/'components/capt_family/vendor').glob('*.c')]
     for profile in ['LBP6000','LBP6200','LBP3010']:

@@ -17,11 +17,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "hiscoa-compress.h"
+#include "cf_hiscoa-compress.h"
 
-#include "std.h"
-#include "word.h"
-#include "hiscoa-common.h"
+#include "cf_std.h"
+#include "cf_word.h"
+#include "cf_hiscoa-common.h"
 
 #include <string.h>
 

@@ -19,7 +19,7 @@
 
 #pragma once
 
-#include "std.h"
+#include "cf_std.h"
 
 enum cf_capt_command {
 	CAPT_NOP        = 0xA0A0, /* ? */

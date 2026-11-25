@@ -4,3 +4,5 @@
 /src-tauri/resources/
 __pycache__/
 /src-tauri/icons/
+
+/service-host/target/

@@ -89,8 +89,19 @@ jobs:
           node-version: '24'
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: desktop/hp-pc/src-tauri
+          workspaces: |
+            desktop/hp-pc/src-tauri
+            desktop/hp-pc/service-host
           cache-on-failure: true
+      - name: Build native Windows Service
+        shell: pwsh
+        run: |
+          cargo build --release --manifest-path desktop/hp-pc/service-host/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test --manifest-path desktop/hp-pc/service-host/Cargo.toml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force desktop/hp-pc/src-tauri/resources/service | Out-Null
+          Copy-Item desktop/hp-pc/service-host/target/release/hp-pc-service.exe desktop/hp-pc/src-tauri/resources/service/
       - name: Build Tauri Windows installer
         working-directory: desktop/hp-pc
         run: |
@@ -98,6 +109,12 @@ jobs:
           npm install --global @tauri-apps/cli@2
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           tauri build --bundles nsis
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Installed Windows Service and manager lifecycle
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem desktop/hp-pc/src-tauri/target/release/bundle/nsis/*-setup.exe | Select-Object -First 1
+          python desktop/hp-pc/tests/service_smoke.py $installer.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
         with:
@@ -107,3 +124,4 @@ jobs:
             desktop/hp-pc/README.md
             LICENSE
             desktop/hp-pc/src-tauri/Cargo.lock
+            desktop/hp-pc/service-host/Cargo.lock

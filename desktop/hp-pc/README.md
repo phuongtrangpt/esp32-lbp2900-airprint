@@ -86,3 +86,22 @@ Windows đặt tên form PDF là custom; vẫn từ chối khổ tùy chỉnh ng
 Bộ chuyển đổi trên PC dùng cùng dung sai. Lỗi khổ giấy ghi số đo nhận thực tế.
 Khóa IP khi dịch vụ đang chạy và hiển thị đúng đích ESP:9101. Dừng dịch vụ, chờ
 đã dừng rồi đổi IP/bật lại; không khởi tạo worker mới khi worker cũ chưa thoát.
+
+## 0.2.0 — Windows Service
+
+Dịch vụ `VietPhuongHPP1006PC` chạy tự động ngay khi Windows khởi động, bằng
+tài khoản LocalService, độc lập với giao diện và phiên đăng nhập. Cài bằng quyền
+quản trị; mở giao diện một lần, nhập IP ESP rồi Lưu IP / bật dịch vụ. Các lần
+in sau chọn HP P1006 PC TEST như máy in thường, không cần mở ứng dụng.
+
+Nút X ẩn giao diện xuống khay. Thoát giao diện cũng không dừng dịch vụ. Đổi IP
+hoặc dừng để thay máy cần quyền quản trị; đổi IP bị chặn khi đang in. Windows
+tự khởi động lại service host nếu lỗi; host tự phục hồi worker. Lệnh in bị gián
+đoạn không được service tự phục hồi từ file tạm; kiểm tra giấy trước khi gửi lại.
+
+Cấu hình và trạng thái ở ProgramData/VietPhuong/HP-P1006-PC; file tài liệu tạm
+có ACL riêng, chỉ LocalService, SYSTEM và quản trị được truy cập. Gỡ ứng dụng
+sẽ dừng và xóa dịch vụ. Dùng lại firmware ESP 0.1.0-hp-pc-test1.
+
+Cài nâng cấp: chờ hết lệnh in, đóng bản 0.1.x cũ (để giải phóng cổng 8632),
+cài 0.2.0 rồi lưu IP một lần. Giữ hàng đợi HP P1006 PC TEST hiện có.

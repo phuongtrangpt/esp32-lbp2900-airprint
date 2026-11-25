@@ -12,7 +12,7 @@
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Cannot configure HP P1006 service data permissions. $1"
+    MessageBox MB_ICONSTOP "Cannot configure HP P1006 service data permissions. $1" /SD IDOK
     Abort
   ${EndIf}
   CreateDirectory "$APPDATA\VietPhuong\HP-P1006-PC\spool"
@@ -20,14 +20,14 @@
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Cannot protect the print spool folder."
+    MessageBox MB_ICONSTOP "Cannot protect the print spool folder." /SD IDOK
     Abort
   ${EndIf}
   nsExec::ExecToStack '"$INSTDIR\hp-pc-service.exe" --install'
   Pop $0
   Pop $1
   ${If} $0 != 0
-    MessageBox MB_ICONSTOP "Cannot install HP P1006 Windows Service. Administrator permission is required."
+    MessageBox MB_ICONSTOP "Cannot install HP P1006 Windows Service. Administrator permission is required." /SD IDOK
     Abort
   ${EndIf}
 !macroend

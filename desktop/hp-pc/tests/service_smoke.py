@@ -56,6 +56,10 @@ def scinfo():
 
 def windows(pid,visible=True):
     u=ctypes.windll.user32;result=[]
+    u.GetWindowThreadProcessId.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.DWORD)]
+    u.IsWindowVisible.argtypes=[wintypes.HWND]
+    u.GetWindowTextW.argtypes=[wintypes.HWND,wintypes.LPWSTR,ctypes.c_int]
+    u.PostMessageW.argtypes=[wintypes.HWND,wintypes.UINT,wintypes.WPARAM,wintypes.LPARAM]
     callback=ctypes.WINFUNCTYPE(wintypes.BOOL,wintypes.HWND,wintypes.LPARAM)
     @callback
     def enum(hwnd,_):
@@ -72,7 +76,15 @@ def main():
     if scinfo():raise AssertionError('Unexpected pre-existing service on fresh CI runner')
     with tempfile.TemporaryDirectory(prefix='hp-pc-service-',dir=os.environ.get('RUNNER_TEMP')) as dest:
         folder=Path(dest)/'app'
-        subprocess.run([str(installer),'/S',f'/D={folder}'],check=True,timeout=180)
+        try:
+            subprocess.run([str(installer),'/S',f'/D={folder}'],check=True,timeout=180)
+        except Exception:
+            print('INSTALL FAILURE FILES:',[str(p.relative_to(folder)) for p in folder.rglob('*') if p.is_file()][:60],flush=True)
+            print('INSTALL FAILURE SERVICE:',scinfo(),flush=True)
+            for name in ('control-error.txt','status.json'):
+                try:print(name,(DATA/name).read_text(),flush=True)
+                except OSError:pass
+            raise
         helper=folder/'hp-pc-service.exe';app=folder/'hp-pc-test.exe'
         assert helper.is_file() and app.is_file(),list(folder.iterdir())
         try:
@@ -120,10 +132,16 @@ def main():
             old=status()['worker_pid'];subprocess.run(['taskkill','/F','/T','/PID',str(old)],check=True,capture_output=True)
             wait(lambda:status().get('ready') and status().get('worker_pid') not in (None,old))
             request(ipp(11));print('SERVICE RECOVERY: worker killed and automatically recovered',flush=True)
+            old_boot=status()['boot_id']
             old=scinfo()['ProcessId'];subprocess.run(['taskkill','/F','/PID',str(old)],check=True,capture_output=True)
             wait(lambda:(scinfo() or {}).get('ProcessId') not in (None,0,old),timeout=45)
-            wait(lambda:status().get('ready'));request(ipp(11))
+            wait(lambda:status().get('ready') and status().get('boot_id')!=old_boot);request(ipp(11))
             print('SERVICE RECOVERY: host killed and Windows SCM automatically restarted it',flush=True)
+        except Exception:
+            print('SERVICE TEST FAILURE STATE:',scinfo(),flush=True)
+            try:print('SERVICE STATUS:',json.dumps(status()),flush=True)
+            except Exception as e:print('STATUS READ:',e,flush=True)
+            raise
         finally:
             if gui and gui.poll() is None:
                 subprocess.run([str(app),'--quit'],timeout=15)
@@ -133,6 +151,7 @@ def main():
             if uninstall:
                 subprocess.run([str(uninstall),'/S'],check=True,timeout=90)
                 wait(lambda:scinfo() is None)
+                wait(lambda:not helper.exists() and not app.exists())
                 print('SERVICE UNINSTALL: service removed successfully',flush=True)
             else:
                 subprocess.run([str(helper),'--remove'],timeout=45)

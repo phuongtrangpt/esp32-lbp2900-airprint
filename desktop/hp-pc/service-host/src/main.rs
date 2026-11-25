@@ -59,8 +59,9 @@ fn service_main(_args:Vec<OsString>){
  let make=|state|ServiceStatus{service_type:ServiceType::OWN_PROCESS,current_state:state,controls_accepted:ServiceControlAccept::STOP|ServiceControlAccept::SHUTDOWN,exit_code:ServiceExitCode::Win32(0),checkpoint:0,wait_hint:Duration::from_secs(15),process_id:None};
  let _=status.set_service_status(make(ServiceState::Running));supervise(stop);let _=status.set_service_status(make(ServiceState::Stopped));
 }
+fn diagnostic(e:String)->u8{let _=std::fs::create_dir_all(data_dir());let _=std::fs::write(data_dir().join("control-error.txt"),e);13}
 fn main(){
  let args:Vec<String>=std::env::args().collect();
- let result=match args.get(1).map(String::as_str){Some("--install")=>install().map_err(|_|13),Some("--remove")=>{let _=stop_service();service(ServiceAccess::DELETE).and_then(|s|s.delete().map_err(|e|e.to_string())).map_err(|_|13)},Some("--stop")=>stop_service().map_err(|_|13),Some("--start")=>start_service().map_err(|_|13),Some("--set-ip")=>args.get(2).ok_or(11).and_then(|ip|configure(ip)),_=>service_dispatcher::start(SERVICE,ffi_main).map_err(|_|13)};
+ let result=match args.get(1).map(String::as_str){Some("--install")=>install().map_err(diagnostic),Some("--remove")=>{let _=stop_service();service(ServiceAccess::DELETE).and_then(|s|s.delete().map_err(|e|e.to_string())).map_err(|_|13)},Some("--stop")=>stop_service().map_err(diagnostic),Some("--start")=>start_service().map_err(diagnostic),Some("--set-ip")=>args.get(2).ok_or(11).and_then(|ip|configure(ip)),_=>service_dispatcher::start(SERVICE,ffi_main).map_err(|_|13)};
  if let Err(code)=result{std::process::exit(code as i32);}
 }

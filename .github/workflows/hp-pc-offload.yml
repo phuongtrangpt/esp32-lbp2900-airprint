@@ -117,6 +117,7 @@ jobs:
           python desktop/hp-pc/tests/service_smoke.py $installer.FullName
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: HP-P1006-PC-TEST-Windows
           path: |

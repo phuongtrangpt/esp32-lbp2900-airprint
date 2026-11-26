@@ -225,6 +225,12 @@ class Spooler(unittest.TestCase):
         until=time.monotonic()+15
         while j['state']<7 and time.monotonic()<until:time.sleep(.01)
         self.assertGreaterEqual(j['state'],7)
+    def test_http_document_is_handed_off_without_a_second_disk_copy(self):
+        with patch('worker.shutil.copyfileobj',side_effect=AssertionError('Unexpected full-document copy')),patch('worker.send_job') as send:
+            status,data=self.post(ipp(doc=raster(6)),chunked=True);self.assertEqual(status,0)
+            _,_,a=decode(io.BytesIO(data));job=integer(a,'job-id')
+            self.wait_job(self.service.jobs[job]);self.assertEqual(self.service.jobs[job]['state'],9)
+            self.assertEqual(send.call_count,1)
     def test_attributes_and_validate(self):
         status,data=self.post(ipp(11));self.assertEqual(status,0)
         _,_,a=decode(io.BytesIO(data));self.assertIn('image/pwg-raster',[v.decode() for _,v in a['document-format-supported']])

@@ -3,6 +3,7 @@ on:
   push:
     branches-ignore:
       - feat/hp-pc-offload
+      - perf/hp-pc-startup
     paths-ignore:
       - installer/**
       - tools/prepare_capt_family_web.py

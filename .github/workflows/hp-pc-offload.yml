@@ -1,7 +1,7 @@
 name: HP P1006 PC offload experiment
 on:
   push:
-    branches: [feat/hp-pc-offload]
+    branches: [feat/hp-pc-offload, perf/hp-pc-startup]
   workflow_dispatch:
 permissions:
   contents: read
@@ -31,6 +31,7 @@ jobs:
           git diff --exit-code c0d059e29deb78801001798e34f9d0151a77ccdc -- components/printers/hp_p1006.c components/printers/canon_lbp2900.c components/capt components/airprint/raster.c src/hp_raw_bridge.c installer
           python tools/test_hp_pc_usb_scope.py
   firmware:
+    if: github.ref_name != 'perf/hp-pc-startup'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -77,6 +78,16 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python desktop/hp-pc/tests/test_device_status.py -v
           python desktop/hp-pc/tests/test_usb_wait.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compare Windows document receive and handoff against USBWAIT baseline
+        shell: pwsh
+        run: |
+          python desktop/hp-pc/tests/bench_receive.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          git fetch origin 377f4c64fb0f0e52507291b447fb1ec6ce734911 --depth=1
+          $baseline = Join-Path $env:RUNNER_TEMP 'hp-pc-receive-baseline'
+          git worktree add --detach $baseline 377f4c64fb0f0e52507291b447fb1ec6ce734911
+          python desktop/hp-pc/tests/bench_receive.py $baseline
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Windows printer queue capability and integration
         run: python desktop/hp-pc/tests/windows_queue_smoke.py desktop/hp-pc/build/hp-render.exe

@@ -48,3 +48,11 @@ test('stopped or offline service cannot leave a stale cancellable job in the man
  const s={boot_id:'one',ready:false,busy:true,service_state:'Stopped',settings:{esp_ip:'192.168.10.21'},events:[]};
  const {get}=ui(s);await new Promise(setImmediate);assert.equal(get('cancel').disabled,true);assert.equal(get('progress').hidden,true);assert.match(get('status').textContent,/Dịch vụ đã dừng/);
 });
+
+
+test('document receive progress is visible before a job exists and clears on service restart',async()=>{
+ const s={boot_id:'one',ready:true,busy:false,service_state:'Running',settings:{esp_ip:'192.168.10.21'},device:{online:true,state:'ready'},events:[{sequence:1,phase:'receiving',message:'Receiving 12 MiB'}]};
+ const {get,context}=ui(s);await new Promise(setImmediate);
+ assert.match(get('status').textContent,/Receiving 12 MiB/);assert.equal(get('progress').hidden,false);assert.equal(get('cancel').disabled,true);
+ s.boot_id='two';s.events=[];await context.refresh();assert.equal(get('progress').hidden,true);assert.equal(get('start').disabled,false);
+});

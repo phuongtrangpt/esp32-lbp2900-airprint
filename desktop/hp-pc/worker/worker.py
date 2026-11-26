@@ -3,6 +3,7 @@
 import argparse
 import collections
 import ipaddress
+import io
 import hashlib
 import json
 import os
@@ -195,8 +196,11 @@ class Service:
             if j['state'] >= 7 or j['submitted']:
                 raise IppError(0x0405, 'Job already submitted/canceled; no automatic replay')
             path = self.root / f"{j['id']}.raster"
-            with path.open('wb') as out:
-                shutil.copyfileobj(source, out, 65536)
+            if isinstance(source, Path):
+                os.replace(source,path)
+            else:
+                with path.open('wb') as out:
+                    shutil.copyfileobj(source, out, 65536)
             j['submitted'] = True
             j['state'], j['reason'], j['message'] = 3, 'none', 'Spooling complete'
             try:
@@ -365,8 +369,23 @@ class Service:
                     self.replies.popitem(last=False)
             return result
 
+    def handle_received(self,spool):
+        op,request,a=spool.parsed
+        if op!=6:return self.dispatch_parsed(op,request,a,spool.path)
+        key=spool.digest.digest()
+        with self.request_lock:
+            if key in self.replies:return self.replies[key]
+            result=self.dispatch_parsed(op,request,a,spool.path)
+            if result[2:4]==b'\0\0':
+                self.replies[key]=result
+                while len(self.replies)>32:self.replies.popitem(last=False)
+            return result
+
     def dispatch(self, body):
         op, request, a = decode(body)
+        return self.dispatch_parsed(op,request,a,body)
+
+    def dispatch_parsed(self,op,request,a,body):
         try:
             if op == 11:
                 return reply(request, groups=self.printer_attrs())
@@ -405,6 +424,41 @@ class Service:
         except IppError as e:
             emit('ipp-error', message=e.message, operation=f'0x{op:04x}', job=integer(a, 'job-id'))
             return reply(request, e.status)
+
+
+class BodySpool:
+    """Parse only bounded IPP attributes in memory; write document to disk once.
+    Ownership passes to the job only AFTER the entire HTTP body is validated.
+    """
+    def __init__(self,root):
+        fd,name=tempfile.mkstemp(prefix='upload-',dir=root)
+        self.path=Path(name);self.file=os.fdopen(fd,'wb');self.prefix=bytearray()
+        self.parsed=None;self.digest=hashlib.sha256();self.total=0
+        self.started=time.monotonic();self.last_notice=0
+    def write(self,data):
+        self.total+=len(data)
+        # Send-Document retries retain the same full-body fingerprint, without a disk reread.
+        if self.parsed is None or self.parsed[0]==6:self.digest.update(data)
+        if self.parsed is None:
+            self.prefix.extend(data)
+            stream=io.BytesIO(self.prefix)
+            try:parsed=decode(stream)
+            except ValueError:
+                if len(self.prefix)>65536:raise
+                return
+            self.parsed=parsed
+            self.file.write(self.prefix[stream.tell():]);self.prefix.clear()
+        else:self.file.write(data)
+        if self.parsed[0] in (2,6):
+            now=time.monotonic()
+            if now-self.last_notice>=1:
+                self.last_notice=now
+                emit('receiving',bytes=self.total,elapsed_ms=round((now-self.started)*1000),message=f'Receiving document from Windows: {self.total/1048576:.1f} MiB')
+    def finish(self):
+        if self.parsed is None:decode(io.BytesIO(self.prefix));raise ValueError('Missing IPP attributes')
+        self.file.close()
+    def close(self):
+        self.file.close();self.path.unlink(missing_ok=True)
 
 
 class Server(ThreadingHTTPServer):
@@ -447,11 +501,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            # Bounded disk spool; never forward a prefix of an incomplete HTTP body.
-            with tempfile.TemporaryFile(dir=self.server.service.root) as f:
-                self.read_body(f)
-                f.seek(0)
-                result = self.server.service.handle(f)
+            # The document is written once; no whole-file hash reread or second copy.
+            spool=BodySpool(self.server.service.root)
+            try:
+                self.read_body(spool)
+                spool.finish()
+                received=time.monotonic()
+                result=self.server.service.handle_received(spool)
+                if spool.parsed[0] in (2,6):
+                    emit('receive-timing',bytes=spool.total,receive_ms=round((received-spool.started)*1000),handoff_ms=round((time.monotonic()-received)*1000),message='Complete HTTP document received and handed to PC renderer')
+            finally:spool.close()
             self.send_response(200)
             self.send_header('Content-Type', 'application/ipp')
             self.send_header('Content-Length', str(len(result)))

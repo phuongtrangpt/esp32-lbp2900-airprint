@@ -1,6 +1,10 @@
 """Exercise the live API without logging codes/tokens or touching any ESP."""
 import concurrent.futures,json,sys,time,urllib.request,urllib.error
 base=sys.argv[1].rstrip('/')
+# Identify this QA client explicitly; Cloudflare rejects Python's default client header.
+opener=urllib.request.build_opener()
+opener.addheaders=[('User-Agent','VietPhuong-Web-IntegrationTest/1.0'),('Accept','application/json,text/html')]
+urllib.request.install_opener(opener)
 def post(action,data=None):
  req=urllib.request.Request(base+'/api/access/'+action,method='POST',data=json.dumps(data or {}).encode(),headers={'Origin':base,'Content-Type':'application/json'})
  try:

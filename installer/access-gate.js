@@ -4,7 +4,7 @@ host.addEventListener('click',event=>{
  if(hasAccess())return;
  event.preventDefault();event.stopImmediatePropagation();input.value='';message.textContent='';dialog.showModal();input.focus();
 },true);
-document.querySelector('#access-close').addEventListener('click',()=>{input.value='';dialog.close();});
+for(const id of ['#access-close','#access-dismiss'])document.querySelector(id).addEventListener('click',()=>{input.value='';dialog.close();});
 dialog.addEventListener('close',()=>{input.value='';});
 form.addEventListener('submit',async event=>{
  event.preventDefault();submit.disabled=true;message.textContent='Đang xác thực…';

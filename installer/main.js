@@ -1,3 +1,4 @@
+import './access-gate.js';
 import './compatibility.js';
 import './progress.js';
 import './style.css';

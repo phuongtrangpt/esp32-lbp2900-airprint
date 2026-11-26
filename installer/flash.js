@@ -1,10 +1,11 @@
+import { authorizeFlash } from './access-session.js';
 // ESP Web Tools flash adapter, Apache-2.0; based on esphome/esp-web-tools src/flash.ts.
 // Keep the upstream Improv/Wi-Fi dialog; make serial recovery and errors observable.
 import { Transport, ESPLoader } from 'esptool-js';
 import SparkMD5 from 'spark-md5';
 import { connectLoader, releaseTransport } from './serial.js';
 
-export async function flash(onEvent, port, manifestPath, manifest, eraseFirst, dependencies={Transport,ESPLoader}) {
+export async function flash(onEvent, port, manifestPath, manifest, eraseFirst, dependencies={Transport,ESPLoader,authorize:authorizeFlash}) {
   let transport, loader, build, chipFamily, phase='failed_initialize';
   const emit=(state,message,details={})=>{
     const event={state,message,details,manifest,build,chipFamily};
@@ -13,6 +14,7 @@ export async function flash(onEvent, port, manifestPath, manifest, eraseFirst, d
   };
   let outcome;
   try {
+    await (dependencies.authorize || authorizeFlash)();
     emit('initializing','Đang kết nối ESP32-S3…',{done:false});
     ({transport,loader}=await connectLoader(port,dependencies,message=>
       emit('initializing',message,{done:false})));

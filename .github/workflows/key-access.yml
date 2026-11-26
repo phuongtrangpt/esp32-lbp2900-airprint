@@ -1,0 +1,82 @@
+name: Publish one-time access code website
+on:
+  push:
+    branches: [main, web/access-codes]
+    paths:
+      - installer/**
+      - .github/workflows/key-access.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: access-code-website-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Preserve all published firmware and manifests without rebuilding devices
+        run: |
+          BASE_RUN=$(gh api "repos/$GH_REPO/actions/workflows/build.yml/runs?branch=main&event=push&status=success&per_page=1" --jq '.workflow_runs[0].id')
+          test "$BASE_RUN" != null
+          gh run download "$BASE_RUN" --name vietphuong-esp-web --dir base-site
+          mkdir -p installer/public/firmware
+          cp -a base-site/firmware/. installer/public/firmware/
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('installer/public/firmware')
+          records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+          for profile in ['hp','hp_p1008','canon','lbp6000','lbp6200','lbp3010','lbp6030','pixma','standard']:
+              assert profile+'/web-manifest.json' in records,profile
+          Path('/tmp/preserved-firmware.json').write_text(json.dumps(records))
+          PY
+      - name: Validate one-time code API, installer and build
+        run: |
+          npm --prefix installer ci
+          npm --prefix installer test
+          npm --prefix installer run build
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          root=Path('installer/dist/firmware')
+          for name,digest in json.loads(Path('/tmp/preserved-firmware.json').read_text()).items():
+              assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
+          assert not list(Path('installer/dist').rglob('*.zip'))
+          print('All existing firmware/manifests byte-identical; no downloadable ZIPs')
+          PY
+      - name: Provision code database in the existing Cloudflare account
+        run: python installer/cloudflare/provision.py
+      - name: Publish preview or production to existing Pages project
+        working-directory: installer
+        run: |
+          BRANCH=web-access-codes
+          if [ "$GITHUB_REF_NAME" = main ]; then
+            CURRENT_SHA=$(gh api "repos/$GH_REPO/commits/main" --jq .sha)
+            test "$CURRENT_SHA" = "$GITHUB_SHA"
+            BRANCH=main
+          fi
+          npx --yes wrangler@4 pages deploy dist --project-name vietphuong-esp --branch "$BRANCH" --commit-hash "$GITHUB_SHA"
+      - name: Verify live code issuance and concurrent single-use redemption
+        run: |
+          URL=https://web-access-codes.vietphuong-esp.pages.dev
+          if [ "$GITHUB_REF_NAME" = main ]; then URL=https://esp.vietphuong.io.vn; fi
+          python installer/cloudflare/smoke.py "$URL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vietphuong-esp-key-web
+          path: installer/dist/
+          include-hidden-files: true

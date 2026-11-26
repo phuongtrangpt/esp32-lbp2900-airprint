@@ -1,7 +1,7 @@
 name: Publish CAPT test catalog
 on:
   push:
-    branches: [main, web/capt-family]
+    branches: [web/capt-family]
     paths:
       - installer/**
       - tools/prepare_capt_family_web.py

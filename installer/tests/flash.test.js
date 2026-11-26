@@ -23,7 +23,7 @@ function mocks({failures=0,writeError=false,resetError=false,finishError=false,v
     async writeFlash(options){calls.push('write');if(writeError) throw Error('write timeout');options.reportProgress(0,2,4);options.reportProgress(0,4,4);await this.flashDeflFinish(false,3000);const hash=await this.flashMd5sum(0,4);if(hash!==options.calculateMD5Hash(new Uint8Array([1,2,3,4])))throw Error('MD5 mismatch');}
     async after(){calls.push('reset');}
   }
-  return {Transport,ESPLoader,calls};
+  return {Transport,ESPLoader,calls,authorize:async()=>{}};
 }
 for(const failures of [0,1,2]) test(`connect recovers after ${failures} failures`,async()=>{
   const deps=mocks({failures});
@@ -84,4 +84,10 @@ for(const [key,phase] of [['finishError','finalize_failed'],['verifyError','veri
 });
 test('MD5 used for device readback has standard known-answer vectors',()=>{
  for(const [value,expected] of [['','d41d8cd98f00b204e9800998ecf8427e'],['abc','900150983cd24fb0d6963f7d28e17f72']])assert.equal(SparkMD5.ArrayBuffer.hash(new TextEncoder().encode(value)),expected);
+});
+
+test('missing code authorization blocks serial and firmware access before flash',async()=>{
+ const deps=mocks({});deps.authorize=async()=>{throw Error('Code required');};const events=[];
+ await flash(e=>events.push(e),port,'https://example.test/manifest.json',manifest,false,deps);
+ assert.equal(deps.calls.length,0);assert.equal(events.at(-1).state,'error');assert.match(events.at(-1).message,/Code required/);
 });

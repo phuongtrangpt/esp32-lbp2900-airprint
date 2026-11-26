@@ -252,7 +252,7 @@ class Service:
                     self.wait_for_device(j)
                     send_started = time.monotonic()
                     try:
-                        send_job(self.host, out, j['cancel'], progress, connection)
+                        send_job(self.host, out, j['cancel'], progress, connection, waiting=lambda seconds:emit('waiting-usb',job=j['id'],elapsed=seconds,message=f'Waiting for ESP USB confirmation ({seconds} s); no data replay'))
                         break
                     except DeviceUnavailable as e:
                         # Only retry an explicit pre-frame refusal, never a partial transfer.

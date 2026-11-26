@@ -7,11 +7,11 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <string.h>
-typedef struct { FILE *out;int mode; } sink;
+typedef struct { FILE *out;int mode;int stalled; } sink;
 static int ready(void *ctx){int mode=((sink*)ctx)->mode;return mode==1?HP_PC_MODEL:mode==2?HP_PC_BUSY:0;}
 static int begin(void *ctx){(void)ctx;return 0;}
 static int write_usb(void *ctx,const uint8_t*p,size_t n){sink*s=ctx;return s->mode==3?-1:fwrite(p,1,n,s->out)==n?0:-1;}
-static int flush(void *ctx){return fflush(((sink*)ctx)->out);}
+static int flush(void *ctx){sink*s=ctx;if(s->mode==4 && !s->stalled){s->stalled=1;sleep(13);}return fflush(s->out);}
 static void end(void *ctx,bool ok){(void)ok;fflush(((sink*)ctx)->out);}
 int main(int argc,char **argv){
     if(argc<2)return 2;sink s={.out=fopen(argv[1],"wb"),.mode=argc>2?atoi(argv[2]):0};if(!s.out)return 2;

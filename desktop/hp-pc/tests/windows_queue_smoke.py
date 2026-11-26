@@ -27,7 +27,7 @@ def main():
     service=Service('127.0.0.1',sys.argv[1]);server=Server(('127.0.0.1',8632),service)
     thread=threading.Thread(target=server.serve_forever,daemon=True);thread.start()
     captured=[]
-    def usb(host,path,cancel,progress,connection):
+    def usb(host,path,cancel,progress,connection,**kwargs):
         data=Path(path).read_bytes();assert data.startswith(b'\x1b%-12345X@PJL JOB');captured.append(data)
     try:
         with patch('worker.send_job',usb):

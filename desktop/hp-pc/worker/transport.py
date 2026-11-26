@@ -1,6 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Checked PC -> ESP transport. Never replay a job after any output."""
 import secrets
+import select
+import time
 import socket
 import struct
 import zlib
@@ -29,6 +31,25 @@ def response(s):
     return status, seq, accepted
 
 
+def frame_response(s, canceled, waiting=lambda seconds:None, timeout=150):
+    """Wait for the SAME ACK, never resend data; cancellation remains responsive."""
+    started=time.monotonic();next_notice=5;data=bytearray()
+    while len(data)<REPLY.size:
+        if canceled.is_set():raise InterruptedError('Canceled while waiting for USB confirmation')
+        elapsed=time.monotonic()-started
+        if elapsed>=timeout:raise TimeoutError(f'ESP USB confirmation timed out after {timeout:g} s')
+        if elapsed>=next_notice:
+            waiting(round(elapsed));next_notice=elapsed+5
+        readable,_,_=select.select([s],[],[],min(1,timeout-elapsed))
+        if not readable:continue
+        block=s.recv(REPLY.size-len(data))
+        if not block:raise ConnectionError('ESP closed connection while waiting for USB confirmation')
+        data.extend(block)
+    magic,status,seq,accepted=REPLY.unpack(data)
+    if magic!=b'VPHPA01\n':raise ConnectionError('Wrong ESP protocol')
+    return status,seq,accepted
+
+
 def hello(host, port=9101):
     with socket.create_connection((host, port), timeout=5) as s:
         s.sendall(HEADER.pack(b'VPHPO01\n', 1, 0, 0, 0))
@@ -43,7 +64,7 @@ class DeviceUnavailable(ConnectionError):
     pass
 
 
-def send_job(host, path, canceled, progress, connection=lambda s: None, port=9101):
+def send_job(host, path, canceled, progress, connection=lambda s: None, port=9101, waiting=lambda seconds:None):
     total, crc = 0, 0
     with open(path, 'rb') as f:
         for block in iter(lambda: f.read(65536), b''):
@@ -53,6 +74,7 @@ def send_job(host, path, canceled, progress, connection=lambda s: None, port=910
         raise ValueError('Converted job exceeds transport limits')
     job_id = secrets.randbits(64) or 1
     sent = 0
+    confirmed = 0
     s = socket.create_connection((host, port), timeout=30)
     connection(s)
     try:
@@ -69,16 +91,19 @@ def send_job(host, path, canceled, progress, connection=lambda s: None, port=910
                     raise InterruptedError('Canceled; earlier pages may already be printed')
                 s.sendall(FRAME.pack(seq, len(data), zlib.crc32(data)) + data)
                 sent += len(data)
-                if response(s) != (1, seq, sent):
-                    raise ConnectionError('ESP did not confirm USB frame')
+                ack=frame_response(s,canceled,waiting)
+                if ack != (1, seq, sent):
+                    raise ConnectionError(f'ESP rejected USB frame {seq}: status={ack[0]}, reply_seq={ack[1]}, confirmed={ack[2]}/{total} bytes (previous ACK={confirmed})')
+                confirmed=sent
                 progress(sent, total)
                 seq += 1
         if canceled.is_set():
             raise InterruptedError('Canceled before finalization')
         s.sendall(FRAME.pack(seq, 0, 0))
         try:
-            result = response(s)
+            result = frame_response(s,canceled,waiting)
         except (OSError, ConnectionError):
+            if canceled.is_set():raise
             # Query only: no data/job replay, including after an ESP reset.
             with socket.create_connection((host, port), timeout=5) as query:
                 query.sendall(HEADER.pack(b'VPHPO01\n', 3, 0, 0, job_id))

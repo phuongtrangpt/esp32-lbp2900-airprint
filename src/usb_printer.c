@@ -999,6 +999,25 @@ esp_err_t usb_printer_flush(void)
     return flush_with_timeout(0);
 }
 
+// HP_PC_ONLY_BEGIN
+#ifdef PRINTSERVER_HP_PC_OFFLOAD
+// PC-rendered multi-page streams can fill the HP's small input buffer.
+// Keep the legacy RAW 9100 budget unchanged; only this dedicated path waits longer.
+esp_err_t usb_printer_pc_write(const uint8_t *data, size_t len)
+{
+    esp_err_t err = write_with_timeout(data, len, pdMS_TO_TICKS(120000));
+    if (err != ESP_OK) ESP_LOGW(TAG, "PC USB write failed: %s (120 s budget)", esp_err_to_name(err));
+    return err;
+}
+esp_err_t usb_printer_pc_flush(void)
+{
+    esp_err_t err = flush_with_timeout(pdMS_TO_TICKS(120000));
+    if (err != ESP_OK) ESP_LOGW(TAG, "PC USB flush failed: %s (120 s budget)", esp_err_to_name(err));
+    return err;
+}
+#endif
+// HP_PC_ONLY_END
+
 #ifdef PRINTSERVER_HP_RAW_BRIDGE
 esp_err_t usb_printer_raw_write(const uint8_t *data, size_t len)
 {

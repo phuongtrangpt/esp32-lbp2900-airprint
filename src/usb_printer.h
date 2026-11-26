@@ -44,6 +44,11 @@ esp_err_t usb_printer_job_begin(void);
 esp_err_t usb_printer_write(const uint8_t *data, size_t len);
 // Sends any buffered data and waits until the printer has accepted it.
 esp_err_t usb_printer_flush(void);
+#ifdef PRINTSERVER_HP_PC_OFFLOAD
+// Dedicated PC offload: bounded 120 s printer-buffer backpressure budget.
+esp_err_t usb_printer_pc_write(const uint8_t *data, size_t len);
+esp_err_t usb_printer_pc_flush(void);
+#endif
 #ifdef PRINTSERVER_HP_RAW_BRIDGE
 esp_err_t usb_printer_raw_write(const uint8_t *data, size_t len);
 esp_err_t usb_printer_raw_flush(void);

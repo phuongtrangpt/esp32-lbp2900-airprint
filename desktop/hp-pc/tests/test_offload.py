@@ -117,6 +117,14 @@ class Conversion(unittest.TestCase):
 
 @unittest.skipIf(os.name=='nt','POSIX fake USB runner; Windows converter/IPP tests run separately')
 class Transport(Conversion):
+    def test_thirty_pages_with_usb_backpressure_longer_than_legacy_budget(self):
+        p,out=self.render(raster(30));self.assertEqual(p.returncode,0,p.stderr)
+        self.assertEqual(json.loads(p.stdout)['pages'],30)
+        sink=self.root/'usb-thirty'
+        notices=[]
+        with bridge(sink,4) as port:
+            send_job('127.0.0.1',out,threading.Event(),lambda *args:None,port=port,waiting=notices.append)
+        self.assertEqual(sink.read_bytes(),out.read_bytes());self.assertTrue(notices)
     def test_transport_byte_exact(self):
         p,out=self.render(raster(2));self.assertEqual(p.returncode,0)
         sink=self.root/'usb'

@@ -22,12 +22,14 @@ jobs:
         run: |
           python desktop/hp-pc/tests/test_offload.py -v
           python desktop/hp-pc/tests/test_device_status.py -v
+          python desktop/hp-pc/tests/test_usb_wait.py -v
       - name: Bound ESP address UI regression
         run: node --test desktop/hp-pc/tests/ui_state.test.cjs
       - name: Stable driver guards
         run: |
           git fetch origin c0d059e29deb78801001798e34f9d0151a77ccdc --depth=1
-          git diff --exit-code c0d059e29deb78801001798e34f9d0151a77ccdc -- components/printers/hp_p1006.c components/printers/canon_lbp2900.c components/capt components/airprint/raster.c src/usb_printer.c src/hp_raw_bridge.c installer
+          git diff --exit-code c0d059e29deb78801001798e34f9d0151a77ccdc -- components/printers/hp_p1006.c components/printers/canon_lbp2900.c components/capt components/airprint/raster.c src/hp_raw_bridge.c installer
+          python tools/test_hp_pc_usb_scope.py
   firmware:
     runs-on: ubuntu-24.04
     steps:
@@ -74,6 +76,7 @@ jobs:
           python desktop/hp-pc/tests/test_offload.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python desktop/hp-pc/tests/test_device_status.py -v
+          python desktop/hp-pc/tests/test_usb_wait.py -v
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Windows printer queue capability and integration
         run: python desktop/hp-pc/tests/windows_queue_smoke.py desktop/hp-pc/build/hp-render.exe

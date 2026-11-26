@@ -19,8 +19,8 @@ static int ready(void *ctx) {
     return 0;
 }
 static int begin(void *ctx) { (void)ctx;if(usb_printer_job_begin()!=ESP_OK)return HP_PC_BUSY;status_led_set_raw_printing(true);return 0; }
-static int write_usb(void *ctx,const uint8_t *p,size_t n) { (void)ctx;return usb_printer_raw_write(p,n)==ESP_OK?0:-1; }
-static int flush(void *ctx) { (void)ctx;return usb_printer_raw_flush()==ESP_OK?0:-1; }
+static int write_usb(void *ctx,const uint8_t *p,size_t n) { (void)ctx;return usb_printer_pc_write(p,n)==ESP_OK?0:-1; }
+static int flush(void *ctx) { (void)ctx;return usb_printer_pc_flush()==ESP_OK?0:-1; }
 static int poll_reply(void *ctx) {
     (void)ctx;uint8_t b[512];
     // Bounded nonblocking drain. No document data is logged.
@@ -46,7 +46,7 @@ static void task(void *arg) {
                     int n=select(listener+1,&fds,NULL,NULL,&timeout);if(n<0)break;if(!n)continue;
                     int fd=accept(listener,NULL,NULL);if(fd<0)break;
                     int status=hp_offload_session(fd,&io,&state,buffer);close(fd);
-                    ESP_LOGI(TAG,"PC session status=%d accepted=%llu bytes; USB completion does not confirm paper output",status,(unsigned long long)state.accepted);
+                    if(status!=HP_PC_READY) ESP_LOGI(TAG,"PC session status=%d accepted=%llu/%llu bytes; USB completion does not confirm paper output",status,(unsigned long long)state.accepted,(unsigned long long)state.total);
                 }
             }
             close(listener);

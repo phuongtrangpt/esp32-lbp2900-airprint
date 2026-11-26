@@ -2,12 +2,12 @@
 const $=id=>document.getElementById(id);
 const invoke=window.__TAURI__.core.invoke;
 let busy=false,pending=false,cancelPending=false,initialized=false,lastSequence=0,bootId='',lastError='';
-const labels={'device-status':'Trạng thái máy in','waiting-device':'Đang chờ máy in','service-started':'Dịch vụ Windows đã khởi động','service-stopped':'Dịch vụ Windows đã dừng','media-normalized':'Đã nhận dạng khổ giấy',ready:'Dịch vụ nhận lệnh đang chạy',spooled:'Đã nhận đủ tài liệu',rendering:'PC đang xử lý và nén',rendered:'PC đã xử lý xong',sending:'Đang gửi sang ESP','usb-delivered':'Đã chuyển qua USB — hãy kiểm tra giấy',failed:'Lệnh in gặp lỗi',canceled:'Đã hủy',stopped:'Bộ xử lý in đã dừng'};
+const labels={'waiting-usb':'Đang chờ máy in nhận dữ liệu','device-status':'Trạng thái máy in','waiting-device':'Đang chờ máy in','service-started':'Dịch vụ Windows đã khởi động','service-stopped':'Dịch vụ Windows đã dừng','media-normalized':'Đã nhận dạng khổ giấy',ready:'Dịch vụ nhận lệnh đang chạy',spooled:'Đã nhận đủ tài liệu',rendering:'PC đang xử lý và nén',rendered:'PC đã xử lý xong',sending:'Đang gửi sang ESP','usb-delivered':'Đã chuyển qua USB — hãy kiểm tra giấy',failed:'Lệnh in gặp lỗi',canceled:'Đã hủy',stopped:'Bộ xử lý in đã dừng'};
 function log(message,time){$('log').textContent=($('log').textContent+'\n'+new Date(time||Date.now()).toLocaleTimeString()+' · '+message).split('\n').slice(-60).join('\n');}
 function event(e){
  const title=labels[e.phase]||e.phase;
  // Capability probes and device updates belong in history, not job progress.
- if(['spooled','rendering','rendered','sending','waiting-device','usb-delivered','failed','canceled'].includes(e.phase))$('status').textContent=title+(e.message?' · '+e.message:'');
+ if(['waiting-usb','spooled','rendering','rendered','sending','waiting-device','usb-delivered','failed','canceled'].includes(e.phase))$('status').textContent=title+(e.message?' · '+e.message:'');
  if(e.phase==='sending')$('progress').value=e.done/e.total*100;else if(e.phase==='rendering')$('progress').removeAttribute('value');else if(e.phase==='usb-delivered')$('progress').value=100;
  if(e.phase!=='sending')log(title+(e.message?' · '+e.message:'')+(e.render_ms!==undefined?' · '+e.pages+' trang, PC '+(e.render_ms/1000).toFixed(2)+' s, '+Math.ceil(e.raster_bytes/1024)+' → '+Math.ceil(e.bytes/1024)+' KiB':'')+(e.send_ms!==undefined?' · gửi '+(e.send_ms/1000).toFixed(2)+' s':''),e.time_ms);
 }

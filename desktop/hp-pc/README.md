@@ -1,4 +1,4 @@
-# HP P1006 PC Offload 0.2.1 — Windows Service
+# HP P1006 PC Offload 0.2.2 — Windows Service
 
 Windows xử lý raster, halftone và JBIG/XQX; ESP chỉ nhận khung kiểm tra CRC rồi
 chuyển sang USB trên cổng 9101. Nhánh `feat/hp-pc-offload`; firmware chính thức
@@ -7,7 +7,7 @@ Canon LBP2900 / HP P1006 và trang nạp web giữ nguyên.
 ## Cài và sử dụng
 
 1. Chờ hết lệnh in, đóng bản 0.1.x cũ để giải phóng cổng 8632.
-2. Cài bản 0.2.1, chấp nhận quyền quản trị để đăng ký Windows Service.
+2. Cài bản 0.2.2, chấp nhận quyền quản trị để đăng ký Windows Service.
 3. Mở giao diện một lần, nhập IP mạch ESP (mạch thử hiện tại: 192.168.10.21),
    bấm **Lưu IP / bật dịch vụ**, chấp nhận quyền quản trị khi Windows yêu cầu.
 4. Dùng hàng đợi **HP P1006 PC TEST** đã thêm. Máy mới chưa có hàng đợi thì bấm
@@ -19,7 +19,7 @@ Nút X ẩn giao diện xuống khay hệ thống. Menu khay có Mở quản lý
 thoát giao diện vẫn in được. Đổi IP hoặc dừng để thay máy cần quyền quản trị.
 Đổi IP bị chặn khi đang xử lý lệnh; hãy chờ xong trước khi đổi.
 
-**Dùng lại firmware ESP `0.1.0-hp-pc-test1`; không cần nạp lại mạch.**
+**Bản 0.2.2 cần firmware ESP `0.1.1-hp-pc-usbwait` để sửa chờ USB khi in nhiều trang.**
 Firmware chỉ hỗ trợ HP P1006 USB 03f0:3e17 trên ESP32-S3 N16R8. Điện thoại vẫn
 có thể IPP trực tiếp vào ESP khi USB rảnh; ứng dụng Windows dùng cổng riêng.
 
@@ -82,9 +82,9 @@ truy vấn của driver. Không quét thêm USB khi đang truyền lệnh của 
 
 Lệnh chưa gửi USB được giữ ở PC nếu mất kết nối hoặc máy in đang bận, tiếp tục
 khi kết nối trở lại. Lệnh đã truyền một phần rồi lỗi vẫn dừng, không tự in lại.
-Không cần đổi firmware ESP để có tính năng này.
+Trạng thái thiết bị hoạt động với cả firmware cũ; sửa chờ USB cần firmware mới như ghi trên.
 
-### Bản 0.2.1
+### Bản 0.2.2
 
 Sửa cache IPP nhầm các lần in mới có cùng request-id/nội dung thành lệnh cũ.
 Print-Job / Create-Job luôn tạo lệnh mới; Send-Document chỉ chống gửi trùng theo
@@ -94,3 +94,17 @@ Giao diện tự trở về trạng thái không có lệnh sau khi xử lý xon
 ẩn tiến trình và vô hiệu nút Hủy khi không có lệnh thực sự. Kết quả vẫn lưu
 trong nhật ký. Truy vấn khổ giấy và trạng thái thiết bị không ghi đè tiến trình.
 Không thay đổi bộ xử lý raster, giao thức USB hoặc firmware ESP.
+
+### Chờ USB khi in nhiều trang — 0.2.2 / 0.1.1
+
+Log thực tế: ESP dừng sau 2637824 byte với status=103 và bulk OUT canceled.
+Đường PC cũ dùng API RAW giới hạn 12 giây; chỉ đường `hp_pc` nay dùng ngân sách
+120 giây cho write/flush. Driver HP, CAPT và RAW 9100 chính thức giữ nguyên.
+PC chờ cùng ACK tối đa 150 giây, hiện tiến độ chờ mỗi 5 giây và vẫn nhận hủy.
+Không gửi lại khối đã gửi; lỗi có status, frame và số byte đã được xác nhận.
+Log HELLO 3 giây được giảm để không che khuất lỗi USB trong ring buffer.
+
+Kiểm tra 30 trang qua giao thức C thật + USB giả lập giữ ACK 13 giây, toàn bộ
+byte khớp; kiểm tra ACK phân mảnh, timeout, hủy và mất ACK cuối vẫn được giữ.
+Cần người dùng xác nhận lệnh 30 trang trên máy HP thật. Gói thử gồm bộ cài
+Windows 0.2.2 và firmware ESP 0.1.1; không đưa lên trang nạp chính thức.

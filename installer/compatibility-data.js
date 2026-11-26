@@ -1,5 +1,6 @@
 export const profiles={
  hp:{label:'HP LaserJet P1006',models:['HP LaserJet P1006'],note:'Bản chính thức RAW12 cho ESP32-S3 N16R8. Có sẵn firmware khởi động HP. In từ điện thoại qua IPP hoặc từ Windows bằng driver HP P1006 và cổng TCP/IP RAW 9100.'},
+ hp_pc:{label:'HP P1006 · Print Connect',models:['HP LaserJet P1006 Print Connect'],note:'Windows xử lý và nén tài liệu; ESP chuyển USB. Cần cài Viet Phuong Print Connect và nhập IP ESP một lần. Bộ cài tự thêm máy in Windows. Dùng firmware Print Connect riêng cho ESP32-S3 N16R8.'},
  hp_p1008:{label:'HP LaserJet P1008',models:['HP LaserJet P1008'],note:'Bản thử nghiệm riêng cho P1008 trên ESP32-S3 N16R8. Cần thử trên máy in thật. Có sẵn file khởi động HP.'},
  canon:{label:'Canon LBP2900',models:['Canon LBP2900'],note:'Bản chính thức 0.9.10, CAPT riêng cho LBP2900. Không dùng chung cho Canon LBP6030 hoặc các máy Canon laser khác.'},
  lbp6000:{label:'Canon LBP6000 / LBP6018 · Thử nghiệm',models:['Canon LBP6000','Canon LBP6018'],note:'Bản TEST2 riêng, nạp USB trên ESP32-S3 N16R8. Đã mô phỏng, chưa thử máy in thật. A4/Letter/A5, in một mặt. Mời thử một trang rồi nhiều lệnh liên tiếp và gửi log nếu lỗi.'},

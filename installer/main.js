@@ -13,7 +13,7 @@ window.addEventListener('installer-state',({detail})=>{
 });
 const model=document.querySelector("#printer-model");
 const requested=new URLSearchParams(location.search).get("model");
-model.value=["hp","hp_p1008","canon","lbp6000","lbp6200","lbp3010","lbp6030","pixma","standard"].includes(requested)?requested:"hp";
+model.value=["hp","hp_pc","hp_p1008","canon","lbp6000","lbp6200","lbp3010","lbp6030","pixma","standard"].includes(requested)?requested:"hp";
 model.addEventListener("change",ready);
 async function ready() {
   installer.style.display="none";
@@ -53,7 +53,7 @@ if(refresh)refresh.addEventListener('click',async()=>{
   if(!manifest){
     status.textContent='Chưa kiểm tra được phiên bản. Hãy kiểm tra kết nối rồi thử lại.';
   }else if(manifest.usbOnly){
-    status.textContent=`Phiên bản thử nghiệm trên web: ${manifest.version}. Nạp qua USB.`;
+    status.textContent=model.value==='hp_pc'?`Print Connect trên ESP: ${manifest.version}. Nạp qua USB; cài phần mềm Windows theo hướng dẫn.`:`Phiên bản thử nghiệm trên web: ${manifest.version}. Nạp qua USB.`;
   }else{
     status.textContent=`Phiên bản trên web: ${manifest.version}. Dùng /update trên ESP để cập nhật qua Wi-Fi, hoặc nạp lại bằng USB.`;
   }

@@ -72,3 +72,5 @@ src/hp_p1006_blob.c
 
 /installer/wrangler.json
 /installer/.wrangler/
+
+/installer/public/software/

@@ -44,6 +44,11 @@ jobs:
               assert profile+'/web-manifest.json' in records,profile
           Path('/tmp/preserved-firmware.json').write_text(json.dumps(records))
           PY
+      - name: Stage pinned Print Connect Windows service and ESP online firmware
+        run: |
+          gh release download print-connect-v1.0.1 --pattern 'Viet-Phuong-Print-Connect-1.0.1-Setup.exe' --pattern 'Print-Connect-ESP32-1.0.1.zip' --pattern release.json --dir pc-release
+          python -m pip install esptool==4.9.0
+          python installer/cloudflare/stage_print_connect.py --release-dir pc-release
       - name: Validate one-time code API, installer and build
         run: |
           npm --prefix installer ci
@@ -75,6 +80,7 @@ jobs:
           URL=https://web-access-codes.vietphuong-esp.pages.dev
           if [ "$GITHUB_REF_NAME" = main ]; then URL=https://esp.vietphuong.io.vn; fi
           python installer/cloudflare/smoke.py "$URL"
+          python installer/cloudflare/verify_print_connect.py "$URL"
       - uses: actions/upload-artifact@v4
         with:
           name: vietphuong-esp-key-web

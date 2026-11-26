@@ -1,0 +1,17 @@
+{
+  "version": "1.0.1",
+  "source_commit": "e22657497671c2bf30f592c32b14f33ffe7ed834",
+  "tag": "print-connect-v1.0.1",
+  "installer": "Viet-Phuong-Print-Connect-1.0.1-Setup.exe",
+  "firmware": "Print-Connect-ESP32-1.0.1.zip",
+  "assets": {
+    "Viet-Phuong-Print-Connect-1.0.1-Setup.exe": {
+      "sha256": "e85a634a1b652d73c1a13512d5f41272cca4d607896a246192a91a68247ccc6f",
+      "size": 10898868
+    },
+    "Print-Connect-ESP32-1.0.1.zip": {
+      "sha256": "dd6b8b3c3569057a9aa5f3b8dbc69200bc67c3ff4f654f2c29033cdcb69f55e9",
+      "size": 1751914
+    }
+  }
+}

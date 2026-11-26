@@ -26,7 +26,7 @@ async function refresh(){
   $('progress').hidden=!running||!busy;
   if(!busy){$('progress').value=0;if(running&&s.settings?.esp_ip)$('status').textContent='Không có dữ liệu đang gửi · '+(device.state==='ready'?'Có thể nhận lệnh mới; giấy của lệnh trước có thể vẫn đang in':device.message||'Đang kiểm tra máy in');}
   $('target').textContent='Windows Service: '+s.service_state+(s.esp?' · ESP '+s.esp+':9101':' · Chưa lưu IP ESP');
-  if(s.service_state==='NotInstalled')$('status').textContent='Chưa có Windows Service. Hãy cài Print Connect 1.0.0 bằng quyền quản trị.';
+  if(s.service_state==='NotInstalled')$('status').textContent='Chưa có Windows Service. Hãy cài Print Connect 1.0.1 bằng quyền quản trị.';
   else if(s.service_state==='Stopped')$('status').textContent='Dịch vụ đã dừng để thay máy. Bấm Lưu IP / bật dịch vụ khi sẵn sàng.';
   else if(!s.settings?.esp_ip)$('status').textContent='Nhập IP ESP rồi bấm Lưu IP / bật dịch vụ một lần.';
  }catch(e){if(String(e)!==lastError){lastError=String(e);log(lastError);}}

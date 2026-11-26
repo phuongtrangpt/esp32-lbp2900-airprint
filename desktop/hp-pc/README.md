@@ -1,4 +1,4 @@
-# Viet Phuong Print Connect 1.0.0
+# Viet Phuong Print Connect 1.0.1
 
 Windows xử lý và nén tài liệu cho HP LaserJet P1006; ESP32-S3 chuyển dữ liệu USB.
 Máy in được thêm tự động khi cài đặt với tên **HP LaserJet P1006 - Viet Phuong**.
@@ -41,7 +41,7 @@ Tài liệu tạm ở ProgramData/VietPhuong/HP-P1006-PC/spool có ACL riêng; x
 hoặc khi worker mới khởi động. Gỡ cài đặt dừng/xóa dịch vụ và hàng đợi sản phẩm.
 Cấu hình IP được giữ để cài lại; không phục hồi tự động các lệnh đã in dở.
 
-Firmware 1.0.0-hp-print-connect dùng cùng giao thức với 0.1.1-hp-pc-usbwait;
+Firmware 1.0.1-hp-print-connect dùng cùng giao thức với 0.1.1-hp-pc-usbwait;
 mạch đã chạy phiên bản đó vẫn tương thích. Không thay đổi firmware chính thức
 Canon LBP2900 / HP P1006 hoặc các driver đang có trên trang nạp.
 

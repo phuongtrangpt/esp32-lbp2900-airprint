@@ -1,3 +1,4 @@
+import {selectProfile} from './workspace.js';
 import {profiles,excluded,underResearch,lookupModel} from './compatibility-data.js';
 const select=document.querySelector('#printer-model');
 const note=document.querySelector('#compatibility-note');
@@ -20,6 +21,19 @@ input.addEventListener('input',()=>{
  result.textContent=`${found.model} → ${found.info.label}. ${found.info.note}`;
  choose.textContent=`Chọn bản ${found.info.label}`;choose.hidden=false;
 });
-choose.addEventListener('click',()=>{if(!found?.profile)return;select.value=found.profile;select.dispatchEvent(new Event('change'));select.focus();select.scrollIntoView({behavior:'smooth',block:'center'});});
+choose.addEventListener('click',()=>{if(found?.profile)selectProfile(found.profile);});
 const groups=document.querySelector('#support-groups');
-for(const info of Object.values(profiles)){const row=document.createElement('details'),title=document.createElement('summary'),names=document.createElement('p'),note=document.createElement('p');title.textContent=`${info.label} · ${info.models.length} tên dòng/model`;names.textContent=info.models.join(' · ');note.textContent=info.note;row.append(title,names,note);groups.append(row);}
+const brands=[['HP',['hp','hp_p1008','standard']],['Canon',['canon','lbp6000','lbp6200','lbp3010','lbp6030','pixma']]];
+for(const [brand,keys] of brands){
+ const branch=document.createElement('details'),title=document.createElement('summary'),tree=document.createElement('ul');
+ title.textContent=brand;tree.className='model-tree';branch.className='brand-branch';branch.open=true;
+ for(const key of keys){
+  const info=profiles[key],item=document.createElement('li'),row=document.createElement('details'),name=document.createElement('summary'),names=document.createElement('p'),note=document.createElement('p'),actions=document.createElement('div');
+  name.textContent=key==='hp'?'LaserJet P1006':info.label.replace(/^Canon |^HP /,'');names.textContent=info.models.join(' · ');note.textContent=info.note;actions.className='tree-actions';
+  const add=(profile,text)=>{const button=document.createElement('button');button.type='button';button.className='outline-button';button.textContent=text;button.addEventListener('click',()=>selectProfile(profile));actions.append(button);};
+  add(key,key==='hp'?'In trực tiếp · Chọn firmware':'Chọn firmware này');
+  if(key==='hp'){const pc=document.createElement('p');pc.textContent='Print Connect: Windows xử lý tài liệu; cần cài phần mềm hỗ trợ riêng.';row.append(name,names,note,pc);add('hp_pc','Print Connect · Chọn firmware');}else row.append(name,names,note);
+  row.append(actions);item.append(row);tree.append(item);
+ }
+ branch.append(title,tree);groups.append(branch);
+}

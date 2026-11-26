@@ -1,3 +1,4 @@
+import './workspace.js';
 import './access-gate.js';
 import './compatibility.js';
 import './progress.js';

@@ -12,7 +12,7 @@ public final class HpPrintService extends PrintService {
  final ExecutorService worker=Executors.newSingleThreadExecutor(),network=Executors.newSingleThreadExecutor();
  final Map<PrintJobId,Task> tasks=new HashMap<>();
  static final String ATTEMPTED="vp:usb-attempted";
- final class Task {final PrintJob job;final PrintJobId id;final Transport.Cancel cancel=new Transport.Cancel();final PrintJobInfo info;final String host;final ParcelFileDescriptor data;
+ final class Task {final PrintJob job;final PrintJobId id;final Transport.Cancel cancel=new Transport.Cancel();final PrintJobInfo info;final String host;final ParcelFileDescriptor data;long nextStatus;
   Task(PrintJob j,ParcelFileDescriptor d){job=j;id=j.getId();info=j.getInfo();host=Settings.host(HpPrintService.this);data=d;}
  }
  @Override protected void onConnected(){
@@ -27,7 +27,7 @@ public final class HpPrintService extends PrintService {
   ParcelFileDescriptor data=job.getDocument().getData();if(data==null){job.fail("Android chưa cung cấp tài liệu PDF");return;}
   Task task=new Task(job,data);tasks.put(task.id,task);AppState.jobs.incrementAndGet();job.setStatus("Đang nhận tài liệu từ Android");worker.execute(()->run(task));
  }
- void status(Task t,float fraction,String message){AppState.status(this,message);main.post(()->{if(tasks.containsKey(t.id)){t.job.setProgress(fraction);t.job.setStatus(message);}});}
+ void status(Task t,float fraction,String message){long now=SystemClock.elapsedRealtime();if(now<t.nextStatus&&fraction<1)return;t.nextStatus=now+250;AppState.status(this,message);main.post(()->{if(tasks.containsKey(t.id)){t.job.setProgress(fraction);t.job.setStatus(message);}});}
  void run(Task t){
   File pdf=null,xqx=null;PowerManager.WakeLock awake=((PowerManager)getSystemService(POWER_SERVICE)).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"vp:print");boolean delivered=false;String error=null;
   try{

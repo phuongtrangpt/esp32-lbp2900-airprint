@@ -12,8 +12,17 @@ class Protocol(unittest.TestCase):
  def setUpClass(cls):
   BUILD.mkdir(exist_ok=True)
   subprocess.run(['javac','-d',str(BUILD),str(JAVA),str(Path(__file__).with_name('TransportHarness.java'))],check=True)
+  # The actual ESP parser requires valid PJL + XQX, not arbitrary TCP bytes.
+  data=bytearray(raster()[:1800])
+  for y in range(1748):
+   data.append(0);row=os.urandom(1240)
+   for x in range(0,1240,128):
+    block=row[x:x+128];data.append(257-len(block));data+=block
+  source=BUILD/'fixture.ras';source.write_bytes(data);output=BUILD/'fixture.xqx'
+  subprocess.run(['/tmp/hp-pc-build/hp-render',str(source),str(output)],check=True,capture_output=True)
+  cls.fixture=output.read_bytes()
  def setUp(self):
-  self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'job';self.path.write_bytes(os.urandom(20000));self.sink=Path(self.tmp.name)/'usb'
+  self.tmp=tempfile.TemporaryDirectory();self.path=Path(self.tmp.name)/'job';self.path.write_bytes(self.fixture);self.sink=Path(self.tmp.name)/'usb'
  def tearDown(self):self.tmp.cleanup()
  def java(self,port,op='send'):
   return subprocess.run(['java','-cp',str(BUILD),'vn.io.vietphuong.printconnect.TransportHarness',op,str(port),str(self.path)],capture_output=True,timeout=35)

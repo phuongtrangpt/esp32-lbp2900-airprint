@@ -8,6 +8,7 @@
   import Viewer from './components/Viewer.svelte';
   import FilePicker from './components/FilePicker.svelte';
   import PrinterView from './views/PrinterView.svelte';
+  import SupportDownloads from './components/SupportDownloads.svelte';
   import ScannerView from './views/ScannerView.svelte';
   import FilesView from './views/FilesView.svelte';
   import ProcessView from './views/ProcessView.svelte';
@@ -153,6 +154,7 @@
       <div class="content">
         {#if current === 'printer'}
           <PrinterView />
+          <SupportDownloads {firmware} />
         {:else if current === 'scanner'}
           <ScannerView />
         {:else if current === 'files'}

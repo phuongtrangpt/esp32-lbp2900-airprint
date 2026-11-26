@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const source=readFileSync(new URL('../main.js',import.meta.url),'utf8').replace(/^import .*;$/gm,'');
 function setup(search='',serial=true) {
  const nodes=new Map();const pending=[];
- const document={baseURI:'https://example.test/sub/',querySelector(id){if(!nodes.has(id))nodes.set(id,{value:'',style:{},classList:{add(){},toggle(){}},addEventListener(e,f){this[e]=f}});return nodes.get(id)}};
+ const document={baseURI:'https://example.test/sub/',querySelector(id){if(!nodes.has(id))nodes.set(id,{value:'',style:{},classList:{add(){},remove(){},toggle(){}},addEventListener(e,f){this[e]=f}});return nodes.get(id)}};
  const context=vm.createContext({document,URL,URLSearchParams,location:{search},window:{isSecureContext:true,addEventListener(){}},navigator:serial?{serial:{}}:{},fetch:(url,options)=>new Promise(resolve=>pending.push({url:String(url),options,resolve}))});
  vm.runInContext(source,context);
  return {nodes,pending,context};

@@ -19,6 +19,10 @@ model.addEventListener("change",ready);
 async function ready() {
   installer.style.display="none";
   const selected=model.value;
+  document.querySelector('#version').textContent='Đang kiểm tra…';
+  document.querySelector('#selected-model').textContent='';
+  state.textContent='Đang kiểm tra gói firmware đã chọn…';
+  state.classList.remove('ok','warn');
   const manifestURL=new URL(`./firmware/${selected}/web-manifest.json`,document.baseURI);
   const supported=window.isSecureContext && ('serial' in navigator);
   try {

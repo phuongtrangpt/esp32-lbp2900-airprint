@@ -3,6 +3,7 @@ on:
   push:
     branches-ignore:
       - feat/hp-pc-offload
+      - feat/hp-android
     paths-ignore:
       - installer/**
       - tools/prepare_capt_family_web.py

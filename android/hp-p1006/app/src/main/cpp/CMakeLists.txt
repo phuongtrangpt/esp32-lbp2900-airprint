@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(vp_hp C)
+get_filename_component(REPO "${CMAKE_CURRENT_LIST_DIR}/../../../../../.." ABSOLUTE)
+add_library(vp_hp SHARED encoder.c jni.c ${REPO}/components/printers/hp_p1006.c ${REPO}/components/xqx/vendor/jbig.c ${REPO}/components/xqx/vendor/jbig_ar.c)
+target_compile_features(vp_hp PRIVATE c_std_11)
+target_compile_definitions(vp_hp PRIVATE PRINTSERVER_PROFILE_HP=1)
+target_include_directories(vp_hp PRIVATE ${REPO}/components/airprint/include ${REPO}/components/xqx/vendor)
+target_link_libraries(vp_hp jnigraphics m)

@@ -1,7 +1,9 @@
 name: Build HP P1006 and Canon LBP2900 ESP 32
 on:
   push:
+    branches-ignore: [web/access-codes]
     paths-ignore:
+      - .gitignore
       - .github/workflows/key-access.yml
       - installer/**
       - tools/prepare_capt_family_web.py

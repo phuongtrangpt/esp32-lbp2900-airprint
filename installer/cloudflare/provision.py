@@ -16,6 +16,8 @@ def call(path,method='GET',data=None):
   raise SystemExit(f'Cloudflare request failed: HTTP {e.code}, error codes {codes}. D1 Edit permission is required; existing website was not replaced.') from None
  if not result.get('success'):raise SystemExit('Cloudflare operation failed; website was not replaced.')
  return result['result']
+call('/pages/projects/vietphuong-esp')
+print('Existing Cloudflare Pages project is accessible with the configured credentials.')
 name='vietphuong-esp-access-codes'
 items=call('/d1/database?name='+name)
 db=next((x for x in items if x['name']==name),None)

@@ -40,7 +40,7 @@ class IppError(Exception):
 
 
 class Service:
-    def __init__(self, host, renderer, monitor=False, poll_interval=3):
+    def __init__(self, host, renderer, monitor=False, poll_interval=3, status_port=80):
         self.host, self.renderer = host, str(renderer)
         self.root = Path(tempfile.mkdtemp(prefix='hp-pc-test-'))
         self.jobs = collections.OrderedDict()
@@ -55,6 +55,7 @@ class Service:
         self.device_changed = threading.Event()
         self.monitor_enabled = monitor
         self.poll_interval = poll_interval
+        self.status_port = status_port
         self.monitor_thread = threading.Thread(target=self.watch_device, daemon=True)
         if monitor:
             self.monitor_thread.start()
@@ -76,7 +77,7 @@ class Service:
                 sending=self.active is not None and self.active['connection'] is not None
             if not sending:
                 try:
-                    device=probe_device(self.host)
+                    device=probe_device(self.host,http_port=self.status_port)
                     failures=0
                     self.update_device(device)
                 except Exception:
@@ -98,6 +99,8 @@ class Service:
             self.device_changed.wait(.5)
             self.device_changed.clear()
         with self.lock:
+            if self.shutdown.is_set() or j['cancel'].is_set():
+                raise InterruptedError('Canceled before USB data transfer')
             j['state'],j['reason'],j['message']=5,'job-printing','Sending compressed data to ESP'
 
     def validate(self, a, document=False):
@@ -504,13 +507,16 @@ def main():
     p.add_argument('--esp', required=True)
     p.add_argument('--port', type=int, default=8632)
     p.add_argument('--renderer')
+    p.add_argument('--esp-status-port',type=int,default=80)
     args = p.parse_args()
     ipaddress.IPv4Address(args.esp)
+    if not 1<=args.esp_status_port<=65535:
+        raise SystemExit("Invalid ESP status port")
     base = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
     renderer = args.renderer or base / ('hp-render.exe' if os.name == 'nt' else 'hp-render')
     if not Path(renderer).is_file():
         raise SystemExit('hp-render executable missing')
-    service = Service(args.esp, renderer, monitor=True)
+    service = Service(args.esp, renderer, monitor=True,status_port=args.esp_status_port)
     server = Server(('127.0.0.1', args.port), service)
     def commands():
         for line in sys.stdin:

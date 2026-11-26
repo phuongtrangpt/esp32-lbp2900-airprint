@@ -48,9 +48,16 @@ class DeviceStatus(unittest.TestCase):
     while job['state']<7 and time.monotonic()<until:time.sleep(.02)
     self.assertEqual(job['state'],9);self.assertEqual(send.call_count,1)
   finally:service.stop()
+ def test_canceled_job_stays_canceled_even_if_device_is_ready(self):
+  service=Service('127.0.0.1',RENDER)
+  try:
+   job=service.new_job({});service.cancel(job)
+   with self.assertRaises(InterruptedError):service.wait_for_device(job)
+   self.assertEqual(job['state'],7)
+  finally:service.stop()
  def test_monitor_recovers_without_manager(self):
   with FakeESP(http_port=0,pc_port=0) as peer:
-   with patch('worker.probe_device',lambda h:probe_device(h,peer.http_port,peer.pc_port,timeout=.2)):
+   with patch('worker.probe_device',lambda h,**kw:probe_device(h,peer.http_port,peer.pc_port,timeout=.2)):
     service=Service('127.0.0.1',RENDER,monitor=True,poll_interval=.05)
     def wait_online(expected):
      until=time.monotonic()+5

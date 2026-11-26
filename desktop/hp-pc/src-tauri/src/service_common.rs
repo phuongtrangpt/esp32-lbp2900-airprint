@@ -4,8 +4,10 @@ use serde_json::{json, Value};
 use std::{fs, net::Ipv4Addr, path::{Path,PathBuf}, time::{Duration,Instant}};
 use windows_service::{service::*, service_manager::{ServiceManager,ServiceManagerAccess}};
 pub const SERVICE: &str="VietPhuongHPP1006PC";
-#[derive(Default,Clone,Serialize,Deserialize)]
-pub struct Settings { pub esp_ip: Option<String> }
+fn default_status_port()->u16{80}
+#[derive(Clone,Serialize,Deserialize)]
+pub struct Settings { pub esp_ip: Option<String>, #[serde(default="default_status_port")] pub esp_status_port:u16 }
+impl Default for Settings{fn default()->Self{Self{esp_ip:None,esp_status_port:80}}}
 pub fn data_dir()->PathBuf { PathBuf::from(std::env::var_os("PROGRAMDATA").unwrap_or_else(||r"C:\ProgramData".into())).join("VietPhuong").join("HP-P1006-PC") }
 pub fn atomic_json(path:&Path,value:&Value)->Result<(),String>{
     fs::create_dir_all(path.parent().ok_or("Missing parent")?).map_err(|e|e.to_string())?;
@@ -47,7 +49,7 @@ pub fn install()->Result<(),String>{
 pub fn configure(ip:&str)->Result<(),u8>{
     ip.parse::<Ipv4Addr>().map_err(|_|11)?;
     if status_file()["busy"].as_bool()==Some(true) && settings().esp_ip.as_deref()!=Some(ip){return Err(10);}
-    atomic_json(&data_dir().join("settings.json"),&json!({"esp_ip":ip})).map_err(|_|12)?;
+    atomic_json(&data_dir().join("settings.json"),&json!({"esp_ip":ip,"esp_status_port":settings().esp_status_port})).map_err(|_|12)?;
     if service(ServiceAccess::QUERY_STATUS).and_then(|s|s.query_status().map_err(|e|e.to_string())).map(|s|s.current_state==ServiceState::Running).unwrap_or(false){
         // The service notices changes and switches worker only while no print is active.
         Ok(())

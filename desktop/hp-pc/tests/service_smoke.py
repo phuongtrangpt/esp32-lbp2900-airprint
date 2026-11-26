@@ -92,9 +92,11 @@ def main():
         assert helper.is_file() and app.is_file(),list(folder.iterdir())
         peer=None
         try:
-            peer=FakeESP().start()
+            peer=FakeESP(http_port=18080).start()
             info=wait(scinfo);assert info['StartMode']=='Auto',info
             assert info['StartName'].lower()==r'nt authority\localservice',info
+            # A test HTTP port avoids IIS/HTTP.sys reservations on CI; production defaults to 80.
+            (DATA/'settings.json').write_text(json.dumps({'esp_status_port':18080}))
             subprocess.run([str(helper),'--set-ip','127.0.0.1'],check=True,timeout=30)
             wait(lambda:status().get('ready'));wait(lambda:request(ipp(11)))
             gui=subprocess.Popen([str(app)])

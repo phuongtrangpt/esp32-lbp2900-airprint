@@ -14,8 +14,8 @@ from fake_esp import FakeESP
 
 def main():
     exe=Path(sys.argv[1]).resolve()
-    with FakeESP() as peer:
-        p=subprocess.Popen([str(exe),'--esp','127.0.0.1'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+    with FakeESP(http_port=18080) as peer:
+        p=subprocess.Popen([str(exe),'--esp','127.0.0.1','--esp-status-port','18080'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
         events=queue.Queue()
         def read_events():
             for line in p.stdout:

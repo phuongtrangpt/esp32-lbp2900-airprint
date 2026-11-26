@@ -31,12 +31,14 @@ fn stop_child(c:&mut Child){if let Some(input)=c.stdin.as_mut(){let _=writeln!(i
 fn supervise(stop:Arc<AtomicBool>){
  let mut report=Report::new();report.event(json!({"phase":"service-started","message":"Windows print service running independently of the manager"}));
  while !stop.load(Ordering::Relaxed){
-  let ip=match settings().esp_ip{Some(ip) if ip.parse::<std::net::Ipv4Addr>().is_ok()=>ip,_=>{report.ip=None;report.ready=false;report.save();std::thread::sleep(Duration::from_secs(1));continue;}};
+  let config=settings();
+  let ip=match config.esp_ip{Some(ip) if ip.parse::<std::net::Ipv4Addr>().is_ok()=>ip,_=>{report.ip=None;report.ready=false;report.save();std::thread::sleep(Duration::from_secs(1));continue;}};
   let parent=match std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.to_path_buf())){Some(p)=>p,None=>return};
   let helper=parent.join("helper/hp-pc-worker.exe");let spool=data_dir().join("spool");let _=std::fs::create_dir_all(&spool);
   // A restarted worker never restores/replays an interrupted document.
   if let Ok(entries)=std::fs::read_dir(&spool){for entry in entries.flatten(){if entry.file_name().to_string_lossy().starts_with("hp-pc-test-") && entry.file_type().map(|t|t.is_dir()).unwrap_or(false){let _=std::fs::remove_dir_all(entry.path());}}}
-  let mut c=match Command::new(helper).args(["--esp",&ip]).env("TEMP",&spool).env("TMP",&spool).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).creation_flags(0x08000000).spawn(){Ok(c)=>c,Err(e)=>{report.event(json!({"phase":"failed","message":format!("Worker launch failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
+  let status_port=config.esp_status_port.to_string();
+  let mut c=match Command::new(helper).args(["--esp",&ip,"--esp-status-port",&status_port]).env("TEMP",&spool).env("TMP",&spool).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).creation_flags(0x08000000).spawn(){Ok(c)=>c,Err(e)=>{report.event(json!({"phase":"failed","message":format!("Worker launch failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
   let job=match Job::attach(&c){Ok(j)=>j,Err(e)=>{let _=c.kill();let _=c.wait();report.event(json!({"phase":"failed","message":format!("Worker isolation failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
   report.ip=Some(ip.clone());report.pid=Some(c.id());report.ready=false;report.device=json!({"online":false,"state":"checking","message":"Checking ESP and USB printer"});report.busy.clear();report.save();
   let (tx,rx)=mpsc::sync_channel(128);
@@ -45,7 +47,8 @@ fn supervise(stop:Arc<AtomicBool>){
   loop{
    while let Ok(e)=rx.try_recv(){report.event(e);}
    if stop.load(Ordering::Relaxed){break;}
-   if settings().esp_ip.as_deref()!=Some(&ip) && report.busy.is_empty(){break;}
+   let latest=settings();
+   if (latest.esp_ip.as_deref()!=Some(&ip) || latest.esp_status_port!=config.esp_status_port) && report.busy.is_empty(){break;}
    match c.try_wait(){Ok(Some(code))=>{report.event(json!({"phase":"failed","message":format!("Worker stopped ({code}); service will restart it. Jobs are not automatically replayed.")}));break;},Err(_)=>break,_=>{}}
    std::thread::sleep(Duration::from_millis(100));
   }

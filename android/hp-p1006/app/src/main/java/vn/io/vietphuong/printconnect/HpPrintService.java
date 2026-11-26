@@ -18,7 +18,13 @@ public final class HpPrintService extends PrintService {
  }
  @Override protected void onConnected(){
   // Android can restore an interrupted job. Never replay one that reached transport.
-  for(PrintJob job:getActivePrintJobs())if(ATTEMPTED.equals(job.getTag()))job.fail("Lệnh trước bị gián đoạn. Kiểm tra giấy rồi tạo lệnh mới; không tự in lại.");else if(job.isQueued())onPrintJobQueued(job);
+  if(tasks.isEmpty()){File[] old=getCacheDir().listFiles((dir,name)->name.startsWith("vp-"));if(old!=null)for(File f:old)if(f.isFile())f.delete();}
+  for(PrintJob job:getActivePrintJobs()){
+   if(tasks.containsKey(job.getId()))continue;
+   if(ATTEMPTED.equals(job.getTag()))job.fail("Lệnh trước bị gián đoạn. Kiểm tra giấy rồi tạo lệnh mới; không tự in lại.");
+   else if(job.isQueued())onPrintJobQueued(job);
+   else if(job.isStarted()||job.isBlocked())job.fail("Lệnh chuẩn bị tài liệu bị gián đoạn. Hãy tạo lệnh mới.");
+  }
  }
  @Override protected void onPrintJobQueued(PrintJob job){
   if(tasks.containsKey(job.getId()))return;

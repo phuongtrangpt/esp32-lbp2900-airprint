@@ -18,7 +18,7 @@ final class PdfPipeline {
  static int[] selected(int count,PageRange[] ranges){
   if(count<1||count>1000)throw new IllegalArgumentException("Tài liệu cần có 1–1000 trang");
   ArrayList<Integer> list=new ArrayList<>();
-  for(int i=0;i<count;i++){boolean take=ranges==null||ranges.length==0; if(ranges!=null)for(PageRange r:ranges)take|=r.contains(i);if(take)list.add(i);}
+  for(int i=0;i<count;i++){boolean take=ranges==null||ranges.length==0; if(ranges!=null)for(PageRange r:ranges)take|=i>=r.getStart()&&i<=r.getEnd();if(take)list.add(i);}
   if(list.isEmpty())throw new IllegalArgumentException("Không có trang nào trong khoảng đã chọn");
   int[] result=new int[list.size()];for(int i=0;i<result.length;i++)result[i]=list.get(i);return result;
  }

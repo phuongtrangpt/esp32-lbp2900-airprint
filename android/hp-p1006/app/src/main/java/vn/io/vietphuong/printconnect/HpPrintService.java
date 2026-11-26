@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 package vn.io.vietphuong.printconnect;
 import android.printservice.*;
+import android.printservice.PrintJob;
 import android.print.*;
 import android.os.*;
 import java.io.*;

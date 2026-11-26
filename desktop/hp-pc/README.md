@@ -1,4 +1,4 @@
-# HP P1006 PC Offload 0.2.0 — Windows Service
+# HP P1006 PC Offload 0.2.1 — Windows Service
 
 Windows xử lý raster, halftone và JBIG/XQX; ESP chỉ nhận khung kiểm tra CRC rồi
 chuyển sang USB trên cổng 9101. Nhánh `feat/hp-pc-offload`; firmware chính thức
@@ -7,7 +7,7 @@ Canon LBP2900 / HP P1006 và trang nạp web giữ nguyên.
 ## Cài và sử dụng
 
 1. Chờ hết lệnh in, đóng bản 0.1.x cũ để giải phóng cổng 8632.
-2. Cài bản 0.2.0, chấp nhận quyền quản trị để đăng ký Windows Service.
+2. Cài bản 0.2.1, chấp nhận quyền quản trị để đăng ký Windows Service.
 3. Mở giao diện một lần, nhập IP mạch ESP (mạch thử hiện tại: 192.168.10.21),
    bấm **Lưu IP / bật dịch vụ**, chấp nhận quyền quản trị khi Windows yêu cầu.
 4. Dùng hàng đợi **HP P1006 PC TEST** đã thêm. Máy mới chưa có hàng đợi thì bấm
@@ -83,3 +83,10 @@ truy vấn của driver. Không quét thêm USB khi đang truyền lệnh của 
 Lệnh chưa gửi USB được giữ ở PC nếu mất kết nối hoặc máy in đang bận, tiếp tục
 khi kết nối trở lại. Lệnh đã truyền một phần rồi lỗi vẫn dừng, không tự in lại.
 Không cần đổi firmware ESP để có tính năng này.
+
+### Bản 0.2.1
+
+Giao diện tự trở về trạng thái không có lệnh sau khi xử lý xong, hủy hoặc lỗi;
+ẩn tiến trình và vô hiệu nút Hủy khi không có lệnh thực sự. Kết quả vẫn lưu
+trong nhật ký. Truy vấn khổ giấy và trạng thái thiết bị không ghi đè tiến trình.
+Không thay đổi bộ xử lý raster, giao thức USB hoặc firmware ESP.

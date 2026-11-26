@@ -28,3 +28,23 @@ test('a running PC service must not display a disconnected printer as ready',asy
  const {get,context}=ui(s);await new Promise(setImmediate);assert.match(get('device').textContent,/Offline/);
  s.device={online:true,state:'ready',message:'Ready'};await context.refresh();assert.match(get('device').textContent,/Sẵn sàng/);
 });
+
+test('completed job clears progress and cancel, keeps history, and next job starts normally',async()=>{
+ const s={boot_id:'one',ready:true,busy:true,service_state:'Running',settings:{esp_ip:'192.168.10.21'},device:{online:true,state:'ready',message:'Ready'},events:[{sequence:1,phase:'rendering',job:1}]};
+ const {get,context,calls}=ui(s);await new Promise(setImmediate);
+ assert.equal(get('progress').hidden,false);assert.equal(get('cancel').disabled,false);
+ s.busy=false;s.events.push({sequence:2,phase:'usb-delivered',job:1,message:'USB delivered'});await context.refresh();
+ assert.equal(get('progress').hidden,true);assert.equal(get('progress').value,0);assert.equal(get('cancel').disabled,true);
+ assert.match(get('status').textContent,/Không có lệnh.*Sẵn sàng/);assert.match(get('log').textContent,/USB delivered/);
+ await get('cancel').onclick();assert.equal(calls.filter(c=>c[0]==='cancel_job').length,0);
+ s.events.push({sequence:3,phase:'media-normalized',message:'A5 matched'});await context.refresh();assert.match(get('status').textContent,/Không có lệnh/);
+ s.busy=true;s.events.push({sequence:4,phase:'rendering',job:2});await context.refresh();
+ assert.equal(get('progress').hidden,false);assert.equal(get('cancel').disabled,false);assert.match(get('status').textContent,/PC đang xử lý/);
+ s.busy=false;s.events.push({sequence:5,phase:'failed',job:2,message:'Transfer interrupted'});await context.refresh();
+ assert.equal(get('cancel').disabled,true);assert.equal(get('progress').hidden,true);assert.match(get('log').textContent,/Transfer interrupted/);
+});
+
+test('stopped or offline service cannot leave a stale cancellable job in the manager',async()=>{
+ const s={boot_id:'one',ready:false,busy:true,service_state:'Stopped',settings:{esp_ip:'192.168.10.21'},events:[]};
+ const {get}=ui(s);await new Promise(setImmediate);assert.equal(get('cancel').disabled,true);assert.equal(get('progress').hidden,true);assert.match(get('status').textContent,/Dịch vụ đã dừng/);
+});

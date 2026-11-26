@@ -128,6 +128,13 @@ def main():
             wait(lambda:any(e.get('phase')=='usb-delivered' for e in status()['events']))
             assert not peer.errors,peer.errors
             assert peer.captured[0].endswith(b'\x1b%-12345X@PJL EOJ\n\x1b%-12345X')
+            # Identical new Print-Job requests must print again without restart.
+            for n in (2,3):
+                request(ipp(doc=raster(2)))
+                wait(lambda:len(peer.captured)==n)
+                wait(lambda:not status().get('busy'))
+            assert len(peer.captured)==3
+            print('SERVICE REPEAT: three identical jobs delivered and completed without worker restart',flush=True)
             peer.reachable=False
             wait(lambda:status().get('device',{}).get('online') is False)
             assert printer_state()==5

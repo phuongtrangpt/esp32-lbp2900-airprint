@@ -31,15 +31,22 @@ def main():
         data=Path(path).read_bytes();assert data.startswith(b'\x1b%-12345X@PJL JOB');captured.append(data)
     try:
         with patch('worker.send_job',usb):
-            added=ps("$ErrorActionPreference='Stop'; Start-Service Spooler; Add-Printer -Name 'HP PC TEST CI' -IppURL 'http://127.0.0.1:8632/ipp/print'; $p=Get-CimInstance Win32_Printer -Filter \"Name='HP PC TEST CI'\"; $r=Invoke-CimMethod -InputObject $p -MethodName PrintTestPage; if ($r.ReturnValue -ne 0) { throw 'PrintTestPage failed' }")
+            added=ps("$ErrorActionPreference='Stop'; Start-Service Spooler; Add-Printer -Name 'HP PC TEST CI' -IppURL 'http://127.0.0.1:8632/ipp/print'")
             if added.returncode:raise AssertionError(added.stdout+added.stderr)
-            deadline=time.monotonic()+60
-            while time.monotonic()<deadline:
-                if captured:break
-                if any(j['state']==8 for j in service.jobs.values()):raise AssertionError('Windows raster conversion failed')
-                time.sleep(.1)
-            assert len(captured)==1,'No completed Windows test page reached PC encoder'
-            print('WINDOWS QUEUE: Microsoft IPP Class Driver -> actual test-page raster -> native HP encoder passed; USB simulated')
+            for n in range(1,4):
+                printed=ps("$ErrorActionPreference='Stop'; $p=Get-CimInstance Win32_Printer -Filter \"Name='HP PC TEST CI'\"; $r=Invoke-CimMethod -InputObject $p -MethodName PrintTestPage; if ($r.ReturnValue -ne 0) { throw 'PrintTestPage failed' }")
+                if printed.returncode:raise AssertionError(printed.stdout+printed.stderr)
+                deadline=time.monotonic()+60
+                while time.monotonic()<deadline:
+                    if len(captured)>=n:break
+                    if any(j['state']==8 for j in service.jobs.values()):raise AssertionError('Windows raster conversion failed')
+                    time.sleep(.1)
+                assert len(captured)==n,f'Print {n} never reached PC encoder'
+                # Check the actual Windows spooler releases each completed job.
+                cleared=ps("$ErrorActionPreference='Stop'; $end=(Get-Date).AddSeconds(45); do { $jobs=@(Get-PrintJob -PrinterName 'HP PC TEST CI'); if ($jobs.Count -eq 0) { exit 0 }; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $end); $jobs | Format-List *; exit 1",timeout=55)
+                if cleared.returncode:raise AssertionError('Windows queue did not finish: '+cleared.stdout+cleared.stderr)
+            print('WINDOWS QUEUE: three consecutive Microsoft IPP test pages rendered; every job cleared from Windows queue; USB simulated')
+
     finally:
         ps("Remove-Printer -Name 'HP PC TEST CI' -ErrorAction SilentlyContinue")
         server.shutdown();server.server_close();thread.join();service.stop()

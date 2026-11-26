@@ -237,16 +237,30 @@ class Spooler(unittest.TestCase):
             self.wait_job(self.service.jobs[job]);self.assertEqual(self.service.jobs[job]['state'],9)
             self.assertEqual(send.call_count,1)
             self.assertEqual(self.post(ipp(6,req=8,attrs=attrs,doc=raster()))[0],0x0405)
-    def test_media_collection_and_dedup(self):
+    def test_identical_print_requests_are_distinct_jobs(self):
         media = collection('media-col', [('media-size',0x34,[('x-dimension',0x21,21000),('y-dimension',0x21,29700)])])
         self.assertEqual(self.post(ipp(4,attrs=media))[0],0)
         with patch('worker.send_job') as send:
-            body = ipp(doc=raster())
-            self.assertEqual(self.post(body)[0],0)
-            self.assertEqual(self.post(body)[0],0)
-            j=next(iter(self.service.jobs.values()));self.wait_job(j)
-            self.assertEqual(len(self.service.jobs),1)
-            self.assertEqual(send.call_count,1)
+            body=ipp(doc=raster())
+            ids=[]
+            for _ in range(3):
+                status,data=self.post(body);self.assertEqual(status,0)
+                _,_,a=decode(io.BytesIO(data));job=integer(a,'job-id');ids.append(job)
+                self.wait_job(self.service.jobs[job]);self.assertEqual(self.service.jobs[job]['state'],9)
+                _,data=self.post(ipp(9,attrs=attr(0x21,'job-id',job)))
+                _,_,a=decode(io.BytesIO(data));self.assertEqual(integer(a,'job-state'),9)
+            self.assertEqual(len(set(ids)),3);self.assertEqual(send.call_count,3)
+    def test_identical_create_job_requests_and_send_retry(self):
+        with patch('worker.send_job') as send:
+            ids=[]
+            for _ in range(3):
+                status,data=self.post(ipp(5));self.assertEqual(status,0)
+                _,_,a=decode(io.BytesIO(data));job=integer(a,'job-id');ids.append(job)
+                body=ipp(6,attrs=attr(0x21,'job-id',job)+attr(0x22,'last-document',True),doc=raster())
+                status,first=self.post(body);self.assertEqual(status,0)
+                self.wait_job(self.service.jobs[job]);self.assertEqual(self.service.jobs[job]['state'],9)
+                self.assertEqual(self.post(body),(0,first))
+            self.assertEqual(len(set(ids)),3);self.assertEqual(send.call_count,3)
     def test_windows_pdf_media_rounding_and_custom_alias(self):
         for x,y in ((21005,29693),(21590,27939),(14801,21000),(10499,14801)):
             media=collection('media-col',[('media-size',0x34,[('x-dimension',0x21,x),('y-dimension',0x21,y)]),('media-size-name',0x44,'custom_pdf_form')])

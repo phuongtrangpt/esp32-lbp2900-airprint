@@ -86,6 +86,10 @@ Không cần đổi firmware ESP để có tính năng này.
 
 ### Bản 0.2.1
 
+Sửa cache IPP nhầm các lần in mới có cùng request-id/nội dung thành lệnh cũ.
+Print-Job / Create-Job luôn tạo lệnh mới; Send-Document chỉ chống gửi trùng theo
+lệnh đã có job-id. Không thay đổi cơ chế chống phát lại USB sau truyền lỗi.
+
 Giao diện tự trở về trạng thái không có lệnh sau khi xử lý xong, hủy hoặc lỗi;
 ẩn tiến trình và vô hiệu nút Hủy khi không có lệnh thực sự. Kết quả vẫn lưu
 trong nhật ký. Truy vấn khổ giấy và trạng thái thiết bị không ghi đè tiến trình.

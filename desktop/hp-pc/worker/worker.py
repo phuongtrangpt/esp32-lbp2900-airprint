@@ -340,7 +340,14 @@ class Service:
         return d
 
     def handle(self, body):
-        # A lost local HTTP reply must not cause Windows to print the same job twice.
+        # Request-id and document bytes are not identities for a new IPP job:
+        # Windows can reuse both when the user prints the same document again.
+        # Only Send-Document has an explicit job-id and can be deduplicated.
+        prefix=body.read(4)
+        body.seek(0)
+        op=struct.unpack('!H',prefix[2:4])[0]
+        if op != 6:
+            return self.dispatch(body)
         digest = hashlib.sha256()
         for block in iter(lambda: body.read(65536), b''):
             digest.update(block)
@@ -350,9 +357,9 @@ class Service:
             if key in self.replies:
                 return self.replies[key]
             result = self.dispatch(body)
-            body.seek(0)
-            op = struct.unpack('!H', body.read(4)[2:4])[0]
-            if op in (2, 5, 6):
+            # Cache only successful sends for this explicit job. Errors may be
+            # transient; retaining them would prevent a valid later submission.
+            if result[2:4] == b'\x00\x00':
                 self.replies[key] = result
                 while len(self.replies) > 32:
                     self.replies.popitem(last=False)

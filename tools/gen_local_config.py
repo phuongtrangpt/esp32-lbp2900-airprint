@@ -72,7 +72,7 @@ def main():
     except NameError:
         profile="all"
     if profile == "hp_pc":
-        values["PRINTER_NAME"] = "HP P1006 PC OFFLOAD TEST ESP 32"
+        values["PRINTER_NAME"] = "HP P1006 Print Connect ESP 32"
         values["HOSTNAME"] = "hp-pc-esp32"
     if profile == "hp_p1008":
         values["PRINTER_NAME"] = "HP LaserJet P1008 TEST ESP 32"

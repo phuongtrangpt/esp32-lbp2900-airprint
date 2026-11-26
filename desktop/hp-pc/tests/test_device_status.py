@@ -13,6 +13,16 @@ from worker import Service
 from ipp_codec import decode,integer,text
 
 class DeviceStatus(unittest.TestCase):
+ def test_discovery_without_ip_does_not_accept_or_forward_jobs(self):
+  with patch('worker.probe_device') as probe,patch('worker.send_job') as send:
+   service=Service('',RENDER,monitor=True,poll_interval=.01)
+   try:
+    _,_,a=decode(io.BytesIO(service.handle(io.BytesIO(ipp(11)))))
+    self.assertEqual(integer(a,'printer-state'),5)
+    r=service.handle(io.BytesIO(ipp(doc=raster())))
+    self.assertEqual(r[2:4],b'\x05\x06');self.assertFalse(service.jobs)
+    probe.assert_not_called();send.assert_not_called()
+   finally:service.stop()
  def test_physical_usb_network_and_busy(self):
   with FakeESP(http_port=0,pc_port=0) as peer:
    read=lambda:probe_device('127.0.0.1',peer.http_port,peer.pc_port,timeout=.2)

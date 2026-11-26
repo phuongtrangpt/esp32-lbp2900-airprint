@@ -57,6 +57,10 @@ def scinfo():
     return json.loads(r.stdout) if r.stdout.strip() else None
 
 
+def ps_queue():
+    p=subprocess.run(['powershell.exe','-NoProfile','-Command',"Get-Printer -Name 'HP LaserJet P1006 - Viet Phuong' | Select-Object Name,DriverName,PortName | ConvertTo-Json -Compress"],capture_output=True,text=True,check=True,timeout=15)
+    return json.loads(p.stdout)
+
 def windows(pid,visible=True):
     u=ctypes.windll.user32;result=[]
     u.GetWindowThreadProcessId.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.DWORD)]
@@ -69,7 +73,7 @@ def windows(pid,visible=True):
         owner=wintypes.DWORD();u.GetWindowThreadProcessId(hwnd,ctypes.byref(owner))
         if owner.value==pid and (not visible or u.IsWindowVisible(hwnd)):
             title=ctypes.create_unicode_buffer(512);u.GetWindowTextW(hwnd,title,512)
-            if 'HP P1006' in title.value:result.append(hwnd)
+            if 'Print Connect' in title.value:result.append(hwnd)
         return True
     u.EnumWindows(enum,0);return result
 
@@ -88,16 +92,22 @@ def main():
                 try:print(name,(DATA/name).read_text(),flush=True)
                 except OSError:pass
             raise
-        helper=folder/'hp-pc-service.exe';app=folder/'hp-pc-test.exe'
+        helper=folder/'hp-pc-service.exe';app=folder/'hp-pc-manager.exe'
         assert helper.is_file() and app.is_file(),list(folder.iterdir())
         peer=None
         try:
             peer=FakeESP(http_port=18080).start()
+            queue=ps_queue()
+            assert queue['Name']=='HP LaserJet P1006 - Viet Phuong' and queue['DriverName']=='Microsoft IPP Class Driver',queue
+            assert not status().get('esp'),status()
+            print('SERVICE INSTALL: printer auto-added before ESP IP configuration',flush=True)
             info=wait(scinfo);assert info['StartMode']=='Auto',info
             assert info['StartName'].lower()==r'nt authority\localservice',info
             # A test HTTP port avoids IIS/HTTP.sys reservations on CI; production defaults to 80.
             (DATA/'settings.json').write_text(json.dumps({'esp_status_port':18080}))
             subprocess.run([str(helper),'--set-ip','127.0.0.1'],check=True,timeout=30)
+            subprocess.run([str(helper),'--install-queue'],check=True,timeout=90)
+            assert ps_queue()['Name']=='HP LaserJet P1006 - Viet Phuong'
             wait(lambda:status().get('ready'));wait(lambda:request(ipp(11)))
             gui=subprocess.Popen([str(app)])
             hwnd=wait(lambda:windows(gui.pid))[0]
@@ -166,7 +176,7 @@ def main():
                 subprocess.run([str(uninstall),'/S'],check=True,timeout=90)
                 wait(lambda:scinfo() is None)
                 wait(lambda:not helper.exists() and not app.exists())
-                print('SERVICE UNINSTALL: service removed successfully',flush=True)
+                print('SERVICE UNINSTALL: service and product printer removed successfully',flush=True)
             else:
                 subprocess.run([str(helper),'--remove'],timeout=45)
                 raise AssertionError('NSIS uninstaller missing')

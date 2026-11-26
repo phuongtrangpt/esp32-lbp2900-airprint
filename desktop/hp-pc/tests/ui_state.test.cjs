@@ -26,7 +26,7 @@ test('IP cannot be changed while printing; existing native configuration wins ov
 test('a running PC service must not display a disconnected printer as ready',async()=>{
  const s={boot_id:'one',service_state:'Running',ready:true,settings:{esp_ip:'192.168.10.21'},events:[],device:{online:false,state:'offline',message:'USB not connected'}};
  const {get,context}=ui(s);await new Promise(setImmediate);assert.match(get('device').textContent,/Offline/);
- s.device={online:true,state:'ready',message:'Ready'};await context.refresh();assert.match(get('device').textContent,/Sẵn sàng/);
+ s.device={online:true,state:'ready',message:'Ready'};await context.refresh();assert.match(get('device').textContent,/Đã kết nối/);
 });
 
 test('completed job clears progress and cancel, keeps history, and next job starts normally',async()=>{
@@ -35,9 +35,9 @@ test('completed job clears progress and cancel, keeps history, and next job star
  assert.equal(get('progress').hidden,false);assert.equal(get('cancel').disabled,false);
  s.busy=false;s.events.push({sequence:2,phase:'usb-delivered',job:1,message:'USB delivered'});await context.refresh();
  assert.equal(get('progress').hidden,true);assert.equal(get('progress').value,0);assert.equal(get('cancel').disabled,true);
- assert.match(get('status').textContent,/Không có lệnh.*Sẵn sàng/);assert.match(get('log').textContent,/USB delivered/);
+ assert.match(get('status').textContent,/Không có dữ liệu.*Có thể nhận lệnh/);assert.match(get('log').textContent,/USB delivered/);
  await get('cancel').onclick();assert.equal(calls.filter(c=>c[0]==='cancel_job').length,0);
- s.events.push({sequence:3,phase:'media-normalized',message:'A5 matched'});await context.refresh();assert.match(get('status').textContent,/Không có lệnh/);
+ s.events.push({sequence:3,phase:'media-normalized',message:'A5 matched'});await context.refresh();assert.match(get('status').textContent,/Không có dữ liệu/);
  s.busy=true;s.events.push({sequence:4,phase:'rendering',job:2});await context.refresh();
  assert.equal(get('progress').hidden,false);assert.equal(get('cancel').disabled,false);assert.match(get('status').textContent,/PC đang xử lý/);
  s.busy=false;s.events.push({sequence:5,phase:'failed',job:2,message:'Transfer interrupted'});await context.refresh();
@@ -47,4 +47,12 @@ test('completed job clears progress and cancel, keeps history, and next job star
 test('stopped or offline service cannot leave a stale cancellable job in the manager',async()=>{
  const s={boot_id:'one',ready:false,busy:true,service_state:'Stopped',settings:{esp_ip:'192.168.10.21'},events:[]};
  const {get}=ui(s);await new Promise(setImmediate);assert.equal(get('cancel').disabled,true);assert.equal(get('progress').hidden,true);assert.match(get('status').textContent,/Dịch vụ đã dừng/);
+});
+
+
+test('document receive progress is visible before a job exists and clears on service restart',async()=>{
+ const s={boot_id:'one',ready:true,busy:false,service_state:'Running',settings:{esp_ip:'192.168.10.21'},device:{online:true,state:'ready'},events:[{sequence:1,phase:'receiving',message:'Receiving 12 MiB'}]};
+ const {get,context}=ui(s);await new Promise(setImmediate);
+ assert.match(get('status').textContent,/Receiving 12 MiB/);assert.equal(get('progress').hidden,false);assert.equal(get('cancel').disabled,true);
+ s.boot_id='two';s.events=[];await context.refresh();assert.equal(get('progress').hidden,true);assert.equal(get('start').disabled,false);
 });

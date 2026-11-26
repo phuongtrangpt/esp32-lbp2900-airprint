@@ -15,7 +15,7 @@ BUILD=ROOT/'.pio/build/esp32s3'
 OUT=ROOT/'firmware'
 
 PROFILE_NAMES = {
-    'hp_pc': 'HP P1006 PC OFFLOAD TEST ESP 32',
+    'hp_pc': 'HP P1006 Print Connect ESP 32',
     'hp': 'HP LaserJet P1006 ESP 32',
     'hp_p1008': 'HP LaserJet P1008 TEST ESP 32',
     'canon': 'Canon LBP2900 ESP 32',

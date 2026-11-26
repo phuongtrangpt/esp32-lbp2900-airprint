@@ -27,7 +27,7 @@ def exact(s, n):
 def response(s):
     magic, status, seq, accepted = REPLY.unpack(exact(s, REPLY.size))
     if magic != b'VPHPA01\n':
-        raise ConnectionError('Wrong ESP protocol: install HP PC TEST firmware')
+        raise ConnectionError('Wrong ESP protocol: install Print Connect firmware')
     return status, seq, accepted
 
 

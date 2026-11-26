@@ -3,6 +3,7 @@
 import argparse
 import collections
 import ipaddress
+import io
 import hashlib
 import json
 import os
@@ -42,7 +43,7 @@ class IppError(Exception):
 class Service:
     def __init__(self, host, renderer, monitor=False, poll_interval=3, status_port=80):
         self.host, self.renderer = host, str(renderer)
-        self.root = Path(tempfile.mkdtemp(prefix='hp-pc-test-'))
+        self.root = Path(tempfile.mkdtemp(prefix='hp-pc-spool-'))
         self.jobs = collections.OrderedDict()
         self.lock = threading.RLock()
         self.pending = queue.Queue(maxsize=2)
@@ -77,7 +78,7 @@ class Service:
                 sending=self.active is not None and self.active['connection'] is not None
             if not sending:
                 try:
-                    device=probe_device(self.host,http_port=self.status_port)
+                    device=probe_device(self.host,http_port=self.status_port) if self.host else offline('Configure the ESP IP address in Viet Phuong Print Connect')
                     failures=0
                     self.update_device(device)
                 except Exception:
@@ -147,7 +148,7 @@ class Service:
     def new_job(self, a):
         with self.lock:
             if sum(j['state'] < 7 for j in self.jobs.values()) >= 3:
-                raise IppError(0x0507, 'Test queue full')
+                raise IppError(0x0507, 'Print queue full')
             while len(self.jobs) >= 32:
                 terminal = next((i for i, j in self.jobs.items() if j['state'] >= 7), None)
                 if terminal is None:
@@ -195,8 +196,11 @@ class Service:
             if j['state'] >= 7 or j['submitted']:
                 raise IppError(0x0405, 'Job already submitted/canceled; no automatic replay')
             path = self.root / f"{j['id']}.raster"
-            with path.open('wb') as out:
-                shutil.copyfileobj(source, out, 65536)
+            if isinstance(source, Path):
+                os.replace(source,path)
+            else:
+                with path.open('wb') as out:
+                    shutil.copyfileobj(source, out, 65536)
             j['submitted'] = True
             j['state'], j['reason'], j['message'] = 3, 'none', 'Spooling complete'
             try:
@@ -298,11 +302,11 @@ class Service:
         device=self.device.copy()
         state=5 if not device['online'] or device['state']=='error' else 4 if count or device['state']=='busy' else 3
         d = b'\x04'
-        for tag, name, value in [(0x45, 'printer-uri-supported', URI), (0x42, 'printer-name', 'HP P1006 PC TEST'),
-              (0x41, 'printer-info', 'Windows rendering / ESP USB transport TEST'), (0x41, 'printer-make-and-model', 'HP P1006 PC TEST'),
+        for tag, name, value in [(0x45, 'printer-uri-supported', URI), (0x42, 'printer-name', 'HP LaserJet P1006 - Viet Phuong'),
+              (0x41, 'printer-info', 'Viet Phuong Print Connect - Windows rendering and ESP USB transport'), (0x41, 'printer-make-and-model', 'HP LaserJet P1006 - Viet Phuong'),
               (0x45, 'printer-uuid', 'urn:uuid:13cf9f52-e673-43ac-9c2f-3293ca665c17'),
               (0x23, 'printer-state', state), (0x41, 'printer-state-message', device['message']),
-              (0x22, 'printer-is-accepting-jobs', count < 3), (0x21, 'queued-job-count', count),
+              (0x22, 'printer-is-accepting-jobs', bool(self.host) and count < 3), (0x21, 'queued-job-count', count),
               (0x22, 'color-supported', False), (0x44, 'sides-default', 'one-sided'), (0x44, 'sides-supported', 'one-sided'),
               (0x44, 'print-color-mode-default', 'monochrome'), (0x44, 'print-color-mode-supported', 'monochrome'),
               (0x44, 'media-default', MEDIA[0]), (0x49, 'document-format-default', 'image/pwg-raster'),
@@ -365,8 +369,23 @@ class Service:
                     self.replies.popitem(last=False)
             return result
 
+    def handle_received(self,spool):
+        op,request,a=spool.parsed
+        if op!=6:return self.dispatch_parsed(op,request,a,spool.path)
+        key=spool.digest.digest()
+        with self.request_lock:
+            if key in self.replies:return self.replies[key]
+            result=self.dispatch_parsed(op,request,a,spool.path)
+            if result[2:4]==b'\0\0':
+                self.replies[key]=result
+                while len(self.replies)>32:self.replies.popitem(last=False)
+            return result
+
     def dispatch(self, body):
         op, request, a = decode(body)
+        return self.dispatch_parsed(op,request,a,body)
+
+    def dispatch_parsed(self,op,request,a,body):
         try:
             if op == 11:
                 return reply(request, groups=self.printer_attrs())
@@ -374,6 +393,7 @@ class Service:
                 self.validate(a, True)
                 return reply(request)
             if op in (2, 5):
+                if not self.host:raise IppError(0x0506, 'Configure the ESP IP address before printing')
                 self.validate(a, op == 2)
                 j = self.new_job(a)
                 if op == 2:
@@ -405,6 +425,41 @@ class Service:
         except IppError as e:
             emit('ipp-error', message=e.message, operation=f'0x{op:04x}', job=integer(a, 'job-id'))
             return reply(request, e.status)
+
+
+class BodySpool:
+    """Parse only bounded IPP attributes in memory; write document to disk once.
+    Ownership passes to the job only AFTER the entire HTTP body is validated.
+    """
+    def __init__(self,root):
+        fd,name=tempfile.mkstemp(prefix='upload-',dir=root)
+        self.path=Path(name);self.file=os.fdopen(fd,'wb');self.prefix=bytearray()
+        self.parsed=None;self.digest=hashlib.sha256();self.total=0
+        self.started=time.monotonic();self.last_notice=0
+    def write(self,data):
+        self.total+=len(data)
+        # Send-Document retries retain the same full-body fingerprint, without a disk reread.
+        if self.parsed is None or self.parsed[0]==6:self.digest.update(data)
+        if self.parsed is None:
+            self.prefix.extend(data)
+            stream=io.BytesIO(self.prefix)
+            try:parsed=decode(stream)
+            except ValueError:
+                if len(self.prefix)>65536:raise
+                return
+            self.parsed=parsed
+            self.file.write(self.prefix[stream.tell():]);self.prefix.clear()
+        else:self.file.write(data)
+        if self.parsed[0] in (2,6):
+            now=time.monotonic()
+            if now-self.last_notice>=1:
+                self.last_notice=now
+                emit('receiving',bytes=self.total,elapsed_ms=round((now-self.started)*1000),message=f'Receiving document from Windows: {self.total/1048576:.1f} MiB')
+    def finish(self):
+        if self.parsed is None:decode(io.BytesIO(self.prefix));raise ValueError('Missing IPP attributes')
+        self.file.close()
+    def close(self):
+        self.file.close();self.path.unlink(missing_ok=True)
 
 
 class Server(ThreadingHTTPServer):
@@ -447,11 +502,16 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(404)
             return
         try:
-            # Bounded disk spool; never forward a prefix of an incomplete HTTP body.
-            with tempfile.TemporaryFile(dir=self.server.service.root) as f:
-                self.read_body(f)
-                f.seek(0)
-                result = self.server.service.handle(f)
+            # The document is written once; no whole-file hash reread or second copy.
+            spool=BodySpool(self.server.service.root)
+            try:
+                self.read_body(spool)
+                spool.finish()
+                received=time.monotonic()
+                result=self.server.service.handle_received(spool)
+                if spool.parsed[0] in (2,6):
+                    emit('receive-timing',bytes=spool.total,receive_ms=round((received-spool.started)*1000),handoff_ms=round((time.monotonic()-received)*1000),message='Complete HTTP document received and handed to PC renderer')
+            finally:spool.close()
             self.send_response(200)
             self.send_header('Content-Type', 'application/ipp')
             self.send_header('Content-Length', str(len(result)))
@@ -511,12 +571,12 @@ class Handler(BaseHTTPRequestHandler):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--esp', required=True)
+    p.add_argument('--esp', default='')
     p.add_argument('--port', type=int, default=8632)
     p.add_argument('--renderer')
     p.add_argument('--esp-status-port',type=int,default=80)
     args = p.parse_args()
-    ipaddress.IPv4Address(args.esp)
+    if args.esp:ipaddress.IPv4Address(args.esp)
     if not 1<=args.esp_status_port<=65535:
         raise SystemExit("Invalid ESP status port")
     base = Path(getattr(sys, '_MEIPASS', Path(__file__).resolve().parent))
@@ -536,7 +596,7 @@ def main():
                 return
         server.shutdown()
     threading.Thread(target=commands, daemon=True).start()
-    emit('ready', message=f'Local IPP service running; ESP target {service.host}:9101', uri=URI, esp=service.host)
+    emit('ready', message=(f'Local IPP service running; ESP target {service.host}:9101' if service.host else 'Local IPP service running; enter the ESP IP address to enable printing'), uri=URI, esp=service.host)
     try:
         server.serve_forever(poll_interval=0.2)
     finally:

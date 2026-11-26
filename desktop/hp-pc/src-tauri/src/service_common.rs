@@ -46,6 +46,17 @@ pub fn install()->Result<(),String>{
     s.set_failure_actions_on_non_crash_failures(true).map_err(|e|e.to_string())?;
     start_service()
 }
+pub fn install_queue(remove:bool)->Result<(),String>{
+    use std::{process::Command,os::windows::process::CommandExt};
+    let exe=std::env::current_exe().map_err(|e|e.to_string())?;
+    let script=exe.parent().ok_or("Missing installation directory")?.join("install-printer.ps1");
+    let mut command=Command::new("powershell.exe");
+    command.args(["-NoProfile","-NonInteractive","-ExecutionPolicy","Bypass","-File"]).arg(script);
+    if remove{command.arg("-Remove");}
+    let output=command.creation_flags(0x08000000).output().map_err(|e|e.to_string())?;
+    if !output.status.success(){let message=String::from_utf8_lossy(&output.stderr).into_owned();let _=fs::write(data_dir().join("queue-error.txt"),&message);return Err(message);}
+    Ok(())
+}
 pub fn configure(ip:&str)->Result<(),u8>{
     ip.parse::<Ipv4Addr>().map_err(|_|11)?;
     if status_file()["busy"].as_bool()==Some(true) && settings().esp_ip.as_deref()!=Some(ip){return Err(10);}

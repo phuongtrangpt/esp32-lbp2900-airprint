@@ -39,7 +39,7 @@ static void task(void *arg) {
         if(listener>=0) {
             int reuse=1;setsockopt(listener,SOL_SOCKET,SO_REUSEADDR,&reuse,sizeof(reuse));
             if(bind(listener,(struct sockaddr*)&addr,sizeof(addr))==0 && listen(listener,1)==0) {
-                ESP_LOGI(TAG,"PC offload TEST listening at %s:%d; no raster/JBIG on this path",ip,HP_OFFLOAD_PORT);
+                ESP_LOGI(TAG,"Print Connect listening at %s:%d; no raster/JBIG on this path",ip,HP_OFFLOAD_PORT);
                 for(;;) {
                     char current[16];if(!wifi_get_ip(current,sizeof(current)) || inet_addr(current)!=addr.sin_addr.s_addr)break;
                     fd_set fds;FD_ZERO(&fds);FD_SET(listener,&fds);struct timeval timeout={.tv_sec=1};

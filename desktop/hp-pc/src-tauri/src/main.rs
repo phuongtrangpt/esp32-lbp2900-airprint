@@ -53,15 +53,10 @@ async fn check_esp(ip: String) -> Result<String, String> {
     }).await.map_err(|e|e.to_string())?
 }
 #[tauri::command]
-async fn install_queue() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(|| {
-        // Fixed command: no user input/shell interpolation. Separate queue only.
-        let script="$ErrorActionPreference='Stop'; if (-not (Get-Printer -Name 'HP P1006 PC TEST' -ErrorAction SilentlyContinue)) { Add-Printer -Name 'HP P1006 PC TEST' -IppURL 'http://127.0.0.1:8632/ipp/print' }; Get-Printer -Name 'HP P1006 PC TEST' | Select-Object Name,DriverName,PortName | Format-List";
-        let result=hidden(Command::new("powershell.exe").args(["-NoProfile","-NonInteractive","-Command",script])).output().map_err(|e|e.to_string())?;
-        if !result.status.success() { return Err(String::from_utf8_lossy(&result.stderr).into_owned()); }
-        Ok(String::from_utf8_lossy(&result.stdout).into_owned())
-    }).await.map_err(|e|e.to_string())?
+async fn install_queue(app:tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move||{elevated(&app,&["--install-queue"])?;Ok("Máy in HP LaserJet P1006 - Viet Phuong đã sẵn sàng trên Windows".to_string())}).await.map_err(|e|e.to_string())?
 }
+
 fn main(){
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app,args,_cwd|{if args.iter().any(|s|s=="--quit"){app.exit(0);}else{show(app);}}))

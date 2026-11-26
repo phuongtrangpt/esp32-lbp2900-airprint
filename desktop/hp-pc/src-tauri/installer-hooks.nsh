@@ -38,8 +38,18 @@
     MessageBox MB_ICONSTOP "Cannot install HP P1006 Windows Service. Administrator permission is required." /SD IDOK
     Abort
   ${EndIf}
+  nsExec::ExecToStack '"$INSTDIR\hp-pc-service.exe" --install-queue'
+  Pop $0
+  Pop $1
+  ${If} $0 != 0
+    MessageBox MB_ICONSTOP "Cannot add the Windows printer automatically. See ProgramData\VietPhuong\HP-P1006-PC\queue-error.txt. $1" /SD IDOK
+    Abort
+  ${EndIf}
 !macroend
 !macro NSIS_HOOK_PREUNINSTALL
+  nsExec::ExecToStack '"$INSTDIR\hp-pc-service.exe" --remove-queue'
+  Pop $0
+  Pop $1
   nsExec::ExecToStack '"$INSTDIR\hp-pc-service.exe" --remove'
   Pop $0
   Pop $1

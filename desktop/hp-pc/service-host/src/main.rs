@@ -32,15 +32,15 @@ fn supervise(stop:Arc<AtomicBool>){
  let mut report=Report::new();report.event(json!({"phase":"service-started","message":"Windows print service running independently of the manager"}));
  while !stop.load(Ordering::Relaxed){
   let config=settings();
-  let ip=match config.esp_ip{Some(ip) if ip.parse::<std::net::Ipv4Addr>().is_ok()=>ip,_=>{report.ip=None;report.ready=false;report.save();std::thread::sleep(Duration::from_secs(1));continue;}};
+  let ip=config.esp_ip.filter(|ip|ip.parse::<std::net::Ipv4Addr>().is_ok()).unwrap_or_default();
   let parent=match std::env::current_exe().ok().and_then(|p|p.parent().map(|p|p.to_path_buf())){Some(p)=>p,None=>return};
   let helper=parent.join("helper/hp-pc-worker.exe");let spool=data_dir().join("spool");let _=std::fs::create_dir_all(&spool);
   // A restarted worker never restores/replays an interrupted document.
-  if let Ok(entries)=std::fs::read_dir(&spool){for entry in entries.flatten(){if entry.file_name().to_string_lossy().starts_with("hp-pc-test-") && entry.file_type().map(|t|t.is_dir()).unwrap_or(false){let _=std::fs::remove_dir_all(entry.path());}}}
+  if let Ok(entries)=std::fs::read_dir(&spool){for entry in entries.flatten(){if (entry.file_name().to_string_lossy().starts_with("hp-pc-spool-") || entry.file_name().to_string_lossy().starts_with("hp-pc-test-")) && entry.file_type().map(|t|t.is_dir()).unwrap_or(false){let _=std::fs::remove_dir_all(entry.path());}}}
   let status_port=config.esp_status_port.to_string();
   let mut c=match Command::new(helper).args(["--esp",&ip,"--esp-status-port",&status_port]).env("TEMP",&spool).env("TMP",&spool).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).creation_flags(0x08000000).spawn(){Ok(c)=>c,Err(e)=>{report.event(json!({"phase":"failed","message":format!("Worker launch failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
   let job=match Job::attach(&c){Ok(j)=>j,Err(e)=>{let _=c.kill();let _=c.wait();report.event(json!({"phase":"failed","message":format!("Worker isolation failed: {e}")}));std::thread::sleep(Duration::from_secs(3));continue;}};
-  report.ip=Some(ip.clone());report.pid=Some(c.id());report.ready=false;report.device=json!({"online":false,"state":"checking","message":"Checking ESP and USB printer"});report.busy.clear();report.save();
+  report.ip=if ip.is_empty(){None}else{Some(ip.clone())};report.pid=Some(c.id());report.ready=false;report.device=json!({"online":false,"state":"checking","message":"Checking ESP and USB printer"});report.busy.clear();report.save();
   let (tx,rx)=mpsc::sync_channel(128);
   if let Some(out)=c.stdout.take(){let t=tx.clone();std::thread::spawn(move||{for l in BufReader::new(out).lines().map_while(Result::ok){if l.len()<=16384{if let Ok(e)=serde_json::from_str::<Value>(&l){if t.send(e).is_err(){break;}}}}});}
   if let Some(err)=c.stderr.take(){std::thread::spawn(move||{for l in BufReader::new(err).lines().map_while(Result::ok){if tx.send(json!({"phase":"failed","message":l.chars().take(1000).collect::<String>()})).is_err(){break;}}});}
@@ -48,7 +48,7 @@ fn supervise(stop:Arc<AtomicBool>){
    while let Ok(e)=rx.try_recv(){report.event(e);}
    if stop.load(Ordering::Relaxed){break;}
    let latest=settings();
-   if (latest.esp_ip.as_deref()!=Some(&ip) || latest.esp_status_port!=config.esp_status_port) && report.busy.is_empty(){break;}
+   if (latest.esp_ip.as_deref().unwrap_or("")!=ip || latest.esp_status_port!=config.esp_status_port) && report.busy.is_empty(){break;}
    match c.try_wait(){Ok(Some(code))=>{report.event(json!({"phase":"failed","message":format!("Worker stopped ({code}); service will restart it. Jobs are not automatically replayed.")}));break;},Err(_)=>break,_=>{}}
    std::thread::sleep(Duration::from_millis(100));
   }
@@ -66,6 +66,6 @@ fn service_main(_args:Vec<OsString>){
 fn diagnostic(e:String)->u8{let _=std::fs::create_dir_all(data_dir());let _=std::fs::write(data_dir().join("control-error.txt"),e);13}
 fn main(){
  let args:Vec<String>=std::env::args().collect();
- let result=match args.get(1).map(String::as_str){Some("--install")=>install().map_err(diagnostic),Some("--remove")=>{let _=stop_service();service(ServiceAccess::DELETE).and_then(|s|s.delete().map_err(|e|e.to_string())).map_err(|_|13)},Some("--stop")=>stop_service().map_err(diagnostic),Some("--start")=>start_service().map_err(diagnostic),Some("--set-ip")=>args.get(2).ok_or(11).and_then(|ip|configure(ip)),_=>service_dispatcher::start(SERVICE,ffi_main).map_err(|_|13)};
+ let result=match args.get(1).map(String::as_str){Some("--install")=>install().map_err(diagnostic),Some("--install-queue")=>install_queue(false).map_err(diagnostic),Some("--remove-queue")=>install_queue(true).map_err(diagnostic),Some("--remove")=>{let _=stop_service();service(ServiceAccess::DELETE).and_then(|s|s.delete().map_err(|e|e.to_string())).map_err(|_|13)},Some("--stop")=>stop_service().map_err(diagnostic),Some("--start")=>start_service().map_err(diagnostic),Some("--set-ip")=>args.get(2).ok_or(11).and_then(|ip|configure(ip)),_=>service_dispatcher::start(SERVICE,ffi_main).map_err(|_|13)};
  if let Err(code)=result{std::process::exit(code as i32);}
 }

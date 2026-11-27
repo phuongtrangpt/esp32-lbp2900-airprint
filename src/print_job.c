@@ -24,7 +24,13 @@ static const printer_driver_t *configured_driver(void)
 {
     static const printer_driver_t *d;
     if (!d) {
-#if defined(PRINTSERVER_PROFILE_HP_P1008)
+#if defined(PRINTSERVER_PROFILE_LBP6000)
+        const char *id="canon-lbp6000";
+#elif defined(PRINTSERVER_PROFILE_LBP6200)
+        const char *id="canon-lbp6200";
+#elif defined(PRINTSERVER_PROFILE_LBP3010)
+        const char *id="canon-lbp3010";
+#elif defined(PRINTSERVER_PROFILE_HP_P1008)
         const char *id="hp-p1008";
 #elif defined(PRINTSERVER_PROFILE_HP)
         const char *id="hp-p1006";

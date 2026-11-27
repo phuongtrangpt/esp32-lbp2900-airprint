@@ -7,7 +7,13 @@
 // authentication.
 #define VP_SETUP_IP "192.168.4.1"
 #define VP_CLOUD_BASE FIRMWARE_UPDATE_BASE_URL
-#if defined(PRINTSERVER_PROFILE_HP_P1008)
+#if defined(PRINTSERVER_PROFILE_LBP6000)
+#define VP_PROFILE "lbp6000"
+#elif defined(PRINTSERVER_PROFILE_LBP6200)
+#define VP_PROFILE "lbp6200"
+#elif defined(PRINTSERVER_PROFILE_LBP3010)
+#define VP_PROFILE "lbp3010"
+#elif defined(PRINTSERVER_PROFILE_HP_P1008)
 #define VP_PROFILE "hp_p1008"
 #elif defined(PRINTSERVER_PROFILE_HP)
 #define VP_PROFILE "hp"

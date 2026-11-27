@@ -16,5 +16,5 @@ export default defineConfig({
         return fileURLToPath(new URL('./flash.js',import.meta.url));
     },
   }],
-  build:{license:true},
+  build:{license:true,rollupOptions:{input:{main:fileURLToPath(new URL('./index.html',import.meta.url)),guide:fileURLToPath(new URL('./huongdan/index.html',import.meta.url))}}},
 });

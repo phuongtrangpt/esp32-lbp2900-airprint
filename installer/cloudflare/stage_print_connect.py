@@ -16,9 +16,12 @@ with zipfile.ZipFile(args.release_dir/pinned['firmware']) as z:
 manifest=json.loads((source/'manifest.json').read_text());assert manifest['profile']=='hp_pc';assert manifest['version']==pinned['version']+'-hp-print-connect'
 dest=root/'installer/public/firmware/hp_pc'
 subprocess.run([sys.executable,str(root/'tools/prepare_web_installer.py'),'--source',str(source),'--dest',str(dest)],check=True)
-web=json.loads((dest/'web-manifest.json').read_text());web.update(usbOnly=True,hpBootstrapEmbedded=True,name='HP P1006 Print Connect ESP 32')
+web=json.loads((dest/'web-manifest.json').read_text());web.update(usbOnly=False,hpBootstrapEmbedded=True,name='HP P1006 Print Connect ESP 32')
 (dest/'web-manifest.json').write_text(json.dumps(web,indent=2)+'\n')
-for name in ['ota-manifest.json','firmware-merged.bin']:(dest/name).unlink(missing_ok=True)
+ota=json.loads((dest/'ota-manifest.json').read_text())
+ota['notes']='Print Connect cho HP P1006: link tải Windows và Android ngay trên trang in. Giữ nguyên giao thức USB, Wi-Fi và IP đã lưu.'
+(dest/'ota-manifest.json').write_text(json.dumps(ota,indent=2,ensure_ascii=False)+'\n')
+for name in ['firmware-merged.bin']:(dest/name).unlink(missing_ok=True)
 (dest/'SHA256SUMS').write_text(''.join(hashlib.sha256(item.read_bytes()).hexdigest()+'  '+item.name+'\n' for item in sorted(dest.iterdir()) if item.name!='SHA256SUMS'))
 software=root/'installer/public/software';software.mkdir(parents=True,exist_ok=True)
 shutil.copyfile(args.release_dir/pinned['installer'],software/pinned['installer'])

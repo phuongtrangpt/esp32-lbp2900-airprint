@@ -10,10 +10,11 @@ test(`${profile} package: SHA256, S3 image headers, offsets, bounds and NVS gap`
  if(profile==='hp_p1008')assert.equal(manifest.hpBootstrapEmbedded,true);
  assert.equal(manifest.builds.length,1);const build=manifest.builds[0];
  assert.equal(build.chipFamily,'ESP32-S3');assert.equal(build.serialType,'uart');
- if(['hp_pc','lbp6030','lbp6000','lbp6200','lbp3010'].includes(profile)){
+ if(['lbp6030','lbp6000','lbp6200','lbp3010'].includes(profile)){
   assert.equal(manifest.usbOnly,true);
   await assert.rejects(stat(new URL('ota-manifest.json',root)),{code:'ENOENT'});
  }else{
+  if(profile==='hp_pc')assert.equal(manifest.usbOnly,false);
   const ota=JSON.parse(await readFile(new URL('ota-manifest.json',root),'utf8'));
   assert.equal(ota.profile,profile);assert.equal(ota.version,manifest.version);assert.equal(ota.file,'firmware.bin');
   const app=await readFile(new URL(ota.file,root));assert.equal(ota.size,app.length);assert.equal(ota.sha256,createHash('sha256').update(app).digest('hex'));

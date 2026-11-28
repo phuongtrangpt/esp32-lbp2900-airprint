@@ -39,7 +39,7 @@ print('LIVE PASS: Android APK exact SHA-256, Android setup guide, shared Print C
 with get('/firmware/hp_pc/ota-manifest.json') as r:
  assert 'application/json' in r.headers.get('Content-Type',''), 'OTA endpoint must return JSON, never the website HTML fallback'
  ota=json.load(r)
- assert ota['profile']=='hp_pc' and ota['version']==android['firmware']['version'] and ota['file']=='firmware.bin'
+ assert ota['profile']=='hp_pc' and ota['version']==json.loads((root/'installer/android-release.json').read_text())['firmware']['version'] and ota['file']=='firmware.bin'
 with get('/firmware/hp_pc/firmware.bin') as r:
  data=r.read(4194305);assert len(data)==ota['size'] and hashlib.sha256(data).hexdigest()==ota['sha256']
  assert data[0]==0xe9 and int.from_bytes(data[12:14],'little')==9

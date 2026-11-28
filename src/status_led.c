@@ -42,6 +42,8 @@ static void led_task(void *arg)
         led_state_t st = atomic_load(&s_state);
 #ifdef PRINTSERVER_HP_RAW_BRIDGE
         st = status_led_print_only_state(st, atomic_load(&s_raw_printing));
+#elif defined(PRINTSERVER_PROFILE_CANON)
+        st = status_led_print_only_state(st, false);
 #endif
         if (st == LED_RECOVERY_REQUIRED)
             atomic_store(&s_identify, 0); // fault indication outranks Identify-Printer
@@ -88,7 +90,7 @@ esp_err_t status_led_init(void)
 
 void status_led_identify(void)
 {
-#ifndef PRINTSERVER_HP_RAW_BRIDGE
+#if !defined(PRINTSERVER_HP_RAW_BRIDGE) && !defined(PRINTSERVER_PROFILE_CANON)
     if (atomic_load(&s_state) == LED_RECOVERY_REQUIRED)
         return;
     atomic_store(&s_identify, 10);

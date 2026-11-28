@@ -1,0 +1,83 @@
+name: Canon LBP2900 idle LED update
+on:
+  push:
+    branches: [fix/canon-idle-led]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  canon:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      FIRMWARE_UPDATE_BASE_URL: ${{ vars.FIRMWARE_UPDATE_BASE_URL }}
+      ASAN_OPTIONS: detect_leaks=0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
+      - name: Assert print engine and all hardware settings unchanged from published Canon source
+        run: |
+          git fetch origin c0d059e29deb78801001798e34f9d0151a77ccdc --depth=1
+          git diff --exit-code c0d059e29deb78801001798e34f9d0151a77ccdc -- components src/usb_printer.c src/airprint_esp.c src/print_job.c src/main.c src/wifi.c src/network_settings.c src/cloud_update.c sdkconfig.defaults platformio.ini partitions.csv web
+          python - <<'PY'
+          import subprocess
+          allowed={'src/status_led.c','CMakeLists.txt','tools/package_firmware.py','.github/workflows/build.yml','.github/workflows/canon-led.yml'}
+          changed=set(subprocess.check_output(['git','diff','--name-only','c0d059e29deb78801001798e34f9d0151a77ccdc'],text=True).splitlines())
+          assert changed<=allowed,changed-allowed
+          print('Only LED policy, Canon version and release packaging differ from the published baseline.')
+          PY
+      - run: python -m pip install platformio==6.2.0 esptool==4.9.0
+      - name: Existing native LED and CAPT pipeline regression tests
+        run: |
+          npm --prefix web ci
+          make -C host all
+          host/status_led_host
+          host/capt_host
+          host/mono_host
+          host/reconnect_host
+          python tools/test_capt_ipp.py
+          python tools/test_capt_scheduler.py
+          python tools/test_capt_windows_chunks.py
+      - name: Build only Canon LBP2900 release and retain OTA
+        run: |
+          pio run -e canon
+          python tools/package_firmware.py --env canon --out firmware/canon
+          python tools/prepare_web_installer.py --source firmware/canon --dest installer/public/firmware/canon
+          python - <<'PY'
+          import json,hashlib,zipfile,os
+          from pathlib import Path
+          source=Path('firmware/canon');out=Path('canon-release');out.mkdir()
+          m=json.loads((source/'manifest.json').read_text());assert m['version']=='0.9.13-led1' and m['profile']=='canon'
+          file=out/'Canon-LBP2900-0.9.13-led1.zip'
+          with zipfile.ZipFile(file,'w',zipfile.ZIP_DEFLATED) as z:
+              for p in source.iterdir():
+                  if p.is_file():z.write(p,p.name)
+          r={'version':m['version'],'profile':'canon','tag':'canon-lbp2900-v0.9.13-led1','baseline_source':'c0d059e29deb78801001798e34f9d0151a77ccdc','source_commit':os.environ['GITHUB_SHA'],'file':file.name,'size':file.stat().st_size,'sha256':hashlib.sha256(file.read_bytes()).hexdigest()}
+          (out/'canon-release.json').write_text(json.dumps(r,indent=2)+'\n')
+          (out/'NOTES.md').write_text('Canon LBP2900: RGB off while idle, green blink while printing, existing error and five-flash recovery alerts retained. Print engine, CAPT, USB, Wi-Fi, partitions and memory settings are byte-identical in source to the published baseline. Native LED/CAPT/IPP tests passed; physical LED behavior still needs board verification. GPL-3.0-or-later.\n')
+          print(json.dumps(r,indent=2))
+          PY
+      - name: Publish dedicated checked Canon package
+        run: |
+          TAG=canon-lbp2900-v0.9.13-led1
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo 'Version already exists; do not overwrite a published firmware.'
+            exit 1
+          fi
+          gh release create "$TAG" canon-release/* --target "$GITHUB_SHA" --title 'Canon LBP2900 0.9.13-led1 · Idle LED off' --notes-file canon-release/NOTES.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Canon-LBP2900-LED-release
+          path: canon-release/

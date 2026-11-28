@@ -1,6 +1,7 @@
 name: Build HP P1006 and Canon LBP2900 ESP 32
 on:
   push:
+    branches-ignore: [fix/canon-idle-led]
     paths-ignore:
       - installer/**
       - tools/prepare_capt_family_web.py

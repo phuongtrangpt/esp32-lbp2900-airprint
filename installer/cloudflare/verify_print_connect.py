@@ -20,5 +20,18 @@ with get('/software/'+pinned['installer']) as r:
 with get('/brand/logo.png') as r:assert hashlib.sha256(r.read()).hexdigest()==hashlib.sha256((root/'installer/public/brand/logo.png').read_bytes()).hexdigest()
 with get('/brand/favicon.ico') as r:assert r.read(4)==b'\0\0\1\0'
 with get('/firmware/hp_pc/web-manifest.json') as r:
- m=json.load(r);assert m['version']==pinned['version']+'-hp-print-connect';assert m['usbOnly'];assert len(m['builds'][0]['parts'])==3
+ m=json.load(r);assert m['version']==json.loads((root/'installer/android-release.json').read_text())['firmware']['version'];assert m['usbOnly'];assert len(m['builds'][0]['parts'])==3
 print('LIVE PASS: Windows installer exact SHA-256, installation guide, supplied brand logo/favicon, Print Connect online firmware.')
+
+android=json.loads((root/'installer/android-release.json').read_text())
+with get('/print-connect/android/') as r:
+ text=r.read().decode();assert android['version'] in text and 'HP P1006 - Viet Phuong' in text
+with get('/software/'+android['apk']['file']) as r:
+ digest=hashlib.sha256();size=0;first=True
+ while True:
+  block=r.read(65536)
+  if not block:break
+  if first:assert block[:2]==b'PK';first=False
+  digest.update(block);size+=len(block)
+ assert digest.hexdigest()==android['apk']['sha256'];assert size==android['apk']['size']
+print('LIVE PASS: Android APK exact SHA-256, Android setup guide, shared Print Connect firmware download-card update.')

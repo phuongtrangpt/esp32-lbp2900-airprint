@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "tag": "print-connect-android-v0.1.0",
+  "source_commit": "48543ceff4705646402a35d410ff2a289a73afe5",
+  "apk": {
+    "file": "Viet-Phuong-Print-Connect-Android-0.1.0.apk",
+    "size": 333618,
+    "sha256": "37bf1d83a5ea3d4e42fab6b467bf287a76843d26dc4722ff9cd5b276584794ae"
+  },
+  "firmware": {
+    "file": "Print-Connect-ESP32-1.0.2.zip",
+    "size": 1752282,
+    "sha256": "8a227e3643897fc3fce931d4d74a3c55a1365f85f35357ae84006114f23ce195",
+    "version": "1.0.2-hp-print-connect"
+  }
+}

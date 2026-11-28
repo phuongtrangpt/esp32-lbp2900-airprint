@@ -39,7 +39,7 @@ jobs:
           import hashlib,json
           from pathlib import Path
           root=Path('installer/public/firmware')
-          records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+          records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p.relative_to(root).parts[0]!='hp_pc'}
           for profile in ['hp','hp_p1008','canon','lbp6000','lbp6200','lbp3010','lbp6030','pixma','standard']:
               assert profile+'/web-manifest.json' in records,profile
           Path('/tmp/preserved-firmware.json').write_text(json.dumps(records))
@@ -49,6 +49,10 @@ jobs:
           gh release download print-connect-v1.0.1 --pattern 'Viet-Phuong-Print-Connect-1.0.1-Setup.exe' --pattern 'Print-Connect-ESP32-1.0.1.zip' --pattern release.json --dir pc-release
           python -m pip install esptool==4.9.0
           python installer/cloudflare/stage_print_connect.py --release-dir pc-release
+      - name: Stage Android APK and Print Connect ESP support-download links
+        run: |
+          gh release download print-connect-android-v0.1.0 --pattern 'Viet-Phuong-Print-Connect-Android-0.1.0.apk' --pattern 'Print-Connect-ESP32-1.0.2.zip' --pattern android-release.json --dir android-release
+          python installer/cloudflare/stage_android.py --release-dir android-release
       - name: Validate one-time code API, installer and build
         run: |
           npm --prefix installer ci

@@ -1,0 +1,10 @@
+{
+  "version": "0.1.1",
+  "tag": "print-connect-android-v0.1.1",
+  "source_commit": "42103cc7af5ea0f85081e6b537cbcf1602fddb2c",
+  "apk": {
+    "file": "Viet-Phuong-Print-Connect-Android-0.1.1.apk",
+    "size": 350230,
+    "sha256": "949850adb3e7035f8c38334ddce2ca0b0f9d51fa07709daf11691807a8b8feea"
+  }
+}

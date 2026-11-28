@@ -53,6 +53,10 @@ jobs:
         run: |
           gh release download print-connect-android-v0.1.0 --pattern 'Viet-Phuong-Print-Connect-Android-0.1.0.apk' --pattern 'Print-Connect-ESP32-1.0.2.zip' --pattern android-release.json --dir android-release
           python installer/cloudflare/stage_android.py --release-dir android-release
+      - name: Stage Android photo-sharing APK only
+        run: |
+          gh release download print-connect-android-v0.1.1 --pattern 'Viet-Phuong-Print-Connect-Android-0.1.1.apk' --pattern android-release.json --dir android-app-release
+          python installer/cloudflare/stage_android_app.py --release-dir android-app-release
       - name: Stage Canon LBP2900 LED-only update
         run: |
           gh release download canon-lbp2900-v0.9.13-led1 --pattern 'Canon-LBP2900-0.9.13-led1.zip' --pattern canon-release.json --dir canon-release

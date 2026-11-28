@@ -23,7 +23,7 @@ with get('/firmware/hp_pc/web-manifest.json') as r:
  m=json.load(r);assert m['version']==json.loads((root/'installer/android-release.json').read_text())['firmware']['version'];assert m['usbOnly'] is False;assert len(m['builds'][0]['parts'])==3
 print('LIVE PASS: Windows installer exact SHA-256, installation guide, supplied brand logo/favicon, Print Connect online firmware.')
 
-android=json.loads((root/'installer/android-release.json').read_text())
+android=json.loads((root/'installer/android-app-release.json').read_text())
 with get('/print-connect/android/') as r:
  text=r.read().decode();assert android['version'] in text and 'HP P1006 - Viet Phuong' in text
 with get('/software/'+android['apk']['file']) as r:

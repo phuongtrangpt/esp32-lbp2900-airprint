@@ -47,7 +47,7 @@ jobs:
         run: gradle :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
       - uses: actions/upload-artifact@v4
         with:
-          name: Print-Connect-Android-0.1.0
+          name: Print-Connect-Android-0.1.1
           path: |
             android/hp-p1006/app/build/outputs/apk/debug/app-debug.apk
             android/hp-p1006/README.md
@@ -72,35 +72,8 @@ jobs:
         with:
           name: Android-test-reports
           path: android/hp-p1006/app/build/reports/androidTests/
-  firmware:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-      - uses: actions/cache@v4
-        with:
-          path: ~/.platformio
-          key: ${{ runner.os }}-platformio-${{ hashFiles('platformio.ini') }}
-      - run: python -m pip install platformio==6.2.0 esptool==4.9.0
-      - name: Check ESP download card and build only Print Connect firmware
-        run: |
-          npm --prefix web ci
-          npm --prefix web run check
-          npm --prefix web test
-          npm --prefix web run build
-          pio run -e hp_pc
-          python tools/package_firmware.py --env hp_pc --out firmware/hp_pc
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Print-Connect-ESP32-1.0.2
-          path: firmware/hp_pc/
   release:
-    needs: [protocol, apk, firmware]
+    needs: [protocol, apk]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -111,18 +84,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: Print-Connect-Android-0.1.0
+          name: Print-Connect-Android-0.1.1
           path: checked-android
-      - uses: actions/download-artifact@v4
-        with:
-          name: Print-Connect-ESP32-1.0.2
-          path: checked-firmware
       - name: Publish separate Android test APK
         run: |
-          python android/hp-p1006/package_release.py --apk "$(find checked-android -name app-debug.apk -print -quit)" --firmware checked-firmware --out release-android
-          TAG=print-connect-android-v0.1.0
+          python android/hp-p1006/package_release.py --apk "$(find checked-android -name app-debug.apk -print -quit)" --out release-android
+          TAG=print-connect-android-v0.1.1
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo 'Immutable version already exists; increment Android version before publishing.'
             exit 1
           fi
-          gh release create "$TAG" release-android/* --prerelease --target "$GITHUB_SHA" --title 'Print Connect Android 0.1.0 · HP P1006' --notes-file android/hp-p1006/README.md
+          gh release create "$TAG" release-android/* --prerelease --target "$GITHUB_SHA" --title 'Print Connect Android 0.1.1 · HP P1006' --notes-file android/hp-p1006/README.md

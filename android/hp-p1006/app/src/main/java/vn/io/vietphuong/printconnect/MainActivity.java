@@ -26,7 +26,7 @@ public final class MainActivity extends Activity {
   scroll.setOnApplyWindowInsetsListener((v,insets)->{root.setPadding(dp(20),dp(20)+insets.getSystemWindowInsetTop(),dp(20),dp(20)+insets.getSystemWindowInsetBottom());return insets;});
   ImageView logo=new ImageView(this);logo.setImageResource(R.drawable.logo);logo.setContentDescription("Logo Việt Phương");root.addView(logo,new LinearLayout.LayoutParams(dp(70),dp(70)));
   TextView title=text("Viet Phuong\nPrint Connect",28,Color.WHITE);title.setTypeface(null,Typeface.BOLD);root.addView(title);
-  root.addView(text("HP LaserJet P1006 · Android 0.1.0\nBản đầu tiên để kiểm thử trên máy thật",14,0xffb5c6db));
+  root.addView(text("HP LaserJet P1006 · Android 0.1.1\nBản đầu tiên để kiểm thử trên máy thật",14,0xffb5c6db));
   LinearLayout config=card(root);config.addView(text("Kết nối ESP",21,Color.WHITE));config.addView(text("Điện thoại và ESP cần ở cùng mạng Wi-Fi. Dùng firmware Print Connect đã nạp cho bản Windows.",15,0xffb5c6db));
   TextView label=text("Địa chỉ IP của ESP",15,Color.WHITE);config.addView(label);ip=new EditText(this);ip.setSingleLine(true);ip.setHint("Ví dụ: 192.168.10.21");ip.setText(vn.io.vietphuong.printconnect.Settings.host(this));ip.setTextSize(18);ip.setTextColor(Color.WHITE);ip.setHintTextColor(0xff90a5bf);ip.setInputType(android.text.InputType.TYPE_CLASS_PHONE);ip.setPadding(dp(12),dp(12),dp(12),dp(12));ip.setBackground(background(0xff0d1929,0xff567390));config.addView(ip,new LinearLayout.LayoutParams(-1,-2));
   button(config,"Lưu IP và kiểm tra kết nối",()->{try{if(AppState.jobs.get()>0)throw new IllegalArgumentException("Chờ lệnh in xong trước khi đổi IP");vn.io.vietphuong.printconnect.Settings.save(this,ip.getText().toString());ip.clearFocus();probe();}catch(IllegalArgumentException e){status.setText(e.getMessage());}});
@@ -34,6 +34,7 @@ public final class MainActivity extends Activity {
   LinearLayout setup=card(root);setup.addView(text("Bật dịch vụ in một lần",21,Color.WHITE));setup.addView(text("Mở cài đặt in của Android, bật “Viet Phuong · HP P1006”. Sau đó mở PDF, ảnh hoặc ứng dụng có mục In và chọn “HP P1006 - Viet Phuong”.",16,0xffc4d2e5));
   button(setup,"Mở cài đặt dịch vụ in Android",()->{try{startActivity(new Intent(Settings.ACTION_PRINT_SETTINGS));}catch(ActivityNotFoundException e){status.setText("Mở Cài đặt Android và tìm mục In / Printing");}});
   setup.addView(text("Không cần giữ giao diện này mở. Android quản lý dịch vụ in; không có dịch vụ chạy vô hạn khi máy đang rảnh.",14,0xffa9bbd3));
+  button(setup,"Chọn ảnh để in",()->startActivity(new Intent(this,PhotoShareActivity.class)));
   LinearLayout progress=card(root);progress.addView(text("Lệnh in gần nhất",21,Color.WHITE));history=text(AppState.last(this),15,0xffc4d2e5);progress.addView(history);progress.addView(text("Đã chuyển USB không có nghĩa giấy đã ra hết. Nếu mất kết nối, kiểm tra giấy trước khi tạo lệnh mới để tránh in trùng.",14,0xffe8cc91));
   button(progress,"Mở trang in của ESP",()->{try{String host=vn.io.vietphuong.printconnect.Settings.checked(vn.io.vietphuong.printconnect.Settings.host(this));startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("http://"+host+"/")));}catch(Exception e){status.setText("Hãy lưu IP của ESP trước");}});
   root.addView(text("Việt Phương · GPL-3.0-or-later\nA4 / Letter / A5 / A6 · Đen trắng · Một mặt",13,0xff90a7c2));

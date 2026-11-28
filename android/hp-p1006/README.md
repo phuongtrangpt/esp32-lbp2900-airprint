@@ -1,6 +1,6 @@
 # Viet Phuong Print Connect — Android / HP P1006
 
-Bản Android 0.1.0 để kiểm thử, tách riêng bản Windows final 1.0.1. Chưa xác nhận in trên điện thoại + máy HP thật. GPL-3.0-or-later, giữ nguyên các thông báo bản quyền trong bộ nén HP/JBIG của dự án.
+Bản Android 0.1.1 để kiểm thử, tách riêng bản Windows final 1.0.1. Chưa xác nhận in trên điện thoại + máy HP thật. GPL-3.0-or-later, giữ nguyên các thông báo bản quyền trong bộ nén HP/JBIG của dự án.
 
 ## Cài và sử dụng
 
@@ -29,3 +29,9 @@ CI build ARM64, ARMv7 và x86_64. Java transport đối chiếu C protocol thậ
 ## Build
 
 JDK17, Gradle8.11.1, AGP8.9.2, SDK35, NDK27.0.12077973, CMake3.22.1. Từ thư mục này: `gradle :app:assembleDebug`. CI `.github/workflows/hp-android.yml` tạo APK và chỉ phát hành prerelease khi các kiểm tra đều qua. Không đổi mã driver máy in, dịch vụ Windows hay firmware ổn định.
+
+## In ảnh từ Thư viện Xiaomi / Android
+
+Trong Thư viện chọn một hoặc nhiều ảnh → Chia sẻ → Viet Phuong Print Connect → Mở hộp thoại in ảnh → chọn HP P1006 - Viet Phuong. Hoặc mở Print Connect → Chọn ảnh để in. Mỗi ảnh một trang, vừa khổ giấy, giữ EXIF xoay ảnh. Chọn A4/A5/A6/Letter, chiều giấy và số bản trong hộp thoại Android.
+
+Bản 0.1.1 chỉ đổi ứng dụng Android; không cần cập nhật ESP hay Windows. Nếu Android không cài đè được APK thử nghiệm do khác khóa debug, gỡ bản 0.1.0 trước khi cài và bật lại dịch vụ in, nhập lại IP. Không chọn máy chỉ hiện bằng IP của dịch vụ IPP mặc định.

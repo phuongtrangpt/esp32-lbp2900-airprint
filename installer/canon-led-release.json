@@ -1,0 +1,10 @@
+{
+  "version": "0.9.13-led1",
+  "profile": "canon",
+  "tag": "canon-lbp2900-v0.9.13-led1",
+  "baseline_source": "c0d059e29deb78801001798e34f9d0151a77ccdc",
+  "source_commit": "88b5928a448509ff6d52fc643271982bc2b46af5",
+  "file": "Canon-LBP2900-0.9.13-led1.zip",
+  "size": 1584301,
+  "sha256": "017d5b060ad46e5f1174983ddbfe70adc4a20ca14c6b4f0fc64a36f50fe03a47"
+}

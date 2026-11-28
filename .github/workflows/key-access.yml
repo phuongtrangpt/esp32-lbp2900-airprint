@@ -39,7 +39,7 @@ jobs:
           import hashlib,json
           from pathlib import Path
           root=Path('installer/public/firmware')
-          records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p.relative_to(root).parts[0]!='hp_pc'}
+          records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p.relative_to(root).parts[0] not in ('hp_pc','canon')}
           for profile in ['hp','hp_p1008','canon','lbp6000','lbp6200','lbp3010','lbp6030','pixma','standard']:
               assert profile+'/web-manifest.json' in records,profile
           Path('/tmp/preserved-firmware.json').write_text(json.dumps(records))
@@ -53,6 +53,10 @@ jobs:
         run: |
           gh release download print-connect-android-v0.1.0 --pattern 'Viet-Phuong-Print-Connect-Android-0.1.0.apk' --pattern 'Print-Connect-ESP32-1.0.2.zip' --pattern android-release.json --dir android-release
           python installer/cloudflare/stage_android.py --release-dir android-release
+      - name: Stage Canon LBP2900 LED-only update
+        run: |
+          gh release download canon-lbp2900-v0.9.13-led1 --pattern 'Canon-LBP2900-0.9.13-led1.zip' --pattern canon-release.json --dir canon-release
+          python installer/cloudflare/stage_canon_led.py --release-dir canon-release
       - name: Validate one-time code API, installer and build
         run: |
           npm --prefix installer ci
@@ -65,7 +69,7 @@ jobs:
           for name,digest in json.loads(Path('/tmp/preserved-firmware.json').read_text()).items():
               assert hashlib.sha256((root/name).read_bytes()).hexdigest()==digest,name
           assert not list(Path('installer/dist').rglob('*.zip'))
-          print('All existing firmware/manifests byte-identical; no downloadable ZIPs')
+          print('All preserved firmware/manifests byte-identical; no downloadable ZIPs')
           PY
       - name: Provision code database in the existing Cloudflare account
         run: python installer/cloudflare/provision.py
@@ -85,6 +89,7 @@ jobs:
           if [ "$GITHUB_REF_NAME" = main ]; then URL=https://esp.vietphuong.io.vn; fi
           python installer/cloudflare/smoke.py "$URL"
           python installer/cloudflare/verify_print_connect.py "$URL"
+          python installer/cloudflare/verify_canon_led.py "$URL"
       - uses: actions/upload-artifact@v4
         with:
           name: vietphuong-esp-key-web

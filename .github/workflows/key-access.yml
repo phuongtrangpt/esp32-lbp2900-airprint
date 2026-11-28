@@ -41,7 +41,7 @@ jobs:
           root=Path('installer/public/firmware')
           records={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file() and p.relative_to(root).parts[0] not in ('hp_pc','canon')}
           for profile in ['hp','hp_p1008','canon','lbp6000','lbp6200','lbp3010','lbp6030','pixma','standard']:
-              assert profile+'/web-manifest.json' in records,profile
+              assert (root/profile/'web-manifest.json').is_file(),profile
           Path('/tmp/preserved-firmware.json').write_text(json.dumps(records))
           PY
       - name: Stage pinned Print Connect Windows service and ESP online firmware
